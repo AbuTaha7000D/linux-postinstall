@@ -612,7 +612,7 @@ set_favorite_apps() {
         'com.rtosta.zapzap.desktop'
         'google-chrome.desktop'
         'io.appflowy.AppFlowy.desktop'
-        'bitwarden.desktop'
+        'com.bitwarden.desktop'
         'com.spotify.Client.desktop'
         'com.discordapp.Discord.desktop'
     )
