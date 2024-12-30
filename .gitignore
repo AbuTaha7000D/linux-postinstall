@@ -1,0 +1,25 @@
+# Logs and temporary files
+*.log
+*.tmp
+
+# Build files and caches
+*.bin
+*.o
+*.out
+
+# Downloaded Packages
+*.deb
+*.rpm
+
+# System files
+.DS_Store
+.Thumbs.db
+.Trash-*
+.Spotlight-V100
+.fseventsd
+
+# IDE
+*.swp
+*~
+*.pyc
+__pycache__/
