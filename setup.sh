@@ -451,6 +451,10 @@ install_themes() {
         return 1
     fi
     
+    CURRENT_DIR=$(pwd)
+    gsettings set org.gnome.desktop.background picture-uri "file://$CURRENT_DIR/additions/wallpaper.jpg"
+    gsettings set org.gnome.desktop.background picture-uri-dark "file://$CURRENT_DIR/additions/wallpaper.jpg"
+    
     gsettings set org.gnome.desktop.interface gtk-theme $GTK_THEME
     if [ $? -ne 0 ]; then
         echo "Error setting gtk theme"
@@ -470,7 +474,6 @@ install_themes() {
     fi
     echo "Themes installed successfully!"
 }
-
 
 # Function to change language to English
 change_language() {
@@ -641,7 +644,6 @@ set_favorite_apps() {
     echo "Favorite apps set successfully!"
     
 }
-
 
 # Main execution
 main() {
