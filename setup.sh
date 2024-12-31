@@ -60,7 +60,7 @@ install_debian() {
         echo "Error updating package lists"
     fi
     
-    sudo apt-get install -y git nano btop gnome-tweaks sed fzf gnome-shell-extensions gnome-shell-extension-user-theme htop fastfetch bat neovim python3 python3-pip nodejs gpg wget \
+    sudo apt-get install -y git nano btop gnome-tweaks sed fzf gnome-shell-extension-dash-to-dock gnome-shell-extensions gnome-shell-extension-user-theme htop fastfetch bat neovim python3 python3-pip nodejs gpg wget \
     npm gcc make cmake clang xdotool flatpak vlc thunderbird obs-studio bleachbit screenkey timeshift \
     gpaste jupyter-notebook
     if [ $? -ne 0 ]; then
@@ -169,7 +169,7 @@ install_redhat() {
         echo "Error updating package lists"
     fi
     
-    sudo dnf install -y git nano btop sed gnome-tweaks htop fzf gnome-shell-extensions gnome-shell-extension-user-theme fastfetch bat neovim python3 python3-pip nodejs gpg wget \
+    sudo dnf install -y git nano btop sed gnome-tweaks htop fzf gnome-shell-extension-dash-to-dock gnome-shell-extensions gnome-shell-extension-user-theme fastfetch bat neovim python3 python3-pip nodejs gpg wget \
     npm gcc make cmake clang xdotool flatpak vlc thunderbird obs-studio bleachbit screenkey timeshift \
     gpaste jupyter-notebook
     if [ $? -ne 0 ]; then
@@ -645,6 +645,11 @@ set_favorite_apps() {
     
 }
 
+# Function ti install gnome extensions
+install_gnome_extensions() {
+    # Install gnome extensions
+}
+
 # Main execution
 main() {
     
@@ -696,7 +701,18 @@ main() {
             exit 1
         ;;
     esac
-    echo "Installation complete."
+    echo -e "Installation complete. Reboot your system to apply changes.\n"
+    echo -e "##############################################\n"
+    read -p "Do you want to reboot now? (Y/N): " reboot_choice
+    case "$reboot_choice" in
+        [Yy]*)
+            sudo reboot
+        ;;
+        *)
+            echo "Reboot skipped. Please reboot manually to apply changes."
+        ;;
+    esac
+    
 }
 
 # Run the main function
