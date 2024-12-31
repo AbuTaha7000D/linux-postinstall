@@ -65,7 +65,7 @@ This project includes the following fonts and themes:
 
 - **OpenSauceSans:** ([https://github.com/marcologous/Open-Sauce-Fonts](https://github.com/marcologous/Open-Sauce-Fonts))
 
-- **Ubuntu-Arabic_R:** ([https://packages.debian.org/bookworm/fonts-hosny-amiri](https://packages.debian.org/bookworm/fonts-hosny-amiri))
+- **Ubuntu Font Family** ([https://design.ubuntu.com/font](https://design.ubuntu.com/font))
 
 ### Themes
 
