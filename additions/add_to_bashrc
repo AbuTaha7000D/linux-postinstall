@@ -2,8 +2,6 @@
 ######################################################
 # ALIAS'S AND SCRIPTS BY ME
 ######################################################
-alias supdate='sudo dnf update -y && sudo dnf upgrade -y && sudo dnf autoremove'
-lias update-grub='sudo grub2-mkconfig -o /boot/grub2/grub.cfg; sudo grub2-mkconfig -o /boot/efi/EFI/fedora/grub.cfg'
 alias brave='bravebrowser-launcher'
 alias spotify='flatpak run com.spotify.Client'
 alias pingo='ping 8.8.8.8'

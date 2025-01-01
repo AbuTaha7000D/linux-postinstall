@@ -60,12 +60,51 @@ install_debian() {
         echo "Error updating package lists"
     fi
     
-    sudo apt-get install -y git nano btop gnome-tweaks sed fzf gnome-shell-extension-dash-to-dock gnome-shell-extensions gnome-shell-extension-user-theme htop fastfetch bat neovim python3 python3-pip nodejs gpg wget \
-    npm gcc make cmake clang xdotool flatpak vlc thunderbird obs-studio bleachbit screenkey timeshift \
-    gpaste jupyter-notebook
-    if [ $? -ne 0 ]; then
-        echo "Error installing base apps"
-    fi
+    # List of apps to install
+    apps=(
+        git
+        nano
+        btop
+        sed
+        gnome-tweaks
+        htop
+        fzf
+        gnome-shell-extension-dash-to-dock
+        gnome-shell-extensions
+        gnome-shell-extension-user-theme
+        fastfetch
+        bat
+        neovim
+        python3
+        python3-pip
+        nodejs
+        gpg
+        wget
+        npm
+        gcc
+        make
+        cmake
+        clang
+        xdotool
+        flatpak
+        vlc
+        thunderbird
+        obs-studio
+        bleachbit
+        screenkey
+        timeshift
+        gpaste
+        jupyter-notebook
+    )
+    
+    # Install each app
+    for app in "${apps[@]}"; do
+        echo -e "Installing $app..."
+        sudo dnf install -y "$app"
+        if [ $? -ne 0 ]; then
+            echo "Error installing $app"
+        fi
+    done
     echo "##############################################"
     
     # Install Visual Studio Code
@@ -108,38 +147,6 @@ install_debian() {
     fi
     echo "##############################################"
     
-    # Install Brave Browser
-    echo "Installing Brave Browser..."
-    if dpkg -s brave-browser > /dev/null 2>&1; then
-        echo "Brave Browser is already installed."
-    else
-        sudo apt install -y curl
-        if [ $? -ne 0 ]; then
-            echo "Error installing Curl (required for Brave)"
-        else
-            echo "Adding the brave key..."
-            sudo curl -fsSLo /usr/share/keyrings/brave-browser-archive-keyring.gpg https://brave-browser-apt-release.s3.brave.com/brave-browser-archive-keyring.gpg
-            if [ $? -ne 0 ]; then
-                echo "Error adding the brave key"
-            else
-                echo "Adding the brave source..."
-                echo "deb [signed-by=/usr/share/keyrings/brave-browser-archive-keyring.gpg] https://brave-browser-apt-release.s3.brave.com/ stable main" | sudo tee /etc/apt/sources.list.d/brave-browser-release.list
-                if [ $? -ne 0 ]; then
-                    echo "Error adding the brave source"
-                else
-                    echo "Installing Brave..."
-                    sudo apt install -y brave-browser
-                    if [ $? -ne 0 ]; then
-                        echo "Error installing Brave"
-                    else
-                        echo "Brave installed successfully"
-                    fi
-                fi
-            fi
-        fi
-    fi
-    echo "##############################################"
-    
     # Install Zoom
     echo "Installing Zoom..."
     if dpkg -s zoom > /dev/null 2>&1; then
@@ -169,12 +176,51 @@ install_redhat() {
         echo "Error updating package lists"
     fi
     
-    sudo dnf install -y git nano btop sed gnome-tweaks htop fzf gnome-shell-extension-dash-to-dock gnome-shell-extensions gnome-shell-extension-user-theme fastfetch bat neovim python3 python3-pip nodejs gpg wget \
-    npm gcc make cmake clang xdotool flatpak vlc thunderbird obs-studio bleachbit screenkey timeshift \
-    gpaste jupyter-notebook
-    if [ $? -ne 0 ]; then
-        echo "Error installing base apps"
-    fi
+    # List of apps to install
+    apps=(
+        git
+        nano
+        btop
+        sed
+        gnome-tweaks
+        htop
+        fzf
+        gnome-shell-extension-dash-to-dock
+        gnome-shell-extensions
+        gnome-shell-extension-user-theme
+        fastfetch
+        bat
+        neovim
+        python3
+        python3-pip
+        nodejs
+        gpg
+        wget
+        npm
+        gcc
+        make
+        cmake
+        clang
+        xdotool
+        flatpak
+        vlc
+        thunderbird
+        obs-studio
+        bleachbit
+        screenkey
+        timeshift
+        gpaste
+        jupyter-notebook
+    )
+    
+    # Install each app
+    for app in "${apps[@]}"; do
+        echo -e "Installing $app..."
+        sudo dnf install -y "$app"
+        if [ $? -ne 0 ]; then
+            echo "Error installing $app"
+        fi
+    done
     echo "##############################################"
     
     # Install Visual Studio Code
@@ -224,32 +270,6 @@ install_redhat() {
     fi
     echo "##############################################"
     
-    # Install Brave Browser
-    echo "Installing Brave Browser..."
-    if rpm -q brave-browser > /dev/null 2>&1; then
-        echo "Brave Browser is already installed."
-    else
-        sudo dnf -y install dnf-plugins-core
-        if [ $? -ne 0 ]; then
-            echo "Error installing dnf plugins core (required for Brave)"
-        else
-            echo "Adding the brave repo..."
-            sudo dnf config-manager addrepo --from-repofile=https://brave-browser-rpm-release.s3.brave.com/brave-browser.repo
-            if [ $? -ne 0 ]; then
-                echo "Error adding the brave repo"
-            else
-                echo "Installing Brave..."
-                sudo dnf -y install brave-browser
-                if [ $? -ne 0 ]; then
-                    echo "Error installing Brave"
-                else
-                    echo "Brave installed successfully"
-                fi
-            fi
-        fi
-    fi
-    echo "##############################################"
-    
     # Install Zoom
     echo "Installing Zoom..."
     if rpm -q zoom > /dev/null 2>&1; then
@@ -276,6 +296,7 @@ install_flatpaks() {
     echo "Installing flatpak applications..."
     
     local apps=(
+        "com.brave.Browser"
         "com.discordapp.Discord"
         "com.bitwarden.desktop"
         "com.github.jeromerobert.pdfarranger"
@@ -507,8 +528,12 @@ set_aliases() {
     dtype=$(distribution)
     case "$dtype" in
         "redhat")
+            grep -qxF "alias supdate='sudo dnf update -y && sudo dnf upgrade -y && sudo dnf autoremove'" ./additions/add_to_bashrc || \
             sed -i "5ialias supdate='sudo dnf update -y && sudo dnf upgrade -y && sudo dnf autoremove'" ./additions/add_to_bashrc
+            
+            grep -qxF "alias update-grub='sudo grub2-mkconfig -o /boot/grub2/grub.cfg; sudo grub2-mkconfig -o /boot/efi/EFI/fedora/grub.cfg'" ./additions/add_to_bashrc || \
             sed -i "5ialias update-grub='sudo grub2-mkconfig -o /boot/grub2/grub.cfg; sudo grub2-mkconfig -o /boot/efi/EFI/fedora/grub.cfg'" ./additions/add_to_bashrc
+            
             if [ $? -ne 0 ]; then
                 echo "Error adding alias to file"
                 return 1
@@ -520,8 +545,12 @@ set_aliases() {
             fi
         ;;
         "debian")
+            grep -qxF "alias supdate='sudo apt-get update -y && sudo apt-get upgrade -y && sudo apt-get autoremove'" ./additions/add_to_bashrc || \
             sed -i "5ialias supdate='sudo apt-get update -y && sudo apt-get upgrade -y && sudo apt-get autoremove'" ./additions/add_to_bashrc
+            
+            grep -qxF "alias update-grub='sudo grub2-mkconfig -o /boot/grub2/grub.cfg'" ./additions/add_to_bashrc || \
             sed -i "5ialias update-grub='sudo grub2-mkconfig -o /boot/grub2/grub.cfg'" ./additions/add_to_bashrc
+            
             if [ $? -ne 0 ]; then
                 echo "Error adding alias to file"
                 return 1
@@ -611,7 +640,7 @@ set_favorite_apps() {
     local favorite_apps=(
         'org.gnome.Nautilus.desktop'
         'code.desktop'
-        'brave-browser.desktop'
+        'com.brave.Browser.desktop'
         'com.rtosta.zapzap.desktop'
         'google-chrome.desktop'
         'io.appflowy.AppFlowy.desktop'
@@ -645,11 +674,6 @@ set_favorite_apps() {
     
 }
 
-# Function ti install gnome extensions
-install_gnome_extensions() {
-    # Install gnome extensions
-}
-
 # Main execution
 main() {
     
@@ -658,16 +682,35 @@ main() {
         exit 1
     fi
     
+    # Backup the current timestamp_timeout value
+    original_timeout=$(sudo grep 'timestamp_timeout' /etc/sudoers)
+    
+    # Set timestamp_timeout to -1 (so it asks for the password only once per session)
+    sudo sed -i '/Defaults.*timestamp_timeout/ c\Defaults timestamp_timeout=-1' /etc/sudoers
+    
+    # Run the main function
+    sudo sed -i '/Defaults.*timestamp_timeout/ c\Defaults timestamp_timeout=-1' /etc/sudoers
     case "$1" in
         "all")
             add_google_dns
+            install_apps
             install_fonts
             install_themes
             change_language
-            install_apps
             set_aliases
             add_custom_shortcut
             set_favorite_apps
+            echo -e "Installation complete. Reboot your system to apply changes.\n"
+            echo -e "##############################################\n"
+            read -p "Do you want to reboot now? (Y/N): " reboot_choice
+            case "$reboot_choice" in
+                [Yy]*)
+                    sudo reboot
+                ;;
+                *)
+                    echo "Reboot skipped. Please reboot manually to apply changes."
+                ;;
+            esac
         ;;
         "shortcuts")
             add_custom_shortcut
@@ -701,18 +744,15 @@ main() {
             exit 1
         ;;
     esac
-    echo -e "Installation complete. Reboot your system to apply changes.\n"
-    echo -e "##############################################\n"
-    read -p "Do you want to reboot now? (Y/N): " reboot_choice
-    case "$reboot_choice" in
-        [Yy]*)
-            sudo reboot
-        ;;
-        *)
-            echo "Reboot skipped. Please reboot manually to apply changes."
-        ;;
-    esac
     
+    # Restore the original timestamp_timeout value if it was set
+    if [ -n "$original_timeout" ]; then
+        sudo sed -i "s|Defaults timestamp_timeout=-1|$original_timeout|" /etc/sudoers
+    else
+        # If no timestamp_timeout line was found, remove the modification
+        sudo sed -i '/Defaults.*timestamp_timeout/ d' /etc/sudoers
+    fi
+    echo -e "Installation complete.\n"
 }
 
 # Run the main function
