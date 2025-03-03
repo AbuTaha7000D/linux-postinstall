@@ -748,6 +748,7 @@ install_themes() {
         return 1
     fi
     
+    mkdir -p $HOME/Pictures/
     cp -p "$ADDITIONS_DIR"/wallpaper.jpg $HOME/Pictures/
     if [ $? -ne 0 ]; then
         echo "Error copying wallpaper"
