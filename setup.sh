@@ -866,8 +866,8 @@ set_favorite_apps() {
         'org.mozilla.firefox.desktop'
         'com.rtosta.zapzap.desktop'
         'google-chrome.desktop'
+        'com.bitwarden.desktop.desktop'
         'io.appflowy.AppFlowy.desktop'
-        'com.bitwarden.desktop'
         'com.spotify.Client.desktop'
         'com.discordapp.Discord.desktop'
     )
