@@ -149,7 +149,7 @@ install_apps() {
     # Install each app
     for app in "${apps[@]}"; do
         echo -e "Installing $app..."
-        sudo "$COMMAND" "$app"
+        sudo $COMMAND "$app"
         if [ $? -ne 0 ]; then
             echo "Error installing $app"
         fi
