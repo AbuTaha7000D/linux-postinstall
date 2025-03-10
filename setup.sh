@@ -10,8 +10,8 @@ fi
 # Global Variables (Make them configurable)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ADDITIONS_DIR="$SCRIPT_DIR/additions"
-FONT_DIR="$ADDITIONS_DIR/additions/fonts"
-THEME_DIR="$ADDITIONS_DIR/additions/themes"
+FONT_DIR="$ADDITIONS_DIR/fonts"
+THEME_DIR="$ADDITIONS_DIR/themes"
 
 # Helper function to check command line arguments
 usage() {
@@ -560,7 +560,7 @@ alias helvum='flatpak run org.pipewire.Helvum'
 alias update-grub='sudo grub2-mkconfig -o /boot/grub2/grub.cfg'
 alias efrc='vim $HOME/.config/fish/config.fish'
 alias ebrc='vim $HOME/.bashrc'
-
+alias terminal-theme='bash -c  "$(wget -qO- https://git.io/vQgMr)"'
 EOF
     
     local dtype
@@ -616,37 +616,39 @@ install_gnome_apps() {
         fi
     done
     
-    local dtype
+    local apps=(
+        "gnome-tweaks"
+        "gnome-shell-extensions"
+        "gnome-shell-extension-user-theme"
+        "gnome-shell-extension-dash-to-dock"
+    )
+    
+    local dtype COMMAND
     dtype=$(distribution)
     case "$dtype" in
         "redhat")
-            sudo dnf install -y gnome-tweaks gnome-shell-extensions gnome-shell-extension-user-theme gnome-shell-extension-dash-to-dock
-            if [ $? -ne 0 ]; then
-                echo "Error installing GNOME-specific apps"
-                return 1
-            fi
+            COMMAND="dnf install -y"
         ;;
         "debian")
-            sudo apt-get install -y gnome-tweaks gnome-shell-extensions gnome-shell-extension-user-theme gnome-shell-extension-dash-to-dock
-            if [ $? -ne 0 ]; then
-                echo "Error installing GNOME-specific apps"
-                return 1
-            fi
+            COMMAND="apt-get install -y"
         ;;
         "arch")
-            sudo pacman -S --noconfirm gnome-tweaks gnome-shell-extensions gnome-shell-extension-user-theme gnome-shell-extension-dash-to-dock
-            if [ $? -ne 0 ]; then
-                echo "Error installing GNOME-specific apps"
-                return 1
-            fi
+            COMMAND="pacman -S --noconfirm"
         ;;
         *)
             echo "Error: Unknown distribution: $dtype" >&2
             return 1
         ;;
     esac
+    for app in "${apps[@]}"; do
+        sudo $COMMAND "$app"
+        if [ $? -ne 0 ]; then
+            echo "Error installing $app"
+        fi
+    done
     echo -e "The GNOME-specific apps installed successfully!"
 }
+
 # Browse Gnome Extensions to be installed
 browse_gnome_extensions() {
     echo "Opening browser to browse GNOME Extensions..."
@@ -657,6 +659,7 @@ browse_gnome_extensions() {
         "https://extensions.gnome.org/extension/517/caffeine/"
         "https://extensions.gnome.org/extension/97/coverflow-alt-tab/"
         "https://extensions.gnome.org/extension/4167/custom-hot-corners-extended/"
+        "https://extensions.gnome.org/extension/779/clipboard-indicator/"
         "https://extensions.gnome.org/extension/307/dash-to-dock/"
         "https://extensions.gnome.org/extension/352/middle-click-to-close-in-overview/"
         "https://extensions.gnome.org/extension/7/removable-drive-menu/"
@@ -846,7 +849,7 @@ add_custom_shortcut() {
     }
     
     # Adding shortcuts
-    add_shortcut "Resources" "flatpak run net.nokyan.Resources" "<Ctrl><Shift><Escape>"
+    add_shortcut "Resources" "flatpak run net.nokyan.Resources" "<Ctrl><Shift>Escape"
     add_shortcut "Settings" "gnome-control-center" "<Super>I"
     add_shortcut "Terminal" "gnome-terminal" "<Alt>T"
     
@@ -860,7 +863,7 @@ set_favorite_apps() {
     local favorite_apps=(
         'org.gnome.Nautilus.desktop'
         'code.desktop'
-        'com.brave.Browser.desktop'
+        'org.mozilla.firefox.desktop'
         'com.rtosta.zapzap.desktop'
         'google-chrome.desktop'
         'io.appflowy.AppFlowy.desktop'
@@ -937,6 +940,7 @@ main() {
             add_google_dns
             change_language
             install_apps
+            install_flatpaks
             install_fonts
             terminal_theme
             install_atuin
@@ -985,6 +989,10 @@ main() {
         ;;
         "apps")
             install_apps
+            install_flatpaks
+            if [[ $XDG_CURRENT_DESKTOP == *"GNOME"* || $DESKTOP_SESSION == *"gnome"* ]]; then
+                install_gnome_apps
+            fi
         ;;
         "atuin")
             install_atuin
