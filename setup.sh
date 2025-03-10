@@ -655,6 +655,7 @@ browse_gnome_extensions() {
     
     local extensions=(
         "https://extensions.gnome.org/extension/5895/app-hider/"
+        "https://extensions.gnome.org/extension/4648/desktop-cube/"
         "https://extensions.gnome.org/extension/3193/blur-my-shell/"
         "https://extensions.gnome.org/extension/517/caffeine/"
         "https://extensions.gnome.org/extension/97/coverflow-alt-tab/"
