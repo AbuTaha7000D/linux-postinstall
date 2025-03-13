@@ -874,6 +874,7 @@ add_custom_shortcut() {
     add_shortcut "Resources" "flatpak run net.nokyan.Resources" "<Ctrl><Shift>Escape"
     add_shortcut "Settings" "gnome-control-center" "<Super>I"
     add_shortcut "Terminal" "gnome-terminal" "<Alt>T"
+    add_shortcut "Toggle Mic" "amixer set Capture toggle" "<Alt>1"
     
     echo "Shortcuts added successfully."
 }
