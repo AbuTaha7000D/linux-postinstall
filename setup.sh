@@ -72,42 +72,8 @@ distribution() {
 
 # Function to install apps based on distribution
 install_apps() {
-    local dtype COMMAND
+    local dtype
     dtype=$(distribution)
-    
-    case "$dtype" in
-        "redhat")
-            COMMAND="dnf install -y"
-            echo "Detected Red Hat-based system. Installing apps..."
-            sudo dnf update -y && sudo dnf upgrade -y
-            if [ $? -ne 0 ]; then
-                echo "Error updating package lists"
-            fi
-            install_redhat
-        ;;
-        "debian")
-            COMMAND="apt-get install -y"
-            echo "Detected Debian-based system. Installing apps..."
-            sudo apt-get update -y && sudo apt-get upgrade -y
-            if [ $? -ne 0 ]; then
-                echo "Error updating package lists"
-            fi
-            install_debian
-        ;;
-        "arch")
-            COMMAND="pacman -S --noconfirm"
-            echo "Detected Arch-based system. Installing apps..."
-            sudo pacman -Syu
-            if [ $? -ne 0 ]; then
-                echo "Error updating package lists"
-            fi
-            install_arch
-        ;;
-        *)
-            echo "Error: Unknown distribution: $dtype" >&2
-            return 1
-        ;;
-    esac
     
     # List of apps to install
     local apps=(
@@ -127,6 +93,7 @@ install_apps() {
         gpg
         unzip
         wget
+        amixer
         curl
         xdg-utils
         npm
@@ -146,15 +113,69 @@ install_apps() {
         fish
     )
     
-    # Install each app
-    for app in "${apps[@]}"; do
-        echo -e "Installing $app..."
-        sudo $COMMAND "$app"
-        if [ $? -ne 0 ]; then
-            echo "Error installing $app"
-        fi
-        echo "##############################################"
-    done
+    case "$dtype" in
+        "redhat")
+            echo "Detected Red Hat-based system. Installing apps..."
+            sudo dnf update -y && sudo dnf upgrade -y
+            if [ $? -ne 0 ]; then
+                echo "Error updating package lists"
+            fi
+            
+            # Install each app
+            for app in "${apps[@]}"; do
+                echo -e "Installing $app..."
+                sudo dnf install -y "$app"
+                if [ $? -ne 0 ]; then
+                    echo "Error installing $app"
+                fi
+                echo "##############################################"
+            done
+            
+            install_redhat
+        ;;
+        "debian")
+            echo "Detected Debian-based system. Installing apps..."
+            sudo apt-get update -y && sudo apt-get upgrade -y
+            if [ $? -ne 0 ]; then
+                echo "Error updating package lists"
+            fi
+            
+            # Install each app
+            for app in "${apps[@]}"; do
+                echo -e "Installing $app..."
+                sudo apt-get install -y "$app"
+                if [ $? -ne 0 ]; then
+                    echo "Error installing $app"
+                fi
+                echo "##############################################"
+            done
+            
+            install_debian
+        ;;
+        "arch")
+            echo "Detected Arch-based system. Installing apps..."
+            sudo pacman -Syu
+            if [ $? -ne 0 ]; then
+                echo "Error updating package lists"
+            fi
+            
+            # Install each app
+            for app in "${apps[@]}"; do
+                echo -e "Installing $app..."
+                sudo pacman -S --noconfirm "$app"
+                if [ $? -ne 0 ]; then
+                    echo "Error installing $app"
+                fi
+                echo "##############################################"
+            done
+            
+            install_arch
+        ;;
+        *)
+            echo "Error: Unknown distribution: $dtype" >&2
+            return 1
+        ;;
+    esac
     echo "##############################################"
 }
 
