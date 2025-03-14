@@ -840,13 +840,13 @@ add_custom_shortcut() {
                 
                 if [[ "$existing_name" == "$name" ]]; then
                     echo "Shortcut with name '$name' already exists, skipping."
-                    continue
+                    return 0
                     elif [[ "$existing_command" == "$command" ]]; then
                     echo "Shortcut with command '$command' already exists, skipping."
-                    continue
+                    return 0
                     elif [[ "$existing_binding" == "$binding" ]]; then
                     echo "Shortcut with binding '$binding' already exists, skipping."
-                    continue
+                    return 0
                 fi
             done
         fi
