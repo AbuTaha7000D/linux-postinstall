@@ -17,6 +17,7 @@ VERSION="v1.1.0"
 # Helper function to check command line arguments
 usage() {
     echo "Usage: $0 <options>"
+    echo -e "Automate the initial setup and configuration of a Linux system.\n"
     echo "Options:"
     echo "  all        : Run all installation steps."
     echo "  apps       : Install basic applications."
@@ -31,6 +32,7 @@ usage() {
     echo "  aliases    : Set aliases in shell configuration."
     echo "  shortcuts  : Configure custom keyboard shortcuts."
     echo "  help       : Display this help message."
+    echo "  version    : Display script version."
     exit 1
 }
 
@@ -940,7 +942,7 @@ main() {
                 exit 1
             ;;
             *)
-                echo -e "Error: Invalid install option: $1. Options: 'all', 'apps', 'terminal', 'gnome', 'atuin', 'flatpaks', 'dns', 'fonts', 'themes', 'lang', 'aliases', 'shortcuts'" >&2
+                echo -e "Error: Invalid install option ..." >&2
                 echo -e "For more information, run './setup.sh help'\n"
                 exit 1
             ;;
@@ -1044,7 +1046,7 @@ main() {
             set_aliases
         ;;
         *)
-            echo "Error: Invalid install option: $1. Options: 'all', 'apps', 'terminal', 'gnome', 'atuin', 'flatpaks', 'dns', 'fonts', 'themes', 'lang', 'aliases', 'shortcuts'" >&2
+            echo "Error: Invalid install option..." >&2
             exit 1
         ;;
     esac
