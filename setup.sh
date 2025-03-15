@@ -12,6 +12,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ADDITIONS_DIR="$SCRIPT_DIR/additions"
 FONT_DIR="$ADDITIONS_DIR/fonts"
 THEME_DIR="$ADDITIONS_DIR/themes"
+VERSION="v1.1.0"
 
 # Helper function to check command line arguments
 usage() {
@@ -932,6 +933,10 @@ main() {
             ;;
             "help" | "-h" | "--help")
                 usage
+                exit 1
+            ;;
+            "version" | "-v" | "--version")
+                echo "setup.sh $VERSION"
                 exit 1
             ;;
             *)
