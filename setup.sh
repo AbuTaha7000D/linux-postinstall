@@ -12,7 +12,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ADDITIONS_DIR="$SCRIPT_DIR/additions"
 FONT_DIR="$ADDITIONS_DIR/fonts"
 THEME_DIR="$ADDITIONS_DIR/themes"
-VERSION="v1.1.0"
+VERSION="v1.2.0"
 
 # Helper function to check command line arguments
 usage() {
@@ -398,37 +398,95 @@ install_flatpaks() {
 
 # Function to install atuin
 install_atuin() {
-    read -p "Enter your Atuin username: " ATUIN_USERNAME
-    read -p "Enter your Atuin email: " ATUIN_EMAIL
+    # Detect current shell
+    CURRENT_SHELL=$(basename "$SHELL")
     
-    echo "Installing atuin"
+    # Determine shell config file and init command
+    case $CURRENT_SHELL in
+        bash)
+            CONFIG_FILE="$HOME/.bashrc"
+            INIT_CMD="atuin init bash"
+        ;;
+        fish)
+            CONFIG_FILE="$HOME/.config/fish/config.fish"
+            INIT_CMD="atuin init fish | source"
+        ;;
+        zsh)
+            CONFIG_FILE="$HOME/.zshrc"
+            INIT_CMD="atuin init zsh"
+        ;;
+        *)
+            echo "Unsupported shell: $CURRENT_SHELL"
+            return 1
+        ;;
+    esac
     
-    # Check for the existence of atuin command and if it exists don't install it.
-    if ! command -v atuin >/dev/null 2>&1; then
+    # Ensure the config file exists
+    if [ ! -f "$CONFIG_FILE" ]; then
+        echo "Creating missing config file: $CONFIG_FILE"
+        mkdir -p "$(dirname "$CONFIG_FILE")"
+        touch "$CONFIG_FILE"
+    fi
+    
+    # Check if Atuin is installed
+    if ! command -v atuin &>/dev/null; then
+        echo "Installing Atuin..."
         bash <(curl --proto '=https' --tlsv1.2 -sSf https://setup.atuin.sh)
         if [ $? -ne 0 ]; then
-            echo "Error downloading and installing atuin"
+            echo "Error installing Atuin"
             return 1
         fi
     else
         echo "Atuin already installed"
     fi
     
-    atuin register -u "$ATUIN_USERNAME" -e "$ATUIN_EMAIL"
-    if [ $? -ne 0 ]; then
-        echo "Error registering atuin"
-        return 1
+    # Configure Atuin for current shell if needed
+    if [ "$CURRENT_SHELL" = "fish" ]; then
+        # For Fish, check if Atuin is already initialized
+        if ! grep -q "atuin init fish" "$CONFIG_FILE"; then
+            echo "Configuring Atuin for Fish..."
+            echo "atuin init fish | source" >> "$CONFIG_FILE"
+            # Apply configuration immediately
+            source "$CONFIG_FILE"
+        else
+            echo "Atuin already configured for Fish"
+        fi
+    else
+        # For Bash/Zsh, append the init command to the config file
+        if ! grep -q "atuin init $CURRENT_SHELL" "$CONFIG_FILE"; then
+            echo "Configuring Atuin for $CURRENT_SHELL..."
+            echo "$INIT_CMD" >> "$CONFIG_FILE"
+            # Apply configuration immediately
+            eval "$INIT_CMD"
+        else
+            echo "Atuin already configured for $CURRENT_SHELL"
+        fi
     fi
-    atuin import auto
-    if [ $? -ne 0 ]; then
-        echo "Error importing atuin"
-        return 1
+    
+    # Check if user needs to register
+    ATUIN_CONFIG="$HOME/.local/share/atuin/config.toml"
+    if [ ! -f "$ATUIN_CONFIG" ] || ! grep -q "username" "$ATUIN_CONFIG"; then
+        read -p "Enter Atuin username: " ATUIN_USERNAME
+        read -p "Enter Atuin email: " ATUIN_EMAIL
+        
+        echo "Registering Atuin account..."
+        atuin register -u "$ATUIN_USERNAME" -e "$ATUIN_EMAIL"
+        if [ $? -ne 0 ]; then
+            echo "Registration failed. Check your credentials or network connection."
+            return 1
+        fi
+    else
+        echo "Atuin user already registered"
     fi
-    atuin sync
-    if [ $? -ne 0 ]; then
-        echo "Error syncing atuin"
-        return 1
-    fi
+    
+    # Import history and sync
+    echo "Importing shell history..."
+    atuin import auto || { echo "History import failed"; return 1; }
+    
+    echo "Syncing with Atuin server..."
+    atuin sync || { echo "Sync failed"; return 1; }
+    
+    echo "Atuin setup complete for $CURRENT_SHELL!"
 }
 
 # Function to add Google DNS
