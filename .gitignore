@@ -18,6 +18,10 @@
 .Spotlight-V100
 .fseventsd
 
+# Ignore IDE-specific directories
+.vscode/
+.idea/
+
 # IDE
 *.swp
 *~
