@@ -1,0 +1,68 @@
+# ~/.bashrc
+######################################################
+# Terminal Appearance & Interactive Behavior
+######################################################
+# If not running interactively, don't do anything
+[[ $- != *i* ]] && return
+
+# clear && fastfetch
+alias ls='eza -al --color=always --group-directories-first --icons'
+alias grep='grep --color=auto'
+
+######################################################
+# ALIASES AND SCRIPTS BY ME
+######################################################
+# Common aliases
+alias pingo='ping 8.8.8.8'
+alias ff='fastfetch'
+alias refresh='source $HOME/.bashrc'
+alias efrc='nano $HOME/.config/fish/config.fish'
+alias ebrc='nano $HOME/.bashrc'
+alias terminal-theme='bash -c  "$(wget -qO- https://git.io/vQgMr)"'
+alias update-grub='sudo grub2-mkconfig -o /boot/grub2/grub.cfg'
+alias update-fonts='fc-cache -f -v'
+alias finstall='sudo flatpak install'
+
+# Detect distro
+if [ -f /etc/os-release ]; then
+	. /etc/os-release
+	DISTRO=$ID
+else
+	DISTRO="unknown"
+fi
+
+# Distro-specific aliases
+case "$DISTRO" in
+	debian|ubuntu)
+		alias supdate='sudo apt-get update -y && sudo apt-get upgrade -y && flatpak update -y && sudo apt-get autoremove -y'
+		alias install='sudo apt-get install'
+		alias remove='sudo apt-get remove'
+		;;
+	fedora|centos)
+		alias supdate='sudo dnf update -y && sudo dnf upgrade -y && flatpak update -y && sudo dnf autoremove -y'
+		alias install='sudo dnf install'
+		alias remove='sudo dnf remove'
+		;;
+	arch|cachyos)
+		alias supdate='sudo pacman -Syu --noconfirm && flatpak update -y && yay -Sua --noconfirm'
+		alias install='sudo pacman -S'
+		alias remove='sudo pacman -Rns'
+		;;
+	*)
+		# fallback or warning
+		;;
+esac
+
+######################################################
+# OH-MY-POSH CONFIGURATION
+######################################################
+eval "$(oh-my-posh init bash --config ~/.poshthemes/montys.omp.json)"
+
+######################################################
+# ATUIN CONFIGURATION
+######################################################
+. "$HOME/.atuin/bin/env"
+
+[[ -f ~/.bash-preexec.sh ]] && source ~/.bash-preexec.sh
+eval "$(atuin init bash)"
+

@@ -9,7 +9,7 @@ This script automates the initial setup and configuration of a Linux system, str
 - **Distribution Detection:** Automatically identifies the Linux distribution based on `/etc/os-release`.
 - **Application Installation:**
   - Installs a set of essential applications (git, nano, btop, etc.).
-  - Installs distribution-specific applications (VS Code, Chrome, Zoom).
+  - Installs distribution-specific applications (VS Code, Chrome).
   - Installs flatpak applications (Brave Browser, Discord, etc.).
 - **System Configuration:**
   - Configures Google DNS for improved DNS resolution.
@@ -20,6 +20,7 @@ This script automates the initial setup and configuration of a Linux system, str
   - Configures custom keyboard shortcuts.
   - Sets favorite applications in the GNOME Shell dock (if applicable).
   - Installs GNOME themes for a customized desktop experience (if applicable).
+  - Sets up user icons and cursor themes, with Adwaita fallback and sidebar integration (if applicable).
 - **Modular Design:** The script is organized into functions for easy maintenance and extensibility.
 - **Error Handling:** Includes basic error handling and provides informative messages to the user.
 - **Interactive Prompts:** Asks the user for confirmation and input during certain steps.
@@ -28,7 +29,7 @@ This script automates the initial setup and configuration of a Linux system, str
 
 - A Linux system (Fedora-based, Debian-based, or Arch-based).
 - Internet connection.
-- (Optional) GNOME desktop environment for certain GNOME-specific features.
+- GNOME desktop environment for certain GNOME-specific features.
 
 ## Usage
 
@@ -51,21 +52,31 @@ This script automates the initial setup and configuration of a Linux system, str
     ./setup.sh <option>
     ```
 
-    Replace `<option>` with one of the following installation options:
 
-    - `all`: Run all installation steps.
-    - `apps`: Install basic applications.
-    - `terminal`: Configure terminal settings (Fish, Oh My Posh).
-    - `gnome`: Install GNOME-specific applications and settings.
-    - `atuin`: Install and configure Atuin.
-    - `flatpaks`: Install flatpak applications.
-    - `dns`: Configure Google DNS.
-    - `fonts`: Install fonts.
-    - `themes`: Install GNOME themes.
-    - `lang`: Configure system language to English.
-    - `aliases`: Set aliases in shell configuration.
-    - `shortcuts`: Configure custom keyboard shortcuts.
-    - `help`: Display this help message.
+  Replace `<option>` with one of the following installation options (each runs a modular script):
+
+  - `all`                   : Run all setup steps (recommended)
+  - `add_custom_shortcut`   : Add custom GNOME keyboard shortcuts
+  - `add_google_dns`        : Add Google DNS to your system
+  - `gnome_extensions`      : Open recommended GNOME extensions in your browser
+  - `change_language`       : Set system language (English/Arabic)
+  - `install_apps`          : Install system, Flatpak, and AUR applications
+  - `install_atuin`         : Install and configure Atuin shell history manager
+  - `install_fonts`         : Install user fonts from additions/fonts
+  - `set_aliases`           : Overwrite .bashrc with dynamic aliases (with backup)
+  - `set_favorite_apps`     : Set favorite apps in the GNOME dock
+  - `themes`                : Install and configure icons, cursors, terminal, and GNOME themes
+  - `help`                  : Show this help message
+  - `version`               : Show version
+
+  **Some Examples:**
+
+  ```bash
+  ./setup.sh all
+  ./setup.sh help
+  ./setup.sh install_apps
+  ./setup.sh themes
+  ```
 
     **Some Examples:**
 
@@ -74,6 +85,11 @@ This script automates the initial setup and configuration of a Linux system, str
     ./setup.sh help
     ./setup.sh apps terminal
     ```
+
+
+## Sudo Password Prompt Suppression
+
+To avoid being prompted for your password multiple times, the script temporarily sets `sudo`'s `timestamp_timeout` to `-1` for the duration of the setup. This is reverted at the end if possible.
 
 ## Additions Directory
 
