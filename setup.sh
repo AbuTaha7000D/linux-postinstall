@@ -13,6 +13,21 @@ if [ "$EUID" -eq 0 ]; then
     exit 1
 fi
 
+# Check for updates from GitHub before running the setup
+REPO_URL="https://github.com/abutaha7000d/linux-postinstall.git"
+BRANCH="main"
+
+# Fetch latest commit hash from GitHub
+latest_commit=$(git ls-remote $REPO_URL refs/heads/$BRANCH | awk '{print $1}')
+local_commit=$(git rev-parse HEAD)
+
+if [ "$latest_commit" != "$local_commit" ]; then
+    echo "A newer version is available on GitHub. Updating repo..."
+    git pull origin $BRANCH
+    echo "Repo updated. Please re-run the script."
+    exit 0
+fi
+
 # Prevent repeated sudo password prompts for the duration of the script
 # (Set sudo timestamp_timeout to -1 for this session, then restore after)
 original_timeout=$(sudo grep '^Defaults\s\+timestamp_timeout=' /etc/sudoers)
