@@ -4,6 +4,12 @@
 
 This script automates the initial setup and configuration of a Linux system, streamlining the process of installing common applications, configuring system settings, and customizing the desktop environment. It supports multiple distributions (Fedora-based, Debian-based, and Arch-based) and provides options for installing a wide range of tools and customizing the user experience.
 
+<p align="center">
+  <img src="https://img.shields.io/github/license/abutaha7000d/linux-postinstall?label=license" alt="License"/>
+  <img src="https://img.shields.io/github/v/tag/abutaha7000d/linux-postinstall?label=release" alt="Release"/>
+  <img src="https://img.shields.io/github/repo-size/abutaha7000d/linux-postinstall?label=code%20size" alt="Code Size"/>
+</p>
+
 ## Features
 
 - **Distribution Detection:** Automatically identifies the Linux distribution based on `/etc/os-release`.
@@ -102,3 +108,7 @@ The `additions` directory should contain the following files:
 ## Contributing
 
 Contributions to this project are welcome! Feel free to submit bug reports, feature requests, or pull requests.
+
+## License
+
+This project is licensed under the MIT License. See the [LICENSE](./LICENSE) file for details.
