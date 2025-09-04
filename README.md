@@ -99,11 +99,12 @@ To avoid being prompted for your password multiple times, the script temporarily
 
 ## Additions Directory
 
-The `additions` directory should contain the following files:
+The `additions` directory should contain the following:
 
-- **`/additions/fonts/`:** This directory should contain `.ttf` or `.otf` font files.
-- **`/additions/lang`:** `lang` file that changes the default language settings
-- **`/additions/themes`:** Themes directory
+- **`additions/fonts/`** — Place your `.ttf` or `.otf` font files here.
+- **`additions/icons/`** — Place any custom icon files (e.g., `folder-github.svg`) here.
+- **`additions/shell_conf`** — Bash aliases and shell configuration (sourced into `.bashrc`).
+- **`additions/wallpaper.jpg`** — Your preferred wallpaper image.
 
 ## Contributing
 
