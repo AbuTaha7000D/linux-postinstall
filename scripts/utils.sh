@@ -1,7 +1,7 @@
 #!/bin/bash
 # Utility functions for all scripts
 
-distribution() {
+distribution(){
     local dtype="unknown"
     if [ -r /etc/os-release ]; then
         source /etc/os-release
