@@ -5,7 +5,7 @@
 # Delegates all tasks to scripts/ sub-scripts. Each option runs a modular script.
 
 # Version
-VERSION="v2.1.0"
+VERSION="v2.1.1"
 
 # Check if the script is run as root
 if [ "$EUID" -eq 0 ]; then
