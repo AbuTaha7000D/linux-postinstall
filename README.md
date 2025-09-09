@@ -6,7 +6,7 @@ This script automates the initial setup and configuration of a Linux system, str
 
 <p align="center">
   <img src="https://img.shields.io/github/license/abutaha7000d/linux-postinstall?label=license" alt="License"/>
-  <img src="https://img.shields.io/github/v/tag/abutaha7000d/linux-postinstall?label=release" alt="Release"/>
+  <img src="https://img.shields.io/badge/release-v2.1.1-blue" alt="Release"/>
   <img src="https://img.shields.io/github/repo-size/abutaha7000d/linux-postinstall?label=code%20size" alt="Code Size"/>
 </p>
 
