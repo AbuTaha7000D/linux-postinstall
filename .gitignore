@@ -28,5 +28,18 @@
 *.pyc
 __pycache__/
 
+# Local runtime state and logs (per-user state lives outside the repo under
+# $XDG_STATE_HOME; ignore any in-repo caches)
+.state/
+logs/
+
+# Runtime downloads (archives fetched into the repo during setup)
+downloads/
+.cache/
+
+# Mock/test scratch (generated at test time)
+tests/scratch/
+tests/.scratch/
+
 # Internal execution plan (development only, never committed)
 ROADMAP.md
