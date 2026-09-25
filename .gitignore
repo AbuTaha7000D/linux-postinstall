@@ -28,6 +28,15 @@
 *.pyc
 __pycache__/
 
+# Optionally supplied user assets (wallpaper, icons, fonts). Content is
+# gitignored and skipped when absent; only the directory .gitkeep is tracked.
+assets/wallpaper/*
+assets/icons/*
+assets/fonts/*
+!assets/wallpaper/.gitkeep
+!assets/icons/.gitkeep
+!assets/fonts/.gitkeep
+
 # Local runtime state and logs (per-user state lives outside the repo under
 # $XDG_STATE_HOME; ignore any in-repo caches)
 .state/
