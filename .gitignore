@@ -27,3 +27,6 @@
 *~
 *.pyc
 __pycache__/
+
+# Internal execution plan (development only, never committed)
+ROADMAP.md
