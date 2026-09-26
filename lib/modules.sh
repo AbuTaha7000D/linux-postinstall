@@ -23,9 +23,10 @@
 #               `setup verify`. module_has_hooks only reports presence.
 #   packages.list, packages.rpm.list, packages.deb.list,
 #   packages.arch.list, flatpaks.list
-#               OPTIONAL declarative lists. Planned (P4.3): the family
-#               files override the common list (exact precedence is that
-#               parser's job). MODULE_LIST_NAMES enumerates the fixed set
+#               OPTIONAL declarative lists. Precedence (P4.3, lib/lists.sh):
+#               the family files override the common list (family entries
+#               first, same-named common entries dropped). MODULE_LIST_NAMES
+#               enumerates the fixed set
 #               for parser/runner/validator reuse; module_list_files
 #               reports which exist so consumers do not guess filenames.
 #

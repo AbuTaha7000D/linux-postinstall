@@ -7,7 +7,7 @@
 # from many modules into ONE per-family transaction: dedupe -> diff
 # against installed -> single pkg_install_batch. Family-specific
 # package-list merging (packages.list + packages.<family>.list
-# precedence) is owned by the P4.3 list parsers in lib/modules.sh; this
+# precedence) is owned by the P4.3 list parsers in lib/lists.sh; this
 # planner consumes the already-selected list for the ACTIVE backend, so
 # "per-family" falls out of FS_PKG_BACKEND dispatch and dry-run rendering
 # is the backend's own single `# would run:` line. Env seams: FS_DRY_RUN
