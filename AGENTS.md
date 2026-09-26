@@ -31,6 +31,7 @@ is a "module"; modules are grouped into profiles; everything runs through the co
 | `lib/fs.sh` | `fs_backup`, `fs_install`, `fs_managed_block`/`fs_managed_block_remove`. Atomic temp+rename; managed-block marker covenant (see §12). |
 | `lib/sudo.sh` | `sudo_detect`, `sudo_refresh`, `sudo_exec`. Never touches `/etc/sudoers`. Dry-run keeps probe OFF and executes nothing. |
 | `lib/run.sh` | `run_cmd`/`run_sudo` with label, `--stop`, `[DESTROY]` forced stop, dry-run `# would run:` lines, `FS_LOG_FILE` audit trail + `FS_LOG_INFRA` halt. |
+| `lib/runner.sh` | P4.6: `runner_run <modules_dir> <profiles_dir> <name> <family> [module...]` — resolve/plan/batch-once/hooks+state/summary stages; deps-first execution, destructive-stop policy, dry-run state-free, hook subshell sandbox. |
 | `tests/smoke.sh` | Plain-bash smoke suite for P2.1–P2.8 (P10 adds bats/CI later). |
 | `assets/`, `docs/`, `modules/` | Skeletons (tracked `.gitkeep` only). Content arrives in later phases. |
 | `profiles/` | P4.5: loadable skeleton profiles `{minimal,desktop,developer,full}.conf` (comment-only, valid empty until P5–P8 content); consumed via `lib/profiles.sh`. |
