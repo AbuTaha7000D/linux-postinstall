@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # lib/io.sh - leveled logging and UI primitives for fedora-setup.
-# Sourced by callers; emits nothing and mutates nothing until io_init is called.
+# Sourced by callers; io_init optionally configures the audit log. A
+# configured FS_LOG_FILE is preserved even when appends fail, so callers
+# can reliably detect an unusable log path. io_* functions never abort
+# the caller under set -e / set -u.
 
 FS_DEBUG="${FS_DEBUG:-0}"
 FS_VERBOSE="${FS_VERBOSE:-0}"
@@ -26,10 +29,12 @@ _io_ansi() {
 _io_logline() {
     local msg="$1"
     if [[ -n "$FS_LOG_FILE" ]]; then
-        if ! printf '%s\n' "$msg" 2>/dev/null >>"$FS_LOG_FILE"; then
-            FS_LOG_FILE=""
+        if [[ -e "$FS_LOG_FILE" && ( ! -f "$FS_LOG_FILE" || ! -w "$FS_LOG_FILE" ) ]]; then
+            return 0
         fi
+        printf '%s\n' "$msg" 2>/dev/null >>"$FS_LOG_FILE" || true
     fi
+    return 0
 }
 
 _io_log() {
@@ -51,6 +56,7 @@ _io_log() {
 
 io_init() {
     _IO_LAST_PROGRESS=""
+    local log_ok=1
     if [[ $# -ge 1 && -n "$1" ]]; then
         FS_LOG_FILE="$1"
     fi
@@ -60,15 +66,17 @@ io_init() {
             parent="${FS_LOG_FILE%/*}"
             [[ -z "$parent" ]] && parent="/"
         fi
-        if ! mkdir -p -- "$parent" 2>/dev/null; then
-            FS_LOG_FILE=""
+        mkdir -p -- "$parent" 2>/dev/null || log_ok=0
+        if [[ -e "$FS_LOG_FILE" && ( ! -f "$FS_LOG_FILE" || ! -w "$FS_LOG_FILE" ) ]]; then
+            log_ok=0
         else
             {
                 printf '==== fedora-setup log ====\n'
                 printf -v ts '%(%Y-%m-%dT%H:%M:%S)T' -1
                 printf '[%s] io initialized\n' "$ts"
-            } 2>/dev/null >>"$FS_LOG_FILE" || FS_LOG_FILE=""
+            } 2>/dev/null >>"$FS_LOG_FILE" || log_ok=0
         fi
+        (( log_ok == 1 )) || printf 'warning: log file unusable: %s\n' "$FS_LOG_FILE" >&2 2>/dev/null || true
     fi
     IO_INITIALIZED=1
     return 0
@@ -91,7 +99,7 @@ io_debug() {
 }
 
 io_progress() {
-    local cur="$1" total="$2" label="${3:-}" plain=""
+    local cur="${1:-}" total="${2:-}" label="${3:-}" plain=""
     printf -v plain '[%s/%s] %s' "$cur" "$total" "$label"
     if _io_fd_tty 1; then
         printf '\r%s\033[K' "$plain" >&1 2>/dev/null || true
@@ -114,8 +122,8 @@ io_progress_end() {
 }
 
 io_summary() {
-    local title="$1"
-    shift
+    local title="${1:-}"
+    shift 2>/dev/null || true
     {
         printf '== %s ==\n' "$title"
         for line in "$@"; do

@@ -4,6 +4,8 @@
 
 _CLI_ENV_VERBOSE="${FS_VERBOSE:-0}"
 _CLI_ENV_DEBUG="${FS_DEBUG:-0}"
+_CLI_ENV_DRY_RUN="${FS_DRY_RUN:-0}"
+_CLI_ENV_YES="${FS_YES:-0}"
 
 _cli_known_cmd() {
     case "$1" in
@@ -15,8 +17,8 @@ _cli_known_cmd() {
 cli_parse() {
     local args=("$@")
     local i=0 end_opts=0 saw_list=0
-    FS_YES=0
-    FS_DRY_RUN=0
+    FS_YES="$_CLI_ENV_YES"
+    FS_DRY_RUN="$_CLI_ENV_DRY_RUN"
     FS_LIST=0
     FS_VERBOSE="$_CLI_ENV_VERBOSE"
     FS_DEBUG="$_CLI_ENV_DEBUG"
