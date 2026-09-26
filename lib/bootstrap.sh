@@ -52,14 +52,47 @@ _fs_check_layout() {
     [[ -f "$1/setup" ]] || _fs_die "repository layout broken: missing '$1/setup'"
 }
 
+_cli_check_stub() {
+    local root="${1:-}"
+    [[ -n "$root" ]] || _fs_die "check requires the repository root"
+    _fs_check_layout "$root"
+    printf 'check: baseline prerequisites OK (stub)\n'
+}
+
 main() {
-    local root
+    local root rc=0
     _fs_check_bash
     _fs_check_tools
     root="$(_fs_root)"
     _fs_check_layout "$root"
-    printf '%s %s\n' "fedora-setup" "$FS_VERSION"
-    printf 'CLI dispatcher is not wired yet (planned in P2); nothing to do.\n'
+    . "$root/lib/io.sh"
+    . "$root/lib/cli.sh"
+    if ! cli_parse "$@"; then
+        exit 1
+    fi
+    case "$FS_CMD" in
+        version)
+            printf 'fedora-setup %s\n' "$FS_VERSION"
+            ;;
+        help)
+            cli_help
+            ;;
+        check)
+            _cli_check_stub "$root"
+            ;;
+        list)
+            :
+            ;;
+        install|verify|export|update)
+            io_error "command '$FS_CMD' not implemented yet (planned in a later phase)"
+            rc=1
+            ;;
+        *)
+            io_error "command '$FS_CMD' is not wired into the dispatcher"
+            rc=1
+            ;;
+    esac
+    exit "$rc"
 }
 
 main "$@"

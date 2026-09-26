@@ -26,7 +26,7 @@ cli_parse() {
     FS_CMD=""
     FS_CMD_ARGS=()
 
-    while (( i < ${#args[@]} )); do
+    while (( i < $# )); do
         local tok="${args[$i]}"
         if (( end_opts == 0 )); then
             case "$tok" in
@@ -67,7 +67,7 @@ cli_parse() {
                     continue
                     ;;
                 --profile)
-                    if (( i + 1 >= ${#args[@]} )); then
+                    if (( i + 1 >= $# )); then
                         io_error "flag '--profile' requires a value"
                         return 1
                     fi
