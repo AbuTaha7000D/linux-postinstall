@@ -15,8 +15,10 @@
 #                                   package manager binary is present)
 # pkg_supported() resolves selection, loads the backend, and dispatches to
 # <name>_supported. Unimplemented, partial, or unknown backends error clearly
-# via io_error. Real backends must route every privileged step through
-# run_sudo/lib/run.sh so dry-run stays side-effect-free
+# via io_error. pkg_verify_packages() is the read-only per-package
+# present/missing diagnostic behind `setup verify` (P9.2). Real backends must
+# route every privileged step through run_sudo/lib/run.sh so dry-run stays
+# side-effect-free
 # ({FS_DRY_RUN}/{FS_VERBOSE}/{FS_DEBUG} honored) and the FS_LOG_FILE audit
 # trail holds; fs-style atomicity applies to repo files. Never touches
 # /etc/sudoers. Bash >= 4.3 safe ($#-based bounds, guarded namerefs).
@@ -96,6 +98,30 @@ pkg_list_installed() {
 pkg_install_batch() {
     _pkg_load || return $?
     "${_pkg_active}_install_batch" "$@"
+}
+
+# pkg_verify_packages <pkg>... is a read-only diagnostic used by
+# `setup verify` (P9.2): it prints `present: <pkg>` / `missing: <pkg>`
+# per input package against the active backend and exits 0 only when
+# every package is present (also on empty input). It always queries
+# installed state in real AND dry mode: verification is a write-free
+# check, not a mutation path, so dry-run purity (AGENTS.md: no probes for
+# planning/render) does not apply -- it never writes system state (the
+# mock's FS_MOCK_LOG recording is test instrumentation), never invokes
+# sudo, never renders `# would run:` lines. Depends only on io.sh +
+# pkg.sh; requires no run.sh (query path only).
+pkg_verify_packages() {
+    _pkg_load || return $?
+    local _vp_pkg _vp_rc=0
+    for _vp_pkg in "$@"; do
+        if pkg_query_installed "$_vp_pkg"; then
+            printf 'present: %s\n' "$_vp_pkg"
+        else
+            printf 'missing: %s\n' "$_vp_pkg"
+            _vp_rc=1
+        fi
+    done
+    return "$_vp_rc"
 }
 
 pkg_update_metadata() {
