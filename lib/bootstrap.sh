@@ -59,6 +59,51 @@ _cli_check_stub() {
     printf 'check: baseline prerequisites OK (stub)\n'
 }
 
+_cli_list_family() {
+    case "${FS_DISTRO_FAMILY:-}" in
+        rpm | deb | arch) printf '%s' "$FS_DISTRO_FAMILY" ;;
+        *) printf '%s' "" ;;
+    esac
+}
+
+_cli_list_impl() {
+    local mdir="$1" family="$2" dir id status rc=0
+    local -a dirs=()
+    if [[ ! -d "$mdir" ]]; then
+        io_error "modules directory not found: $mdir"
+        return 1
+    fi
+    for dir in "$mdir"/*; do
+        [[ -d "$dir" ]] || continue
+        [[ "${dir##*/}" == .* ]] && continue
+        dirs+=("$dir")
+    done
+    if ((${#dirs[@]} == 0)); then
+        return 0
+    fi
+    for dir in "${dirs[@]}"; do
+        module_validate "$dir" "$family" || rc=1
+    done
+    if (( rc != 0 )); then
+        return 1
+    fi
+    module_validate_set "${dirs[@]}" || return 1
+    local ids
+    ids="$(printf '%s\n' "${dirs[@]##*/}" | LC_ALL=C sort)"
+    while IFS= read -r id; do
+        dir="$mdir/$id"
+        module_load "$dir" || return 1
+        if state_module_check "$id"; then
+            status="done"
+        else
+            status="-"
+        fi
+        printf '%s\t%s\t%s\t%s\t%s\n' "$MODULE_ID" "$MODULE_TITLE" \
+            "$MODULE_RISK" "$MODULE_DEFAULT" "$status"
+    done <<<"$ids"
+    return 0
+}
+
 main() {
     local root rc=0
     _fs_check_bash
@@ -81,7 +126,19 @@ main() {
             _cli_check_stub "$root"
             ;;
         list)
-            :
+            . "$root/lib/modules.sh"
+            . "$root/lib/state.sh"
+            if ! state_init; then
+                rc=1
+            else
+                if [[ -z "${FS_DISTRO_FAMILY:-}" ]]; then
+                    . "$root/lib/distro.sh"
+                    distro_detect || rc=1
+                fi
+                if (( rc == 0 )); then
+                    _cli_list_impl "${FS_MODULES_DIR:-$root/modules}" "$(_cli_list_family)" || rc=1
+                fi
+            fi
             ;;
         install|verify|export|update)
             io_error "command '$FS_CMD' not implemented yet (planned in a later phase)"

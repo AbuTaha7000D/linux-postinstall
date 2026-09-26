@@ -49,7 +49,9 @@ sync with code.
 - **Flatpak-first** for GUI apps to keep apt/dnf surface small; `flatpak remote-add --if-not-exists
   flathub` must precede any flatpak install.
 - Test-injection env seams must be honored by every lib: `FS_HOME`, `FS_DISTRO_FILE`,
-  `FS_PKG_BACKEND`. Extra seams already shipped: `FS_EUID` (root-path testing), `FS_DISTRO_PKGMGR_OVERRIDE`.
+  `FS_PKG_BACKEND`. Extra seams already shipped: `FS_EUID` (root-path testing), `FS_DISTRO_PKGMGR_OVERRIDE`,
+  `FS_MODULES_DIR` (module-dir override for `./setup list`). `FS_DISTRO_FAMILY` may be pointed at directly
+  to skip distro detection for a `list` run.
 
 ## 4. Development status and how ROADMAP.md is used
 
