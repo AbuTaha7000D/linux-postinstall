@@ -98,14 +98,14 @@ fx_err 'unknown package backend: goofy'
 
 (
     set -euo pipefail
-    export FS_PKG_BACKEND=arch
+    export FS_PKG_BACKEND=mock
     source "$ROOT/lib/io.sh"
     source "$ROOT/lib/pkg.sh"
     pkg_query_installed foo
 ) >"$FX_OUT" 2>"$FX_ERR"
 FX_BLOCK_RC=$?
 fx_block_rc "dispatch to unbuilt backend errors" 1
-fx_err 'package backend not implemented: arch'
+fx_err 'package backend not implemented: mock'
 
 (
     set -euo pipefail
