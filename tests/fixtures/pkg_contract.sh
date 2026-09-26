@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # tests/fixtures/pkg_contract.sh - P3.1 contract fixture for lib/pkg.sh.
 # Covers: env override beats distro family; family fallback; no-selection
-# error; unknown backend error; unimplemented backend errors clearly.
+# error; unknown backend error. All five allowlisted backends (rpm, deb,
+# arch, flatpak, mock) are now built, so no unbuilt-backend dispatch is
+# reachable; the _pkg_load file-missing branch is dead code for additions.
 # Usage: bash tests/fixtures/pkg_contract.sh  (exit 0 on success)
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -23,17 +25,6 @@ printf 'P3.1 pkg.sh contract\n'
 FX_BLOCK_RC=$?
 fx_block_rc "env selects mock backend" 0
 fx_out '^mock$'
-
-(
-    set -euo pipefail
-    export FS_PKG_BACKEND=mock
-    source "$ROOT/lib/io.sh"
-    source "$ROOT/lib/pkg.sh"
-    pkg_supported
-) >"$FX_OUT" 2>"$FX_ERR"
-FX_BLOCK_RC=$?
-fx_block_rc "unimplemented backend errors" 1
-fx_err 'package backend not implemented: mock'
 
 (
     set -euo pipefail
@@ -95,17 +86,6 @@ fx_err 'no package backend selected'
 FX_BLOCK_RC=$?
 fx_block_rc "unknown backend errors" 1
 fx_err 'unknown package backend: goofy'
-
-(
-    set -euo pipefail
-    export FS_PKG_BACKEND=mock
-    source "$ROOT/lib/io.sh"
-    source "$ROOT/lib/pkg.sh"
-    pkg_query_installed foo
-) >"$FX_OUT" 2>"$FX_ERR"
-FX_BLOCK_RC=$?
-fx_block_rc "dispatch to unbuilt backend errors" 1
-fx_err 'package backend not implemented: mock'
 
 (
     set -euo pipefail
