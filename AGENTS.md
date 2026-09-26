@@ -32,7 +32,8 @@ is a "module"; modules are grouped into profiles; everything runs through the co
 | `lib/sudo.sh` | `sudo_detect`, `sudo_refresh`, `sudo_exec`. Never touches `/etc/sudoers`. Dry-run keeps probe OFF and executes nothing. |
 | `lib/run.sh` | `run_cmd`/`run_sudo` with label, `--stop`, `[DESTROY]` forced stop, dry-run `# would run:` lines, `FS_LOG_FILE` audit trail + `FS_LOG_INFRA` halt. |
 | `tests/smoke.sh` | Plain-bash smoke suite for P2.1–P2.8 (P10 adds bats/CI later). |
-| `assets/`, `docs/`, `modules/`, `profiles/` | Skeletons (tracked `.gitkeep` only). Content arrives in later phases. |
+| `assets/`, `docs/`, `modules/` | Skeletons (tracked `.gitkeep` only). Content arrives in later phases. |
+| `profiles/` | P4.5: loadable skeleton profiles `{minimal,desktop,developer,full}.conf` (comment-only, valid empty until P5–P8 content); consumed via `lib/profiles.sh`. |
 | `ROADMAP.md` | Internal execution plan. **Gitignored — never commit** (§10). |
 | `README.md` | **Stale:** documents the deleted prototype (`setup.sh` etc.). Rewritten only in P11.1 — do not keep it in sync per task. |
 
@@ -50,7 +51,8 @@ sync with code.
   flathub` must precede any flatpak install.
 - Test-injection env seams must be honored by every lib: `FS_HOME`, `FS_DISTRO_FILE`,
   `FS_PKG_BACKEND`. Extra seams already shipped: `FS_EUID` (root-path testing), `FS_DISTRO_PKGMGR_OVERRIDE`,
-  `FS_MODULES_DIR` (module-dir override for `./setup list`). `FS_DISTRO_FAMILY` may be pointed at directly
+  `FS_MODULES_DIR` (module-dir override for `./setup list`), `FS_PROFILES_DIR` (profiles-dir source for
+  profile resolution; consumed by the caller-level wiring planned in P4.6/P4.7, bootstrap default = repo `profiles/`). `FS_DISTRO_FAMILY` may be pointed at directly
   to skip distro detection for a `list` run.
 
 ## 4. Development status and how ROADMAP.md is used

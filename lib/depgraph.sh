@@ -62,7 +62,7 @@ dep_toposort() {
         local seen=""
         local deps_sorted=""
         IFS=$' \t\n' read -ra ds <<<"$MODULE_DEPENDS"
-        for dep in "${ds[@]}"; do
+        for dep in ${ds[@]+"${ds[@]}"}; do
             case " $seen " in
                 *" $dep "*) continue ;;
             esac
@@ -74,7 +74,7 @@ dep_toposort() {
     done
     for id in "${order[@]}"; do
         IFS=$' \t\n' read -ra ds <<<"${deps[$id]:-}"
-        for dep in "${ds[@]}"; do
+        for dep in ${ds[@]+"${ds[@]}"}; do
             if [[ -z "${node[$dep]:-}" ]]; then
                 io_error "$id depends on unknown module '$dep'"
                 return 1
@@ -104,7 +104,7 @@ dep_toposort() {
         fi
         emitted+=("$cur")
         IFS=$' \t\n' read -ra ps <<<"${dependents[$cur]:-}"
-        for p in "${ps[@]}"; do
+        for p in ${ps[@]+"${ps[@]}"}; do
             q="${indeg[$p]}"
             indeg[$p]=$((q - 1))
             if ((indeg[$p] == 0)); then
