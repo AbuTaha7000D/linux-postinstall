@@ -1,0 +1,6 @@
+# Nerd Fonts to install (label:asset:version). Assets are pinned release zips
+# of ryanoasis/nerd-fonts; download URLs are tag/asset named; sha256 files
+# verify downloads in real mode. Operators may pre-seed assets/fonts/ (or
+# FS_NERDFONT_SRC_DIR) to install offline; hermetic seam used by tests.
+FiraCode Nerd Font:FiraCode:v3.3.0
+JetBrainsMono Nerd Font:JetBrainsMono:v3.3.0
