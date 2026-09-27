@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # lib/ui.sh - interactive prompts and selection UI (P4.7).
 # Depends on lib/io.sh for io_error/io_warn (source io.sh first). Reads
-# from stdin, writes prompts/checklists to stdout, always uses a clone of
-# the same coreutils the other libs use (dirname/mktemp/mv/rm/grep -c -- no
-# external TUI tool, no ncurses/dialog/whiptail; Bash >= 4.3 floor: no
+# from stdin, writes prompts/checklists to stdout, uses Bash builtins plus
+# dirname/mktemp/mv/rm/grep -c -- no external TUI tool, no ncurses/dialog/
+# whiptail; Bash >= 4.3 floor: no
 # namerefs, no associative-array iteration, guarded empty-array
 # expansions). Two interaction modes, chosen per call via ui_tty_mode:
 #
@@ -28,7 +28,8 @@
 # written to <sel_file> atomically (same-dir temp + rename), in
 # entries-file order, one id per line. rc0 accepts, rc1 aborts.
 # ui_confirm is line-based in BOTH modes and returns 0 without prompting
-# when FS_YES is set. Prompts are plain printf to stdout (not io_* lines)
+# when FS_YES=1 (controllers unset it first to force a real prompt).
+# Prompts are plain printf to stdout (not io_* lines)
 # so the conversation reads naturally on a terminal; errors/warnings still
 # go through io_*.
 
@@ -133,7 +134,7 @@ _ui_write_sel() {
 ui_confirm() {
     local prompt="${1:-}" default="${2:-n}"
     local answer="" suff="" rc=1
-    if (( FS_YES == 1 )); then
+    if (( ${FS_YES:-0} == 1 )); then
         return 0
     fi
     case "$default" in
