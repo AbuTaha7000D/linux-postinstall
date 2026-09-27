@@ -12,10 +12,12 @@ is a "module"; modules are grouped into profiles; everything runs through the co
 - **Process stance:** this is a gated rewrite. Each task must pass fresh-context Senior Review,
   be committed, and only then may the next task start. A phase ends with a report and explicit
   owner approval before the next phase begins.
-- **Current state:** P0–P2 are **DONE** and committed (`f7b3d5c`…`5e53b16`):
-  P2.1 io, P2.2 cli, P2.3 distro, P2.4 state, P2.5 fs, P2.6 sudo, P2.7 run, P2.8 bootstrap/CLI,
-  P2.9 `tests/smoke.sh` (103 asserts). **Next phase: P3 — Package Management Backend
-  (`FS_PKG_BACKEND`; dnf5/apt/pacman + flatpak + mock).** Do not start P3 without owner approval.
+- **Current state:** P0–P4 are **DONE** and committed: P2.1 io … P2.9 `tests/smoke.sh` become
+  `103` asserts under P4.7 (now `105`), P3 backend beans live behind `FS_PKG_BACKEND`
+  (`lib/pkg.sh` P3.1; plan/verify/planner/lists/sources in P3.2–P3.5, `tests/fixtures/pkg_*`),
+  P4.1 hooks/sandbox … P4.7 selection UI + real `./setup install` wiring (`lib/ui.sh`,
+  `lib/runner.sh`, `tests/fixtures/{ui,runner,install}.sh`, profiles/selection.conf).
+  **Next phase: P5.** Do not start P5 without owner approval.
 - Version: `FS_VERSION="0.1.0-dev"` (see `lib/bootstrap.sh`).
 
 ## 2. Repository structure
