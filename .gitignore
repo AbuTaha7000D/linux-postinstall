@@ -36,6 +36,8 @@ assets/fonts/*
 !assets/wallpaper/.gitkeep
 !assets/icons/.gitkeep
 !assets/fonts/.gitkeep
+assets/omp/*
+!assets/omp/.gitkeep
 
 # Local runtime state and logs (per-user state lives outside the repo under
 # $XDG_STATE_HOME; ignore any in-repo caches)
