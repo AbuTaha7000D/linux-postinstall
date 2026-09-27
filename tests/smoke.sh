@@ -488,10 +488,10 @@ smoke_entry() {
     t_rc 0 "positional help rc" "$ROOT/setup" help
     t_rc 0 "check stub" "$ROOT/setup" check
     t_out "prerequisites OK (stub)"
-    t_rc 0 "list rc" "$ROOT/setup" list
-    t_empty "list outputs nothing" "$OUT"
-    t_rc 0 "--list alias rc" "$ROOT/setup" --list
-    t_empty "--list outputs nothing" "$OUT"
+    t_rc 0 "list rc" env FS_HOME="$TMP/listh" FS_DISTRO_FAMILY=rpm "$ROOT/setup" list
+    if grep -q '^core\b' "$OUT" 2>/dev/null; then ok; else bad "list shows core module"; fi
+    t_rc 0 "--list alias rc" env FS_HOME="$TMP/listh" FS_DISTRO_FAMILY=rpm "$ROOT/setup" --list
+    if grep -q '^core\b' "$OUT" 2>/dev/null; then ok; else bad "--list shows core module"; fi
     t_rc 1 "unknown command rc" "$ROOT/setup" bogus
     t_err "unknown command"
     local cmd rc
@@ -510,7 +510,7 @@ smoke_entry() {
         fi
     done
     t_rc 0 "install dry-run empty repo rc" env FS_HOME="$TMP/ihome" \
-        FS_PKG_BACKEND=mock FS_DISTRO_FAMILY=rpm "$ROOT/setup" install --dry-run
+        FS_PKG_BACKEND=mock FS_DISTRO_FAMILY=rpm "$ROOT/setup" install --dry-run --yes
     t_out "profile: full"
     t_out "^== run complete ==$"
     t_out "0 ok"

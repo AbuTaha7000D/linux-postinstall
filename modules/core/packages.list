@@ -1,0 +1,13 @@
+# Common packages present under the same name on all three families.
+git
+curl
+wget
+vim
+fzf
+bat
+btop
+htop
+tmux
+unzip
+e2fsprogs
+flatpak
