@@ -23,7 +23,7 @@ is a "module"; modules are grouped into profiles; everything runs through the co
 | Path | Responsibility |
 |---|---|
 | `setup` | Executable launcher. Resolves its own path from `$0` (no CWD assumption), `set -euo pipefail`, `readlink -f` canonicalization, then `exec`s `lib/bootstrap.sh "$@"`. |
-| `lib/bootstrap.sh` | Entry: Bash≥4.3 check, tool/layout checks, sources `io.sh` + `cli.sh`, parses args, dispatches: `help`/`version`/`check`/`list` rc0; `install`/`verify`/`export`/`update` rc1 "not implemented yet"; unknown → rc1. |
+| `lib/bootstrap.sh` | Entry: Bash≥4.3 check, tool/layout checks, sources `io.sh` + `cli.sh`, parses args, dispatches: `help`/`version`/`check`/`list`/`install` rc0 (install = P4.7 real wiring); `verify`/`export`/`update` rc1 "not implemented yet"; unknown → rc1. |
 | `lib/io.sh` | Leveled logging (error/warn/info/debug), TTY-only color, timestamps, progress/summary, audit-log init. `io_*` never abort the caller under `set -e`/`set -u`. |
 | `lib/cli.sh` | Flags `--yes/--dry-run/--verbose/--debug/--profile V/--list`, `-h/--help`, `--` end-of-options; commands `install|list|check|verify|export|update|help|version`; unknown → rc1. |
 | `lib/distro.sh` | Reads `/etc/os-release` (or `FS_DISTRO_FILE`, or 1st arg — read-only input). Capability matrix: family/id/pkgmgr/localpkg/flatpak-default/gnome. Test seam `FS_DISTRO_PKGMGR_OVERRIDE`. |
@@ -32,7 +32,8 @@ is a "module"; modules are grouped into profiles; everything runs through the co
 | `lib/sudo.sh` | `sudo_detect`, `sudo_refresh`, `sudo_exec`. Never touches `/etc/sudoers`. Dry-run keeps probe OFF and executes nothing. |
 | `lib/run.sh` | `run_cmd`/`run_sudo` with label, `--stop`, `[DESTROY]` forced stop, dry-run `# would run:` lines, `FS_LOG_FILE` audit trail + `FS_LOG_INFRA` halt. |
 | `lib/runner.sh` | P4.6: `runner_run <modules_dir> <profiles_dir> <name> <family> [module...]` — resolve/plan/batch-once/hooks+state/summary stages; deps-first execution, destructive-stop policy, dry-run state-free, hook subshell sandbox. |
-| `tests/smoke.sh` | Plain-bash smoke suite for P2.1–P2.8 (P10 adds bats/CI later). |
+| `lib/ui.sh` | P4.7: `ui_multiselect`/`ui_confirm` selection + confirm layer (no external TUI tool — no ncurses; Bash + coreutils execs only). TTY raw-key re-render vs deterministic line-mode; high-risk rows never digit/`a`-toggleable (opt-in prompt is their only checklist route); EOF/`q` abort rc1 fail-closed; atomic sel-file write via `mv -fT`; `ui_confirm` returns 0 under `--yes`; color helpers must keep `return 0` (set -e safety). |
+| `tests/smoke.sh` | Plain-bash smoke suite for P2.1–P2.8 + `setup install` dry-run (P4.7); 105 asserts (P10 adds bats/CI later). |
 | `assets/`, `docs/`, `modules/` | Skeletons (tracked `.gitkeep` only). Content arrives in later phases. |
 | `profiles/` | P4.5: loadable skeleton profiles `{minimal,desktop,developer,full}.conf` (comment-only, valid empty until P5–P8 content); consumed via `lib/profiles.sh`. |
 | `ROADMAP.md` | Internal execution plan. **Gitignored — never commit** (§10). |

@@ -495,7 +495,7 @@ smoke_entry() {
     t_rc 1 "unknown command rc" "$ROOT/setup" bogus
     t_err "unknown command"
     local cmd rc
-    for cmd in install verify export update; do
+    for cmd in verify export update; do
         "$ROOT/setup" "$cmd" >"$OUT" 2>"$ERR"
         rc=$?
         if (( rc == 1 )); then
@@ -509,6 +509,11 @@ smoke_entry() {
             bad "$cmd not-implemented message"
         fi
     done
+    t_rc 0 "install dry-run empty repo rc" env FS_HOME="$TMP/ihome" \
+        FS_PKG_BACKEND=mock FS_DISTRO_FAMILY=rpm "$ROOT/setup" install --dry-run
+    t_out "profile: full"
+    t_out "^== run complete ==$"
+    t_out "0 ok"
     (
         cd -- "$TMP" || exit 1
         out="$("$ROOT/setup" version 2>&1)"

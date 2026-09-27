@@ -59,6 +59,185 @@ _cli_check_stub() {
     printf 'check: baseline prerequisites OK (stub)\n'
 }
 
+_cli_family() {
+    local root="$1"
+    if [[ -n "${FS_DISTRO_FAMILY:-}" ]]; then
+        printf '%s' "$FS_DISTRO_FAMILY"
+        return 0
+    fi
+    . "$root/lib/distro.sh"
+    distro_detect || return 1
+    printf '%s' "$FS_DISTRO_FAMILY"
+}
+
+_cli_install_sources() {
+    local root="$1" name
+    for name in run pkg planner lists state modules depgraph profiles runner ui; do
+        . "$root/lib/$name.sh"
+    done
+}
+
+_cli_write_defaults() {
+    local sel="$1" tmp="" rc=0
+    shift
+    tmp="$(mktemp "${sel%/*}/.fs-def.XXXXXX" 2>/dev/null)" || {
+        io_error "cannot create defaults temp in: ${sel%/*}"
+        return 1
+    }
+    if (( $# > 0 )); then
+        printf '%s\n' "$@" >"$tmp" 2>/dev/null || rc=1
+    else
+        : >"$tmp" 2>/dev/null || rc=1
+    fi
+    if (( rc == 0 )); then
+        mv -fT -- "$tmp" "$sel" 2>/dev/null || rc=1
+    fi
+    if (( rc != 0 )); then
+        rm -f -- "$tmp" 2>/dev/null || :
+        io_error "cannot write defaults to: $sel"
+        return 1
+    fi
+    return 0
+}
+
+_cli_install_impl() {
+    local root="$1"
+    local mdir="${FS_MODULES_DIR:-$root/modules}"
+    local pdir="${FS_PROFILES_DIR:-$root/profiles}"
+    local name="${FS_PROFILE:-full}"
+    local family=""
+    family="$(_cli_family "$root")" || return 1
+    case "$family" in
+        rpm | deb | arch) ;;
+        *) io_error "unsupported family: $family"; return 1 ;;
+    esac
+    _cli_install_sources "$root"
+    local -a dirs=() defaults=() cli_ids=() final=() hruns=()
+    local id="" dir="" closure="" entries="" sel="" htxt="" hid=""
+    local -i i=0 have=0 exact=1 rc=0
+    if [[ ! -d "$mdir" ]]; then
+        io_error "modules directory not found: $mdir"
+        return 1
+    fi
+    while IFS= read -r id; do
+        [[ -n "$id" ]] || continue
+        module_validate "$mdir/$id" "$family" || return 1
+        dirs+=("$mdir/$id")
+    done < <(for dir in "$mdir"/*; do
+        [[ -d "$dir" ]] || continue
+        [[ "${dir##*/}" == .* ]] && continue
+        printf '%s\n' "${dir##*/}"
+    done | LC_ALL=C sort)
+    module_validate_set ${dirs[@]+"${dirs[@]}"} || return 1
+    closure="$(profile_resolve "$mdir" "$pdir" "$name")" || return 1
+    if [[ -n "$closure" ]]; then
+        while IFS= read -r id; do
+            defaults+=("$id")
+        done <<<"$closure"
+    fi
+    cli_ids=(${FS_CMD_ARGS[@]+"${FS_CMD_ARGS[@]}"})
+    for id in ${cli_ids[@]+"${cli_ids[@]}"}; do
+        module_valid_id "$id" || { io_error "invalid module id: $id"; return 1; }
+        [[ -d "$mdir/$id" ]] || { io_error "module not found: $id"; return 1; }
+        have=0
+        for (( i = 0; i < ${#defaults[@]}; i++ )); do
+            if [[ "${defaults[i]}" == "$id" ]]; then
+                have=1
+            fi
+        done
+        (( have == 1 )) || defaults+=("$id")
+    done
+    local scratch=""
+    if (( FS_DRY_RUN == 1 )); then
+        scratch="$(mktemp -d "${TMPDIR:-/tmp}/fs-install.XXXXXX")" || {
+            io_error "cannot create install scratch"
+            return 1
+        }
+        sel="$scratch/selection.sel"
+    else
+        state_init || return 1
+        scratch="$(mktemp -d "${TMPDIR:-/tmp}/fs-install.XXXXXX")" || {
+            io_error "cannot create install scratch"
+            return 1
+        }
+        mkdir -p -- "$FS_STATE_DIR/selections" 2>/dev/null || {
+            io_error "cannot create state selections dir"
+            return 1
+        }
+        sel="$FS_STATE_DIR/selections/$name.sel"
+    fi
+    trap 'if [[ -n "${scratch:-}" ]]; then rm -rf -- "$scratch" 2>/dev/null || :; fi; trap - RETURN EXIT' RETURN EXIT
+    entries="$scratch/entries"
+    for dir in ${dirs[@]+"${dirs[@]}"}; do
+        module_load "$dir" || return 1
+        printf '%s\t%s\t%s\n' "$MODULE_ID" "${MODULE_TITLE:-$MODULE_ID}" "$MODULE_RISK"
+    done >"$entries"
+    local -a safe=()
+    for id in ${defaults[@]+"${defaults[@]}"}; do
+        module_load "$mdir/$id" || return 1
+        have=0
+        for (( i = 0; i < ${#cli_ids[@]}; i++ )); do
+            if [[ "${cli_ids[i]}" == "$id" ]]; then
+                have=1
+            fi
+        done
+        case "$MODULE_RISK" in
+            high | destructive)
+                (( have == 0 )) || safe+=("$id")
+                ;;
+            *) safe+=("$id") ;;
+        esac
+    done
+    _cli_write_defaults "$sel" ${safe[@]+"${safe[@]}"} || return 1
+    if (( FS_YES != 1 )); then
+        ui_multiselect "Select modules for profile '$name'" "$entries" "$sel" || return 1
+    fi
+    if [[ -f "$sel" ]]; then
+        while IFS= read -r id; do
+            [[ -n "$id" ]] || continue
+            final+=("$id")
+        done <"$sel"
+    fi
+    for id in ${final[@]+"${final[@]}"}; do
+        module_load "$mdir/$id" || return 1
+        case "$MODULE_RISK" in
+            high | destructive) hruns+=("$id") ;;
+        esac
+    done
+    if (( ${#hruns[@]} > 0 )); then
+        htxt=""
+        for hid in ${hruns[@]+"${hruns[@]}"}; do
+            htxt="$htxt $hid"
+        done
+        if ! ui_confirm "high-risk module(s) enabled:$htxt; continue?"; then
+            io_warn "installation aborted (high-risk confirmation declined)"
+            return 1
+        fi
+    fi
+    if (( FS_DRY_RUN != 1 )) && [[ "${FS_PKG_BACKEND:-}" != mock ]]; then
+        . "$root/lib/sudo.sh"
+        sudo_detect
+    fi
+    if (( ${#cli_ids[@]} > 0 )); then
+        exact=0
+    else
+        local fsrt="" csrt=""
+        fsrt="$(printf '%s\n' ${final[@]+"${final[@]}"} | LC_ALL=C sort)"
+        csrt="$(printf '%s\n' ${defaults[@]+"${defaults[@]}"} | LC_ALL=C sort)"
+        if [[ "$fsrt" != "$csrt" ]]; then
+            exact=0
+        fi
+    fi
+    if (( exact == 1 )); then
+        runner_run "$mdir" "$pdir" "$name" "$family"
+    else
+        runner_run "$mdir" "$pdir" "selection" "$family" ${final[@]+"${final[@]}"}
+    fi
+    rc=$?
+    rm -rf -- "$scratch" 2>/dev/null || :
+    return "$rc"
+}
+
 _cli_list_family() {
     case "${FS_DISTRO_FAMILY:-}" in
         rpm | deb | arch) printf '%s' "$FS_DISTRO_FAMILY" ;;
@@ -140,7 +319,10 @@ main() {
                 fi
             fi
             ;;
-        install|verify|export|update)
+        install)
+            _cli_install_impl "$root" || rc=1
+            ;;
+        verify|export|update)
             io_error "command '$FS_CMD' not implemented yet (planned in a later phase)"
             rc=1
             ;;
