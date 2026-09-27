@@ -176,6 +176,94 @@ fx_out 'installed nerd font: FiraCode Nerd Font (v3.3.0)'
 fx_out 'installed nerd font: JetBrainsMono Nerd Font (v3.3.0)'
 if [[ -f "$FX_TMP/fonts_ncs/.fedora-setup-nerd-FiraCode-v3.3.0" ]]; then fx_ok; else fx_bad "no-checksum install marker missing"; fi
 
+# repo-pinned checksum map (assets/fonts path, no sibling sidecar): the map
+# seam provides the digest, so the asset is VERIFIED and installed (no warn).
+mkdir -p "$FX_TMP/ma"
+cp -p "$FX_TMP/ff/FiraCode.zip" "$FX_TMP/ma/FiraCode.zip"
+cp -p "$FX_TMP/ff/JetBrainsMono.zip" "$FX_TMP/ma/JetBrainsMono.zip"
+: >"$FX_TMP/map"
+printf '%s  FiraCode@v3.3.0\n' "$(sha256sum "$FX_TMP/ma/FiraCode.zip" | awk '{print $1}')" >>"$FX_TMP/map"
+printf '%s  JetBrainsMono@v3.3.0\n' "$(sha256sum "$FX_TMP/ma/JetBrainsMono.zip" | awk '{print $1}')" >>"$FX_TMP/map"
+(   set -euo pipefail
+    export FS_HOME="$FX_TMP/h_map"
+    export FS_PKG_BACKEND=mock FS_DISTRO_FAMILY=rpm
+    export FS_MODULES_DIR="$ROOT/modules" FS_PROFILES_DIR="$ROOT/profiles"
+    export FS_MOCK_LOG="$LOG" FS_MOCK_INSTALLED="$INST"
+    export FS_FONTS_DIR="$FX_TMP/fonts_map" FS_NERDFONT_ASSETS_DIR="$FX_TMP/ma"
+    export FS_NERDFONT_SHA256_FILE="$FX_TMP/map"
+    export XDG_CACHE_HOME="$FX_TMP/xc"
+    unset FS_NERDFONT_SRC_DIR FS_YES FS_PROFILE FS_DRY_RUN FS_DISTRO_FILE 2>/dev/null || :
+    "$SETUP" install --yes fonts
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "fonts map-verify rc" 0
+fx_out 'sha256 verified: FiraCode (repo-pinned)'
+fx_out 'sha256 verified: JetBrainsMono (repo-pinned)'
+fx_out 'installed nerd font: FiraCode Nerd Font (v3.3.0)'
+if grep -q 'installing unverified' "$FX_OUT"; then fx_bad "map-verify fell back to unverified"; else fx_ok; fi
+if [[ -f "$FX_TMP/fonts_map/.fedora-setup-nerd-FiraCode-v3.3.0" ]]; then fx_ok; else fx_bad "map-verify marker missing"; fi
+
+# map MISMATCH (assets path): fail-closed with the repo-pinned message, no
+# marker, tmp cleaned.
+: >"$FX_TMP/mapbad"
+printf '%s  FiraCode@v3.3.0\n' '0000000000000000000000000000000000000000000000000000000000000000' >>"$FX_TMP/mapbad"
+printf '%s  JetBrainsMono@v3.3.0\n' '0000000000000000000000000000000000000000000000000000000000000000' >>"$FX_TMP/mapbad"
+(   set -euo pipefail
+    export FS_HOME="$FX_TMP/h_mapbad"
+    export FS_PKG_BACKEND=mock FS_DISTRO_FAMILY=rpm
+    export FS_MODULES_DIR="$ROOT/modules" FS_PROFILES_DIR="$ROOT/profiles"
+    export FS_MOCK_LOG="$LOG" FS_MOCK_INSTALLED="$INST"
+    export FS_FONTS_DIR="$FX_TMP/fonts_mapbad" FS_NERDFONT_ASSETS_DIR="$FX_TMP/ma"
+    export FS_NERDFONT_SHA256_FILE="$FX_TMP/mapbad"
+    export XDG_CACHE_HOME="$FX_TMP/xc"
+    unset FS_NERDFONT_SRC_DIR FS_YES FS_PROFILE FS_DRY_RUN FS_DISTRO_FILE 2>/dev/null || :
+    "$SETUP" install --yes fonts
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "fonts map-mismatch rc" 1
+fx_err 'sha256 mismatch for FiraCode.zip (repo-pinned)'
+fx_err 'module failed: fonts'
+fx_out '0 ok'
+if [[ -e "$FX_TMP/fonts_mapbad/.fedora-setup-nerd-FiraCode-v3.3.0" ]]; then fx_bad "map-mismatch wrote marker"; else fx_ok; fi
+if [[ ! -d "$FX_TMP/fonts_mapbad" ]]; then fx_bad "map-mismatch dir missing for residue check"; elif ls -A "$FX_TMP/fonts_mapbad" | grep -q '^\.'; then fx_bad "map-mismatch left temp residue"; else fx_ok; fi
+
+# shipped checksum map format: every pin in config/nerdfonts.list must have a
+# 64-hex repo-map hit (network path fail-closes without it). Read-only.
+list_entries="0"
+while IFS= read -r cfg_line; do
+    case "$cfg_line" in
+        ''|\#*) continue ;;
+    esac
+    list_entries=$((list_entries + 1))
+    rest="${cfg_line#*:}"
+    asset="${rest%%:*}"
+    ver="${rest#*:}"
+    if [[ -z "$asset" || -z "$ver" || "$asset" == *:* ]]; then fx_bad "map-format cfg parse failed: $cfg_line"; continue; fi
+    hit="$(awk -v a="$asset@$ver" '$1 ~ /^[0-9a-fA-F]{64}$/ && $2==a {print $1; exit}' "$ROOT/config/nerdfonts.sha256" 2>/dev/null)" || :
+    if [[ "$hit" =~ ^[0-9a-f]{64}$ ]]; then fx_ok; else fx_bad "shipped map missing hit for $asset@$ver"; fi
+done <"$ROOT/config/nerdfonts.list"
+if (( list_entries == 2 )); then fx_ok; else fx_bad "shipped nerdfonts.list entry count (got $list_entries)"; fi
+
+# assets path + map WITHOUT the entry: falls back to the operator warn+install
+# (map empty file) — the fail-closed refuse applies to the network path only.
+: >"$FX_TMP/mapempty"
+(   set -euo pipefail
+    export FS_HOME="$FX_TMP/h_mapempty"
+    export FS_PKG_BACKEND=mock FS_DISTRO_FAMILY=rpm
+    export FS_MODULES_DIR="$ROOT/modules" FS_PROFILES_DIR="$ROOT/profiles"
+    export FS_MOCK_LOG="$LOG" FS_MOCK_INSTALLED="$INST"
+    export FS_FONTS_DIR="$FX_TMP/fonts_mapempty" FS_NERDFONT_ASSETS_DIR="$FX_TMP/ma"
+    export FS_NERDFONT_SHA256_FILE="$FX_TMP/mapempty"
+    export XDG_CACHE_HOME="$FX_TMP/xc"
+    unset FS_NERDFONT_SRC_DIR FS_YES FS_PROFILE FS_DRY_RUN FS_DISTRO_FILE 2>/dev/null || :
+    "$SETUP" install --yes fonts
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "fonts map-absent-assets rc" 0
+fx_err 'has no .sha256; installing unverified (operator-provided)'
+fx_out 'installed nerd font: FiraCode Nerd Font (v3.3.0)'
+if [[ -f "$FX_TMP/fonts_mapempty/.fedora-setup-nerd-FiraCode-v3.3.0" ]]; then fx_ok; else fx_bad "map-absent-assets marker missing"; fi
+
 # failing unzip -> run_cmd --stop aborts: module failed, rc1, NO marker,
 # NO 'installed nerd font' line, no leftover temps.
 mkdir -p "$FX_TMP/fakebin"

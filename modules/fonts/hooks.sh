@@ -6,18 +6,23 @@
 # Entries (config/nerdfonts.list, or $FS_NERDFONT_CONFIG) are
 # `label:asset:version`; each asset fetches a pinned release zip
 #   https://github.com/ryanoasis/nerd-fonts/releases/download/<version>/<asset>.zip
-# (plus the matching .sha256), verifies the digest, extracts into
-# $FS_FONTS_DIR (default ~/.local/share/fonts), then touches a per-asset
-# marker so a re-run skips already-installed sets. fc-cache rescans the
-# target fonts dir once per run only when something new was installed;
-# the network/download and extraction steps run through run_cmd --stop so a
-# failure aborts the module (no marker, module failed).
+# verifies the digest, extracts into $FS_FONTS_DIR (default
+# ~/.local/share/fonts), then touches a per-asset marker so a re-run skips
+# already-installed sets. fc-cache rescans the target fonts dir once per run
+# only when something new was installed; the download and extraction steps run
+# through run_cmd --stop so a failure aborts the module (no marker, module
+# failed).
 # Source selection: FS_NERDFONT_SRC_DIR is authoritative when set (fail-fast
 # if a named asset is missing there — hermetic test seam and offline override);
-# otherwise the repo's assets/fonts/ directory if the asset exists there;
-# otherwise the network (curl --proto =https, with --max-time). The .sha256
-# is REQUIRED for network installs and verified when present locally; a local
-# zip without a checksum installs with a warning (operator-provided asset).
+# otherwise the repo's assets/fonts/ directory ($FS_NERDFONT_ASSETS_DIR) if
+# the asset exists there; otherwise the network (curl --proto =https, with
+# --max-time). Checksum resolution per asset: a sibling `.sha256` next to the
+# zip is honored for any source, else the repo-pinned checksum map
+# config/nerdfonts.sha256 ($FS_NERDFONT_SHA256_FILE, lines `<hex>  <asset>@<ver>`)
+# is used for the network and assets/fonts paths (upstream ships no
+# sidecars — the map records the digest of the pinned release archives); a
+# network/assets asset with neither fails closed, while an FS_NERDFONT_SRC_DIR
+# zip with neither installs with a warning (operator-provided asset).
 # Dry-run prints `# would run:` download/extract/fc-cache plan lines (the
 # exact download URLs are listed) with the SAME entry parsing/validation as
 # real mode, and executes nothing, probes nothing, writes nothing.
@@ -44,7 +49,7 @@ _run_nerd_entry() {
 }
 
 run() {
-    local root fonts_dir src_dir repo_assets config_file
+    local root fonts_dir src_dir repo_assets config_file sha_file
     root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)" || return 1
     source "$root/lib/lists.sh"
     fonts_dir="${FS_FONTS_DIR:-}"
@@ -59,7 +64,8 @@ run() {
         io_error "refusing nerd fonts target: $fonts_dir"
         return 1
     fi
-    repo_assets="$root/assets/fonts"
+    repo_assets="${FS_NERDFONT_ASSETS_DIR:-$root/assets/fonts}"
+    sha_file="${FS_NERDFONT_SHA256_FILE:-$root/config/nerdfonts.sha256}"
     config_file="${FS_NERDFONT_CONFIG:-$root/config/nerdfonts.list}"
     src_dir="${FS_NERDFONT_SRC_DIR:-}"
     local entries_out="" line=""
@@ -144,11 +150,6 @@ run() {
                     rm -f -- "$tmp_zip" 2>/dev/null || :
                     return 1
                 }
-            run_cmd "nerd font checksum" --stop "curl" "-fsSL" "--proto" "=https" \
-                "--max-time" "300" "-o" "$tmp_sha" "$curl_url.sha256" || {
-                    rm -f -- "$tmp_zip" "$tmp_sha" 2>/dev/null || :
-                    return 1
-                }
         fi
         if [[ -f "$tmp_sha" ]]; then
             want="$(cut -d' ' -f1 -- "$tmp_sha" 2>/dev/null)" || {
@@ -162,14 +163,32 @@ run() {
                 return 1
             fi
             io_info "sha256 verified: $asset"
-        elif [[ -z "$zip_path" ]]; then
-            io_error "no checksum available for ${asset}.zip; refusing unverified download"
-            rm -f -- "$tmp_zip" 2>/dev/null || :
-            return 1
         else
-            io_warn "local ${asset}.zip has no .sha256; installing unverified (operator-provided)"
+            want=""
+            if [[ -z "$src_dir" ]]; then
+                command -v sha256sum >/dev/null 2>&1 || {
+                    io_error "sha256sum is required for nerd font checksum verification"
+                    rm -f -- "$tmp_zip" 2>/dev/null || :
+                    return 1
+                }
+                want="$(awk -v a="$asset@$ver" '$1 ~ /^[0-9a-fA-F]{64}$/ && $2==a {print $1; exit}' "$sha_file" 2>/dev/null)" || :
+            fi
+            if [[ -n "$want" ]]; then
+                if ! printf '%s  %s\n' "$want" "$tmp_zip" | sha256sum -c - >/dev/null 2>&1; then
+                    io_error "sha256 mismatch for ${asset}.zip (repo-pinned)"
+                    rm -f -- "$tmp_zip" 2>/dev/null || :
+                    return 1
+                fi
+                io_info "sha256 verified: $asset (repo-pinned)"
+            elif [[ -z "$zip_path" ]]; then
+                io_error "no checksum available for ${asset}.zip; refusing unverified download"
+                rm -f -- "$tmp_zip" 2>/dev/null || :
+                return 1
+            else
+                io_warn "local ${asset}.zip has no .sha256; installing unverified (operator-provided)"
+            fi
         fi
-command -v unzip >/dev/null 2>&1 || {
+        command -v unzip >/dev/null 2>&1 || {
             io_error "unzip is required for nerd font extraction"
             rm -f -- "$tmp_zip" "$tmp_sha" 2>/dev/null || :
             return 1

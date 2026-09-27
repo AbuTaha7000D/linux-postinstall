@@ -283,7 +283,12 @@ for prof in minimal desktop developer full; do
     ) >"$FX_OUT" 2>"$FX_ERR"
     FX_BLOCK_RC=$?
     fx_block_rc "shipped profile $prof load rc0" 0
-    fx_empty "shipped $prof resolves empty today" "$FX_OUT"
+    case "$prof" in
+        minimal) printf 'core\nflatpak\n' >"$FX_EXPECT" ;;
+        desktop) printf 'core\nflatpak\ngit\nfonts\nterminal\n' >"$FX_EXPECT" ;;
+        *) : >"$FX_EXPECT" ;;
+    esac
+    cmp "$FX_EXPECT" "$FX_OUT" >/dev/null 2>&1 && fx_ok || fx_bad "shipped $prof resolves wrong set"
 done
 
  (

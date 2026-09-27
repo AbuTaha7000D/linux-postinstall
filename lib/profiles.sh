@@ -12,12 +12,15 @@
 # LINES -- an inline trailing comment is not stripped and becomes part of
 # the id, resolving to "module directory not found"). A profile's file
 # order is its load order; resolution re-orders the union deps-first. The
-# shipped profiles (profiles/{minimal,desktop,developer,full}.conf) are
-# skeletons whose module sets are finalized in P5-P8; a comment-only
-# profile is a valid empty profile today. Ids printed are MODULE_ID values
-# (the P4.2 identity invariant MODULE_ID == dir basename is enforced
-# upstream by module_validate), so a resolver maps each printed id back to
-# <modules_dir>/<id>. Where the task speaks of "conflicts", the P4.1
+# shipped profiles (profiles/{minimal,desktop,developer,full}.conf): as of
+# P5.7 `minimal` = core+flatpak and `desktop` = minimal+git+fonts+terminal,
+# while `developer`/`full` are still comment-only — a comment-only profile
+# is a valid empty profile today. The base profiles carry real module sets
+# before the package/flatpak routing split (flatpaks currently batch through
+# the family package backend — an owner-pending split, see profiles/minimal.conf).
+# Ids printed are MODULE_ID values (the P4.2 identity invariant MODULE_ID ==
+# dir basename is enforced upstream by module_validate), so a resolver maps
+# each printed id back to <modules_dir>/<id>. Where the task speaks of "conflicts", the P4.1
 # contract has no exclusion key -- conflicts here mean a dependency cycle
 # or an unresolvable MODULE_DEPENDS reference (dep_toposort).
 #
