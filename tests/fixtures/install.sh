@@ -8,7 +8,10 @@
 # --yes never prompting; --yes + CLI module ids; high-risk opt-in gated
 # behind an explicit confirmation (decline aborts rc1; --yes bypass);
 # dry-run purity (no state dir, no mock mutations, toggles still redraw
-# the plan); unknown profile/id fail loud; distro-file detection; module
+# the plan); unknown profile/id fail loud; distro-file detection; bare-CLI
+# family->backend resolution (no FS_PKG_BACKEND, no FS_DISTRO_FAMILY: the
+# family detected in-caller must reach pkg_backend and select the real rpm
+# backend, proven by the dnf5 dry-render); module
 # registry marks persist. Nothing outside FX_TMP is touched. Mock backend
 # seams: FS_MOCK_LOG + FS_MOCK_INSTALLED.
 # Usage: bash tests/fixtures/install.sh  (exit 0 on success)
@@ -207,6 +210,41 @@ printf 'ID=fedora\nID_LIKE=""\n' >"$FX_TMP/I/osrel"
 FX_BLOCK_RC=$?
 fx_block_rc "distro-file detection rc" 0
 fx_out 'profile: full'
+
+# --- bare CLI: family resolved in-caller must reach pkg_backend ------------
+# Regression (pre-fix): bootstrap resolved the family via command
+# substitution (subshell), so FS_DISTRO_FAMILY never reached the caller env
+# and the backend selection fell through with "no package backend selected".
+# A bare run -- no FS_PKG_BACKEND, no FS_DISTRO_FAMILY -- must detect the
+# family from the distro file in the caller shell and then select the real
+# rpm backend through it (proven by the dnf5 dry-render, not the mock).
+
+FBIN="$FX_TMP/I/fbin"
+mkdir -p "$FBIN"
+printf '#!/usr/bin/env bash\nexit 0\n' >"$FBIN/dnf5"
+printf '#!/usr/bin/env bash\nexit 0\n' >"$FBIN/dnf"
+printf '#!/usr/bin/env bash\nexit 0\n' >"$FBIN/rpm"
+chmod +x "$FBIN"/*
+printf 'ID=fedora\nID_LIKE=""\n' >"$FX_TMP/I/osrel2"
+(   set -euo pipefail
+    export FS_HOME="$FX_TMP/hbare" FS_DRY_RUN=1
+    export FS_MODULES_DIR="$M" FS_PROFILES_DIR="$P"
+    export FS_DISTRO_FILE="$FX_TMP/I/osrel2"
+    export PATH="$FBIN:$PATH"
+    unset FS_PKG_BACKEND FS_DISTRO_FAMILY FS_YES FS_PROFILE 2>/dev/null || :
+    "$SETUP" install --yes --profile full
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "bare family->backend resolution rc" 0
+fx_out 'profile: full'
+fx_out 'module: a (none)'
+fx_out 'module: b (none)'
+fx_out 'module: c (none)'
+fx_out '^# would run: sudo dnf5 install -y a1 b1 c1$'
+fx_out '^== run complete ==$'
+fx_out '3 ok'
+fx_err_not 'no package backend selected'
+if [[ -e "$FX_TMP/hbare/.local/state/fedora-setup" ]]; then fx_bad "bare dry run created state dir"; else fx_ok; fi
 
 # --- empty profile (minimal skeleton) via --yes ----------------------------
 

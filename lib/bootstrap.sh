@@ -59,17 +59,6 @@ _cli_check_stub() {
     printf 'check: baseline prerequisites OK (stub)\n'
 }
 
-_cli_family() {
-    local root="$1"
-    if [[ -n "${FS_DISTRO_FAMILY:-}" ]]; then
-        printf '%s' "$FS_DISTRO_FAMILY"
-        return 0
-    fi
-    . "$root/lib/distro.sh"
-    distro_detect || return 1
-    printf '%s' "$FS_DISTRO_FAMILY"
-}
-
 _cli_install_sources() {
     local root="$1" name
     for name in run pkg planner lists state modules depgraph profiles runner ui; do
@@ -105,8 +94,12 @@ _cli_install_impl() {
     local mdir="${FS_MODULES_DIR:-$root/modules}"
     local pdir="${FS_PROFILES_DIR:-$root/profiles}"
     local name="${FS_PROFILE:-full}"
-    local family=""
-    family="$(_cli_family "$root")" || return 1
+    local family="${FS_DISTRO_FAMILY:-}"
+    if [[ -z "$family" ]]; then
+        . "$root/lib/distro.sh"
+        distro_detect || return 1
+        family="${FS_DISTRO_FAMILY:-}"
+    fi
     case "$family" in
         rpm | deb | arch) ;;
         *) io_error "unsupported family: $family"; return 1 ;;
