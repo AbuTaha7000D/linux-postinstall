@@ -21,9 +21,13 @@
 #     stored by gsettings are passed through parse->merge->build as-is; if
 #     such an element violates the charset the merge fails closed loudly
 #     rather than emitting an unrepresentable array.
-#   - schema:key tokens are restricted to [A-Za-z0-9._-] with locale-stable
-#     case globs (no [[ =~ ]], which is collation-sensitive - see P4.5) and
-#     are validated before any read or write.
+#   - schema tokens are restricted to [A-Za-z0-9._-] (locale-stable case
+#     globs, no [[ =~ ]] - see P4.5), optionally followed by `:` and an
+#     absolute dconf path for a relocatable schema instantiation
+#     (org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:/org/
+#     .../custom0/); path segments are [A-Za-z0-9._-] with no empty, `.` or
+#     `..` segment and at most a single trailing slash. Keys are plain
+#     [A-Za-z0-9._-] tokens. Both are validated before any read or write.
 #   - Failure policy: malformed arguments fail loudly (io_error + rc1)
 #     before anything runs; a failed real write is graceful (run_cmd
 #     keep-going policy logs it and returns 0 so the runner continues).
@@ -57,7 +61,15 @@
 #         custom-keybindings (prototype bug #4 fix): the existing array is
 #         preserved and the given paths are appended once, deduped, and the
 #         result written back. Dry-run renders the write of the new-only
-#         merge (the current value is not probeable).
+#         merge (the current value is not probeable). Thin wrapper over
+#         gnome_strv_merge_set.
+# gnome_strv_merge_set <schema> <key> <new...>
+#         generic read->merge->write of a string-array key (the favorites
+#         merge and dock/background defaults): the current value is preserved
+#         and each unseen <new> is appended once in order, then written back.
+#         <schema> must be plain or relocatable; <key> plain. Dry-run renders
+#         the write of the new-only build (the current value is not
+#         probeable) and never probes. A failed pre-write read aborts rc1.
 
 gnome_gsettings_available() {
     command -v gsettings >/dev/null 2>&1
@@ -72,6 +84,40 @@ _gnome_ok_id() {
     case "$v" in
         *[!A-Za-z0-9._-]*|"") return 1 ;;
     esac
+    return 0
+}
+
+_gnome_ok_schema() {
+    local s="$1" head="" rest="" seg="" t=""
+    head="${s%%:*}"
+    if [[ "$s" == "$head" ]]; then
+        _gnome_ok_id "$s"
+        return $?
+    fi
+    _gnome_ok_id "$head" || return 1
+    rest="${s#*:}"
+    case "$rest" in
+        /*) ;;
+        *) return 1 ;;
+    esac
+    case "$rest" in
+        *"//"*) return 1 ;;
+    esac
+    t="${rest#/}"
+    t="${t%/}"
+    if [[ -z "$t" ]]; then
+        return 1
+    fi
+    while [[ -n "$t" ]]; do
+        seg="${t%%/*}"
+        case "$seg" in
+            ""|"."|".."|*[!A-Za-z0-9._-]*) return 1 ;;
+        esac
+        if [[ "$t" != */* ]]; then
+            break
+        fi
+        t="${t#*/}"
+    done
     return 0
 }
 
@@ -289,7 +335,7 @@ gnome_strv_merge() {
 
 gnome_gsettings_get() {
     local schema="${1:-}" key="${2:-}" bin="" out="" rc=0
-    if ! _gnome_ok_id "$schema"; then
+    if ! _gnome_ok_schema "$schema"; then
         io_error "gnome_gsettings_get: invalid schema: ${schema:-<empty>}"
         return 1
     fi
@@ -318,7 +364,7 @@ gnome_gsettings_get() {
 
 gnome_gsettings_set() {
     local schema="${1:-}" key="${2:-}" value="${3:-}" cur="" rc=0
-    if ! _gnome_ok_id "$schema"; then
+    if ! _gnome_ok_schema "$schema"; then
         io_error "gnome_gsettings_set: invalid schema: ${schema:-<empty>}"
         return 1
     fi
@@ -346,12 +392,11 @@ gnome_gsettings_set() {
     return "$rc"
 }
 
-gnome_custom_keybindings_merge_add() {
-    local schema="org.gnome.settings-daemon.plugins.media-keys"
-    local key="custom-keybindings"
-    local current="" merged="" rc=0
+gnome_strv_merge_set() {
+    local schema="${1:-}" key="${2:-}" current="" merged="" rc=0
+    shift 2 || true
     if (( $# == 0 )); then
-        io_error "gnome_custom_keybindings_merge_add requires at least one dconf path"
+        io_error "gnome_strv_merge_set requires at least one new element"
         return 1
     fi
     if (( FS_DRY_RUN == 1 )); then
@@ -377,4 +422,14 @@ gnome_custom_keybindings_merge_add() {
     rc=0
     gnome_gsettings_set "$schema" "$key" "$merged" || rc=$?
     return "$rc"
+}
+
+gnome_custom_keybindings_merge_add() {
+    local schema="org.gnome.settings-daemon.plugins.media-keys"
+    local key="custom-keybindings"
+    if (( $# == 0 )); then
+        io_error "gnome_custom_keybindings_merge_add requires at least one dconf path"
+        return 1
+    fi
+    gnome_strv_merge_set "$schema" "$key" "$@"
 }

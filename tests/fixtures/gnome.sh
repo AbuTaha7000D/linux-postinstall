@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
-# tests/fixtures/gnome.sh - P6.1 fixture for the GNOME gsettings layer
+# tests/fixtures/gnome.sh - P6.1/P6.2 fixture for the GNOME gsettings layer
 # (lib/gnome.sh). Covers the P6.1 verification bullet: fixture gsettings
 # output arrays parse/merge correctly; idempotent sets are no-ops;
 # malformed keys error safely (rc1, io_error) and never via sed rewriting
 # of system files (the lib contains no sed); dry-run renders exact
-# `# would run: ...` lines and never probes dconf.
+# `# would run: ...` lines and never probes dconf. P6.2 additions: plain
+# vs relocatable schema validation and the generic gnome_strv_merge_set
+# read->merge->write primitive (docks favorites / custom keybindings).
 # Mock strategy mirrors pkg_flatpak.sh: a PATH-visible fake `gsettings`
 # logs `get`/`set` invocations to $FAKE_LOG, answers `get` from
 # $FAKE_GET and can fail `set` via $FAKE_SET_RC. No real system state;
@@ -657,6 +659,245 @@ grep -q '^set ' "$FAKE_LOG" && fx_bad "rejected merge must not write" || fx_ok
 FX_BLOCK_RC=$?
 fx_block_rc "keybindings dry-run invalid path rejects" 1
 fx_err "invalid array element"
+
+: >"$FAKE_LOG"
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH"
+    export FAKE_GET="'Resources'" FAKE_LOG
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_gsettings_get "org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom0/" name
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "relocatable schema get" 0
+printf "'Resources'\n" >"$FX_EXPECT"
+cmp "$FX_EXPECT" "$FX_OUT" >/dev/null 2>&1 && fx_ok || fx_bad "relocatable get value"
+grep -Fqx "get org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom0/ name" "$FAKE_LOG" && fx_ok || fx_bad "relocatable get probe logged"
+
+: >"$FAKE_LOG"
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH"
+    export FAKE_GET="'x'" FAKE_LOG
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_gsettings_set "org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom0/" name "'Resources'"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "relocatable schema set" 0
+grep -Fqx "set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom0/ name 'Resources'" "$FAKE_LOG" && fx_ok || fx_bad "relocatable set invocation logged"
+
+: >"$FAKE_LOG"
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH"
+    export FS_DRY_RUN=1 FAKE_LOG
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_gsettings_set "org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom0/" name "'Resources'"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "relocatable schema dry-run set renders" 0
+fx_out "# would run: gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom0/"
+[[ ! -s "$FAKE_LOG" ]] && fx_ok || fx_bad "relocatable dry-run set never probes"
+
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH"
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_gsettings_set "a.b:" name "'x'"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "relocatable empty path rejects" 1
+fx_err "invalid schema"
+
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH"
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_gsettings_set "a.b:/" name "'x'"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "relocatable root path rejects" 1
+fx_err "invalid schema"
+
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH"
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_gsettings_set "a.b://x//y/" name "'x'"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "relocatable double slash rejects" 1
+fx_err "invalid schema"
+
+: >"$FAKE_LOG"
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH"
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_gsettings_set "a.b:/x//" name "'x'"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "relocatable trailing double slash rejects" 1
+fx_err "invalid schema"
+
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH"
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_gsettings_set "a.b:rel/x" name "'x'"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "relocatable relative path rejects" 1
+fx_err "invalid schema"
+
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH"
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_gsettings_set "a.b:/./x/" name "'x'"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "relocatable dot segment rejects" 1
+fx_err "invalid schema"
+
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH"
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_gsettings_set "a.b:/a/b c/" name "'x'"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "relocatable space in path rejects" 1
+fx_err "invalid schema"
+
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH"
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_gsettings_set "a:b:c" name "'x'"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "relocatable double colon rejects" 1
+fx_err "invalid schema"
+
+: >"$FAKE_LOG"
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH"
+    export FAKE_GET="['org.gnome.Nautilus.desktop']" FAKE_LOG
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_strv_merge_set org.gnome.shell favorite-apps org.gnome.Nautilus.desktop firefox.desktop
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "merge_set appends to existing" 0
+grep -Fqx "set org.gnome.shell favorite-apps ['org.gnome.Nautilus.desktop', 'firefox.desktop']" "$FAKE_LOG" && fx_ok || fx_bad "existing app kept, new appended once"
+
+: >"$FAKE_LOG"
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH"
+    export FAKE_GET="['org.gnome.Nautilus.desktop', 'firefox.desktop']" FAKE_LOG
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_strv_merge_set org.gnome.shell favorite-apps firefox.desktop
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "merge_set idempotent" 0
+grep -q '^set ' "$FAKE_LOG" && fx_bad "idempotent merge_set must not write" || fx_ok
+
+: >"$FAKE_LOG"
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH"
+    export FS_DRY_RUN=1 FAKE_LOG
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_strv_merge_set org.gnome.shell favorite-apps firefox.desktop
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "merge_set dry-run renders" 0
+fx_out "# would run: gsettings set org.gnome.shell favorite-apps"
+[[ $(grep -c '^# would run:' "$FX_OUT") == 1 ]] && fx_ok || fx_bad "merge_set dry-run single render line"
+[[ ! -s "$FAKE_LOG" ]] && fx_ok || fx_bad "merge_set dry-run never probes"
+
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH"
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_strv_merge_set org.gnome.shell favorite-apps
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "merge_set without new elements rejects" 1
+fx_err "requires at least one new element"
+
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH"
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_strv_merge_set "bad schema" favorite-apps firefox.desktop
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "merge_set invalid schema rejects" 1
+fx_err "invalid schema"
+
+: >"$FAKE_LOG"
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH"
+    export FS_DRY_RUN=1
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_strv_merge_set "org.gnome.shell.bad:a/b" favorite-apps firefox.desktop
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "merge_set invalid relocatable schema rejects in dry mode" 1
+fx_err "invalid schema"
+grep -q '^# would run:' "$FX_OUT" && fx_bad "invalid-schema dry merge_set must not render" || fx_ok
+
+: >"$FAKE_LOG"
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH"
+    export FAKE_GET="@as []" FAKE_LOG
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_strv_merge_set "org.gnome.shell.custom-binding:/org/gnome/custom0/" favorite-apps firefox.desktop
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "merge_set relocatable schema" 0
+grep -Fqx "set org.gnome.shell.custom-binding:/org/gnome/custom0/ favorite-apps ['firefox.desktop']" "$FAKE_LOG" && fx_ok || fx_bad "relocatable merge_set written"
 
 grep -nE '\b(sed|awk)\b' "$ROOT/lib/gnome.sh" >/dev/null 2>&1 &&
     fx_bad "lib/gnome.sh must not reference sed/awk" || fx_ok

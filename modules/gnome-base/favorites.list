@@ -1,0 +1,7 @@
+# Curated dock favorites for the gnome-base module: each entry is a
+# .desktop id that is appended to the user's dock when missing (merge,
+# never replace). Keep the set small and harmless: entries that do not
+# exist on a given install simply stay absent (gsettings stores the id
+# only if present); apps the user already pinned are left untouched.
+org.gnome.Nautilus.desktop
+firefox.desktop
