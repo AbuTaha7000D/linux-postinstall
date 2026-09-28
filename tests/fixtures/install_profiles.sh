@@ -1,18 +1,19 @@
 #!/usr/bin/env bash
 # tests/fixtures/install_profiles.sh - P5.7 fixture for profile wiring.
 # Drives the REAL repo modules/ + profiles/ + config/ through
-# `./setup install --profile <name> --yes` against the mock backend.
+# `./setup install --profile <name> --yes` against the mock family backend.
 # Covers: `minimal` (core+flatpak) and `desktop` (minimal+git+fonts+terminal)
-# dry-run EXACT single batch + plan purity; real mock run end-to-end where
-# the fonts (staged local source), git, and terminal (staged omp+atuin
+# dry-run EXACT per-namespace batch + plan purity; real mock run end-to-end
+# where the fonts (staged local source), git, and terminal (staged omp+atuin
 # sources) hooks all execute through the runner and every module is marked;
-# resume-run idempotence (already completed / skipped); second hook invocation
+# the P5.7 NB-A routing split: system packages batch via the mock family
+# backend while flatpaks route through the flatpak backend (stateful fake
+# `flatpak` binary), each a single per-backend transaction; resume-run
+# idempotence (already completed / skipped); second hook invocation
 # (fonts/terminal/git re-execute against the same staged sources and managed
-# files stay byte-stable). Real-host flatpak routing is a recorded limitation
-# (see profiles/minimal.conf); this fixture is the load-bearing dry+mock
-# evidence. The repo-pinned fonts checksum map (config/nerdfonts.sha256) is
-# exercised in mod_fonts.sh; here fonts installs from the staged operator
-# source with sibling sidecars.
+# files stay byte-stable). The repo-pinned fonts checksum map
+# (config/nerdfonts.sha256) is exercised in mod_fonts.sh; here fonts installs
+# from the staged operator source with sibling sidecars.
 # Nothing outside FX_TMP + the real repo modules/profiles/config is touched.
 # Usage: bash tests/fixtures/install_profiles.sh  (exit 0 on success)
 
@@ -26,24 +27,61 @@ printf 'P5.7 profile wiring\n'
 SETUP="$ROOT/setup"
 LOG="$FX_TMP/I/p5.log"
 INST="$FX_TMP/I/p5.inst"
-mkdir -p "$(dirname "$LOG")"
+FAKEDIR="$FX_TMP/fakebin"
+FAKE_LOG="$FX_TMP/I/p5.fake.log"
+FAKEINST="$FX_TMP/I/p5.fake.inst"
+mkdir -p "$(dirname "$LOG")" "$FAKEDIR"
 : >"$LOG"
 : >"$INST"
 
 MIN_BATCH="gnupg2 fastfetch git curl wget vim fzf bat btop htop tmux unzip e2fsprogs flatpak"
 FLATPAKS="com.mattjakeman.ExtensionManager com.bitwarden.desktop net.nokyan.Resources"
 FONT_PKGS="google-noto-sans-fonts fira-code-fonts jetbrains-mono-fonts"
-FULL_BATCH="$MIN_BATCH $FLATPAKS $FONT_PKGS"
+
+# stateful fake flatpak: logs every invocation (FS_FAKE_LOG); `info`
+# returns rc0 when the app is already in FS_FAKE_INSTALLED else rc1 (both
+# the --user and --system probe scopes answer identically); `install`
+# appends every app id to FS_FAKE_INSTALLED (pending-filtering and resume
+# stay idempotent). Dry-run never executes it (flatpak_supported is a bare
+# `command -v`).
+cat >"$FAKEDIR/flatpak" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "flatpak $*" >>"${FS_FAKE_LOG:?}"
+case "${1:-}" in
+    info)
+        app="${3:-}"
+        grep -qxF -- "$app" "$FS_FAKE_INSTALLED" 2>/dev/null
+        exit $?
+        ;;
+    install)
+        shift
+        for a in "$@"; do
+            case "$a" in
+                --*) continue ;;
+            esac
+            grep -qxF -- "$a" "$FS_FAKE_INSTALLED" 2>/dev/null || printf '%s\n' "$a" >>"$FS_FAKE_INSTALLED"
+        done
+        exit 0
+        ;;
+    *)
+        exit 0
+        ;;
+esac
+EOF
+chmod +x "$FAKEDIR/flatpak"
 
 prof_run() {
     local state_dir="$1" profile="$2" dry="${3:-0}"
     : >"$LOG"
+    : >"$FAKE_LOG"
     (
         set -euo pipefail
         export FS_HOME="$FX_TMP/$state_dir"
         export FS_PKG_BACKEND=mock FS_DISTRO_FAMILY=rpm
         export FS_MODULES_DIR="$ROOT/modules" FS_PROFILES_DIR="$ROOT/profiles"
         export FS_MOCK_LOG="$LOG" FS_MOCK_INSTALLED="$INST"
+        export FS_FAKE_LOG="$FAKE_LOG" FS_FAKE_INSTALLED="$FAKEINST"
+        export PATH="$FAKEDIR:$PATH"
         export HOME="$FX_TMP/nohome"
         if [[ "$dry" == 1 ]]; then export FS_DRY_RUN=1; fi
         unset FS_YES FS_PROFILE FS_DISTRO_FILE 2>/dev/null || :
@@ -53,26 +91,41 @@ prof_run() {
     fx_block_rc "$profile rc" 0
 }
 
-# === cell 1: minimal dry-run — exact single batch + purity ===
+# === cell 1: minimal dry-run — exact per-namespace batch + purity ===
 prof_run t_min_dry minimal 1
 fx_out 'profile: minimal'
 fx_out 'module: core (none)'
 fx_out 'module: flatpak (none)'
 fx_out '^== run complete ==$'
 fx_out '2 ok'
-fx_out "^# would run: mock install $MIN_BATCH $FLATPAKS\$"
+fx_out "^# would run: mock install $MIN_BATCH\$"
+fx_out '^# would run: flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo$'
+fx_out "^# would run: flatpak install --user --noninteractive --assumeyes $FLATPAKS\$"
 if [[ -e "$FX_TMP/t_min_dry/.local/state/fedora-setup" ]]; then fx_bad "minimal dry created state dir"; else fx_ok; fi
 if [[ -e "$FX_TMP/nohome" ]]; then fx_bad "minimal dry leaked into HOME"; else fx_ok; fi
 fx_empty "minimal dry mock untouched" "$LOG"
+fx_empty "minimal dry fake untouched" "$FAKE_LOG"
 
 # === cell 2: minimal real mock + resume idempotence ===
 : >"$INST"
-printf 'git\nhtop\ne2fsprogs\ncom.mattjakeman.ExtensionManager\n' >"$INST"
+: >"$FAKEINST"
+printf 'git\nhtop\ne2fsprogs\n' >"$INST"
+printf 'com.mattjakeman.ExtensionManager\n' >"$FAKEINST"
 prof_run t_min_real minimal 0
 fx_out 'profile: minimal'
 fx_out '^== run complete ==$'
 fx_out '2 ok'
-if grep -qxF 'mock install gnupg2 fastfetch curl wget vim fzf bat btop tmux unzip flatpak com.bitwarden.desktop net.nokyan.Resources' "$LOG"; then fx_ok; else fx_bad "minimal real batch in log"; fi
+if grep -qxF 'mock install gnupg2 fastfetch curl wget vim fzf bat btop tmux unzip flatpak' "$LOG"; then fx_ok; else fx_bad "minimal real system batch in log"; fi
+if grep -qxF 'flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo' "$FAKE_LOG"; then
+    fx_ok
+else
+    fx_bad "minimal real flatpak remote-add missing"
+fi
+if grep -qxF 'flatpak install --user --noninteractive --assumeyes com.bitwarden.desktop net.nokyan.Resources' "$FAKE_LOG"; then
+    fx_ok
+else
+    fx_bad "minimal real flatpak batch did not filter pre-installed app"
+fi
 for f in "$FX_TMP/t_min_real/.local/state/fedora-setup/modules/core" "$FX_TMP/t_min_real/.local/state/fedora-setup/modules/flatpak"; do
     if [[ -f "$f" ]]; then fx_ok; else fx_bad "minimal module not marked: $f"; fi
 done
@@ -82,7 +135,38 @@ fx_out 'already completed: flatpak'
 fx_out '2 skipped'
 if [[ -f "$FX_TMP/t_min_real/.local/state/fedora-setup/modules/core" ]]; then fx_ok; else fx_bad "resume lost completion mark"; fi
 
-# === cell 3: desktop dry-run — full batch incl fonts packages ===
+# === negative control: a package-ONLY selection (core) never invokes the
+# flatpak backend (core declares only system packages, no flatpaks.list,
+# so there is no flatpak batch and no fake-flatpak call at all). This is
+# NOT a routing proof (that is the mod_flatpak real-mode cell); it pins
+# the "no flatpaks -> no flatpak namespace" boundary. ===
+: >"$LOG"
+: >"$FAKE_LOG"
+: >"$INST"
+: >"$FAKEINST"
+(
+    set -euo pipefail
+    export FS_HOME="$FX_TMP/t_core_only"
+    export FS_PKG_BACKEND=mock FS_DISTRO_FAMILY=rpm
+    export FS_MODULES_DIR="$ROOT/modules" FS_PROFILES_DIR="$ROOT/profiles"
+    export FS_MOCK_LOG="$LOG" FS_MOCK_INSTALLED="$INST"
+    export FS_FAKE_LOG="$FAKE_LOG" FS_FAKE_INSTALLED="$FAKEINST"
+    export PATH="$FAKEDIR:$PATH"
+    export HOME="$FX_TMP/nohome"
+    unset FS_YES FS_PROFILE FS_DRY_RUN FS_DISTRO_FILE 2>/dev/null || :
+    "$SETUP" install --yes core
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "package-only (core) rc" 0
+if grep -qxF 'mock install gnupg2 fastfetch git curl wget vim fzf bat btop htop tmux unzip e2fsprogs flatpak' "$LOG"; then
+    fx_ok
+else
+    fx_bad "package-only selection missing system batch"
+fi
+fx_empty "package-only selection never invoked the flatpak backend" "$FAKE_LOG"
+fx_empty "package-only selection left fake installed set untouched" "$FAKEINST"
+
+# === cell 3: desktop dry-run — full per-namespace batch incl fonts packages ===
 prof_run t_desktop_dry desktop 1
 fx_out 'profile: desktop'
 fx_out 'module: core (none)'
@@ -92,14 +176,17 @@ fx_out 'module: git (low)'
 fx_out 'module: terminal (low)'
 fx_out '^== run complete ==$'
 fx_out '5 ok'
-fx_out "^# would run: mock install $FULL_BATCH\$"
+fx_out "^# would run: mock install $MIN_BATCH $FONT_PKGS\$"
 if grep -q '^# would run: mock install ' "$FX_OUT"; then
     n="$(grep -c '^# would run: mock install ' "$FX_OUT")"
-    if (( n == 1 )); then fx_ok; else fx_bad "desktop dry single batch (got $n)"; fi
+    if (( n == 1 )); then fx_ok; else fx_bad "desktop dry single system batch (got $n)"; fi
 fi
+fx_out '^# would run: flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo$'
+fx_out "^# would run: flatpak install --user --noninteractive --assumeyes $FLATPAKS\$"
 if [[ -e "$FX_TMP/t_desktop_dry/.local/state/fedora-setup" ]]; then fx_bad "desktop dry created state dir"; else fx_ok; fi
 if [[ -e "$FX_TMP/nohome" ]]; then fx_bad "desktop dry leaked into HOME"; else fx_ok; fi
 fx_empty "desktop dry mock untouched" "$LOG"
+fx_empty "desktop dry fake untouched" "$FAKE_LOG"
 
 # === cell 4: desktop real mock — e2e hooks fire for fonts/git/terminal ===
 DESK="$FX_TMP/desk"
@@ -139,12 +226,15 @@ printf '%s *atuin-x86_64-unknown-linux-gnu.tar.gz\n' \
 
 desktop_run() {
     : >"$LOG"
+    : >"$FAKE_LOG"
     (
         set -euo pipefail
         export FS_HOME="$FX_TMP/t_desktop_real"
         export FS_PKG_BACKEND=mock FS_DISTRO_FAMILY=rpm
         export FS_MODULES_DIR="$ROOT/modules" FS_PROFILES_DIR="$ROOT/profiles"
         export FS_MOCK_LOG="$LOG" FS_MOCK_INSTALLED="$INST"
+        export FS_FAKE_LOG="$FAKE_LOG" FS_FAKE_INSTALLED="$FAKEINST"
+        export PATH="$FAKEDIR:$PATH"
         export FS_GIT_CONFIG="$GITCONF"
         export FS_FONTS_DIR="$FONTS_DIR" FS_NERDFONT_SRC_DIR="$DESK/font-src"
         export XDG_CACHE_HOME="$DESK/xc"
@@ -159,13 +249,24 @@ desktop_run() {
 }
 
 : >"$INST"
+: >"$FAKEINST"
 printf 'curl\nhatop\n' >"$INST"
 desktop_run
 fx_block_rc "desktop real rc" 0
 fx_out 'profile: desktop'
 fx_out '^== run complete ==$'
 fx_out '5 ok'
-if grep -qxF 'mock install gnupg2 fastfetch git wget vim fzf bat btop htop tmux unzip e2fsprogs flatpak com.mattjakeman.ExtensionManager com.bitwarden.desktop net.nokyan.Resources google-noto-sans-fonts fira-code-fonts jetbrains-mono-fonts' "$LOG"; then fx_ok; else fx_bad "desktop real batch in log"; fi
+if grep -qxF 'mock install gnupg2 fastfetch git wget vim fzf bat btop htop tmux unzip e2fsprogs flatpak google-noto-sans-fonts fira-code-fonts jetbrains-mono-fonts' "$LOG"; then fx_ok; else fx_bad "desktop real system batch in log"; fi
+if grep -qxF 'flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo' "$FAKE_LOG"; then
+    fx_ok
+else
+    fx_bad "desktop real flatpak remote-add missing"
+fi
+if grep -qxF "flatpak install --user --noninteractive --assumeyes $FLATPAKS" "$FAKE_LOG"; then
+    fx_ok
+else
+    fx_bad "desktop real flatpak batch missing"
+fi
 fx_out 'installed nerd font: FiraCode Nerd Font (v3.3.0)'
 fx_out 'installed nerd font: JetBrainsMono Nerd Font (v3.3.0)'
 for f in "$FONTS_DIR/.fedora-setup-nerd-FiraCode-v3.3.0" "$FONTS_DIR/.fedora-setup-nerd-JetBrainsMono-v3.3.0"; do
@@ -191,6 +292,7 @@ fx_block_rc "desktop resume rc" 0
 fx_out '5 skipped'
 fx_out '^== run complete ==$'
 if cmp -s "$BASHRC" "$FX_TMP/desk.bashrc.snap" && cmp -s "$GITCONF" "$FX_TMP/desk.gitconfig.snap"; then fx_ok; else fx_bad "desktop resume rewrote managed files"; fi
+if ! grep -q '^flatpak install ' "$FAKE_LOG"; then fx_ok; else fx_bad "desktop resume re-ran flatpak batch"; fi
 
 # second HOOK invocation: remove the per-asset install markers + binaries and
 # unmark fonts+terminal, then re-run. The hooks re-execute against the same
@@ -217,6 +319,7 @@ fx_out 'sha256 verified: JetBrainsMono'
 fx_out 'installed nerd font: FiraCode Nerd Font (v3.3.0)'
 fx_out 'installed nerd font: JetBrainsMono Nerd Font (v3.3.0)'
 if ! grep -q '^mock install ' "$LOG"; then fx_ok; else fx_bad "hook re-run re-batched installed packages"; fi
+if ! grep -q '^flatpak install ' "$FAKE_LOG"; then fx_ok; else fx_bad "hook re-run re-ran flatpak batch"; fi
 if cmp -s "$BASHRC" "$FX_TMP/desk.bashrc.snap2" && cmp -s "$GITCONF" "$FX_TMP/desk.gitconfig.snap2"; then fx_ok; else fx_bad "hook re-run rewrote managed files"; fi
 for m in fonts terminal; do
     if [[ -f "$FX_TMP/t_desktop_real/.local/state/fedora-setup/modules/$m" ]]; then fx_ok; else fx_bad "hook re-run module not re-marked: $m"; fi

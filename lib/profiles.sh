@@ -15,9 +15,10 @@
 # shipped profiles (profiles/{minimal,desktop,developer,full}.conf): as of
 # P5.7 `minimal` = core+flatpak and `desktop` = minimal+git+fonts+terminal,
 # while `developer`/`full` are still comment-only — a comment-only profile
-# is a valid empty profile today. The base profiles carry real module sets
-# before the package/flatpak routing split (flatpaks currently batch through
-# the family package backend — an owner-pending split, see profiles/minimal.conf).
+# is a valid empty profile today. The base profiles carry real module sets;
+# the P5.7 NB-A routing split (runner corrective fix) means packages batch
+# through the family package backend and flatpaks through the flatpak
+# backend — one transaction per namespace, system first.
 # Ids printed are MODULE_ID values (the P4.2 identity invariant MODULE_ID ==
 # dir basename is enforced upstream by module_validate), so a resolver maps
 # each printed id back to <modules_dir>/<id>. Where the task speaks of "conflicts", the P4.1

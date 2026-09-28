@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
 # tests/fixtures/runner.sh - P4.6 fixture for lib/runner.sh.
-# End-to-end mock run of the full resolve -> plan -> ONE batch -> ordered
-# hooks -> state-marking -> summary pipeline, plus resume (already-
-# completed modules skipped), safe-continue vs destructive stop, family
-# gate, dry-run side-effect-freedom, CLI override, hookless modules, and
-# hook-subshell isolation. State, mock installed-set and mock call log
-# all live under FX_TMP so no system path or privilege is touched.
+# End-to-end mock run of the full resolve -> plan -> per-namespace batch
+# (system through the mock family backend, flatpaks through a stateful
+# fake flatpak binary, one transaction per backend) -> ordered hooks ->
+# state-marking -> summary pipeline, plus resume (already-completed
+# modules skipped), safe-continue vs destructive stop, family gate,
+# dry-run side-effect-freedom, CLI override, hookless modules, and
+# hook-subshell isolation. State, mock installed-set/call log, and the
+# flatpak fake log/installed set all live under FX_TMP so no system path
+# or privilege is touched.
 # Usage: bash tests/fixtures/runner.sh  (exit 0 on success)
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -23,6 +26,27 @@ printf '#!/usr/bin/env bash\nprintf '"'"'%%s\\n'"'"' "${1:?}" >>"${HOOK_LOG:?}${
 printf '#!/usr/bin/env bash\nexit "${1:-1}"\n' >"$FAKE/failrun"
 printf '#!/usr/bin/env bash\n: >"${1:?}"\n' >"$FAKE/touchfile"
 chmod +x "$FAKE/logrec" "$FAKE/failrun" "$FAKE/touchfile"
+{
+    printf '#!/usr/bin/env bash\n'
+    printf 'printf '"'"'flatpak %%s\\n'"'"' "$*" >>"${FS_FAKE_LOG:?}"\n'
+    printf 'case "${1:-}" in\n'
+    printf '  info)\n'
+    printf '    app="${3:-}"\n'
+    printf '    grep -qxF -- "$app" "${FS_FAKE_INSTALLED:?}" 2>/dev/null\n'
+    printf '    exit $?\n'
+    printf '    ;;\n'
+    printf '  install)\n'
+    printf '    shift\n'
+    printf '    for a in "$@"; do\n'
+    printf '        case "$a" in --*) continue;; esac\n'
+    printf '        grep -qxF -- "$a" "${FS_FAKE_INSTALLED:?}" 2>/dev/null || printf '"'"'%%s\\n'"'"' "$a" >>"${FS_FAKE_INSTALLED:?}"\n'
+    printf '    done\n'
+    printf '    exit 0\n'
+    printf '    ;;\n'
+    printf 'esac\n'
+    printf 'exit 0\n'
+} >"$FAKE/flatpak"
+chmod +x "$FAKE/flatpak"
 
 # --- module tree ---------------------------------------------------------
 
@@ -95,11 +119,14 @@ STATE_DIR() { printf '%s/.local/state/fedora-setup/modules' "$1"; }
 HOOK_LOG="$FX_TMP/hook1.log"
 MOCK_LOG="$FX_TMP/m1.log"
 INSTALLED="$FX_TMP/i1"
-: >"$MOCK_LOG"; : >"$INSTALLED"
+FAKE_LOG="$FX_TMP/f1.log"
+FAKEST="$FX_TMP/fs1"
+: >"$MOCK_LOG"; : >"$INSTALLED"; : >"$FAKE_LOG"; : >"$FAKEST"
 (
     set -euo pipefail
     export FS_PKG_BACKEND=mock FS_MOCK_LOG="$MOCK_LOG" FS_MOCK_INSTALLED="$INSTALLED"
-    export FS_HOME="$FX_TMP" FS_DRY_RUN=0 HOOK_LOG FAKE_LOG_REC="$FAKE/logrec"
+    export FS_FAKE_LOG="$FAKE_LOG" FS_FAKE_INSTALLED="$FAKEST"
+    export FS_HOME="$FX_TMP" FS_DRY_RUN=0 HOOK_LOG FAKE_LOG_REC="$FAKE/logrec" PATH="$FAKE:$PATH"
     eval "$SRC"
     runner_run "$M" "$P" "full" "rpm"
 ) >"$FX_OUT" 2>"$FX_ERR"
@@ -111,11 +138,22 @@ B
 C" ]]; then fx_ok; else fx_bad "hooks ran in deps-first order"; fi
 RCMI=$(grep -c '^mock install ' "$MOCK_LOG")
 if [[ "$RCMI" == "1" ]]; then fx_ok; else fx_bad "batch ran exactly once (got $RCMI)"; fi
-if grep -qxF 'mock install a1 a2 b1 c1 org.sample.C' "$MOCK_LOG"; then
+if grep -qxF 'mock install a1 a2 b1 c1' "$MOCK_LOG"; then
     fx_ok
 else
-    fx_bad "batch content mismatch"
+    fx_bad "system batch content mismatch"
 fi
+if grep -qxF 'flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo' "$FAKE_LOG"; then
+    fx_ok
+else
+    fx_bad "flatpak remote-add missing"
+fi
+if grep -qxF 'flatpak install --user --noninteractive --assumeyes org.sample.C' "$FAKE_LOG"; then
+    fx_ok
+else
+    fx_bad "flatpak install missing"
+fi
+if ! grep -qxF 'org.sample.C' "$FAKEST"; then fx_bad "flatpak installed state not recorded"; fi
 fx_out '^== run complete ==$'
 fx_out '^  - 3 ok$'
 fx_out '^  - 0 failed$'
@@ -126,40 +164,86 @@ for id in a b c; do
     if [[ -f "$(STATE_DIR "$FX_TMP")/$id" && "$(head -1 "$(STATE_DIR "$FX_TMP")/$id")" == done* ]]; then fx_ok; else fx_bad "state marked for $id"; fi
 done
 
+# --- flatpak batch failure: backend gate absent -> rc1, no hooks ---------
+# Run the full profile (c carries a flatpak) against a minimal PATH that has
+# the runner's tools but NO flatpak binary at all, so flatpak_supported
+# fails regardless of whether the host has flatpak installed. The system
+# batch (mock) commits; the flatpak batch then aborts with `flatpak batch
+# failed`, rc1, and no hooks/state follow.
+: >"$FX_TMP/minbin.log"
+MINBIN="$FX_TMP/minbin"
+mkdir -p "$MINBIN"
+for t in grep sort uniq readlink mktemp; do
+    src="$(command -v "$t" 2>/dev/null)"
+    if [[ -n "$src" ]]; then ln -sf "$src" "$MINBIN/$t"; fi
+done
+HOOK_LOG="$FX_TMP/hook1b.log"
+MOCK_LOG="$FX_TMP/m1b.log"
+INSTALLED="$FX_TMP/i1b"
+: >"$HOOK_LOG"; : >"$MOCK_LOG"; : >"$INSTALLED"
+(
+    set -euo pipefail
+    export FS_PKG_BACKEND=mock FS_MOCK_LOG="$MOCK_LOG" FS_MOCK_INSTALLED="$INSTALLED"
+    export FS_HOME="$FX_TMP/mflatfail" FS_DRY_RUN=0 HOOK_LOG FAKE_LOG_REC="$FAKE/logrec"
+    export PATH="$MINBIN"
+    eval "$SRC"
+    runner_run "$M" "$P" "full" "rpm"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "flatpak batch failure rc1" 1
+fx_err 'flatpak batch failed'
+RCMI=$(grep -c '^mock install ' "$MOCK_LOG")
+if [[ "$RCMI" == "1" ]]; then fx_ok; else fx_bad "system batch committed before flatpak failure (got $RCMI)"; fi
+fx_empty "flatpak failure ran no hooks" "$HOOK_LOG"
+fx_out_not '^== run complete ==$'
+for id in a b c; do
+    if [[ -e "$(STATE_DIR "$FX_TMP/mflatfail")/$id" ]]; then fx_bad "state written after flatpak failure"; else fx_ok; fi
+done
+
 # --- dry run: renders, touches nothing, ignores resume state ------------
 
 HOOK_LOG="$FX_TMP/hook2.log"
 MOCK_LOG="$FX_TMP/m2.log"
 INSTALLED="$FX_TMP/i2"
-: >"$MOCK_LOG"; : >"$INSTALLED"
+FAKE_LOG="$FX_TMP/f2.log"
+FAKEST="$FX_TMP/fs2"
+: >"$MOCK_LOG"; : >"$INSTALLED"; : >"$FAKE_LOG"; : >"$FAKEST"
 (
     set -euo pipefail
     export FS_PKG_BACKEND=mock FS_MOCK_LOG="$MOCK_LOG" FS_MOCK_INSTALLED="$INSTALLED"
-    export FS_HOME="$FX_TMP" FS_DRY_RUN=1 HOOK_LOG FAKE_LOG_REC="$FAKE/logrec"
+    export FS_FAKE_LOG="$FAKE_LOG" FS_FAKE_INSTALLED="$FAKEST"
+    export FS_HOME="$FX_TMP" FS_DRY_RUN=1 HOOK_LOG FAKE_LOG_REC="$FAKE/logrec" PATH="$FAKE:$PATH"
     eval "$SRC"
     runner_run "$M" "$P" "full" "rpm"
 ) >"$FX_OUT" 2>"$FX_ERR"
 FX_BLOCK_RC=$?
 fx_block_rc "dry run rc0" 0
-fx_out '^# would run: mock install a1 a2 b1 c1 org.sample.C$'
+fx_out '^# would run: mock install a1 a2 b1 c1$'
+fx_out '^# would run: flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo$'
+fx_out '^# would run: flatpak install --user --noninteractive --assumeyes org.sample.C$'
 fx_out '^  - 3 ok$'
 fx_out_not '^  - 3 skipped$'
 fx_empty "dry run wrote no hook side effects" "$HOOK_LOG"
 if [[ "$(wc -c <"$MOCK_LOG")" == "0" ]]; then fx_ok; else fx_bad "dry run recorded no mock ops"; fi
 if [[ "$(wc -c <"$INSTALLED")" == "0" ]]; then fx_ok; else fx_bad "dry run mutated installed set"; fi
+fx_empty "dry run recorded no flatpak ops" "$FAKE_LOG"
+if [[ "$(wc -c <"$FAKEST")" == "0" ]]; then fx_ok; else fx_bad "dry run mutated flatpak installed set"; fi
 
 # dry run into a fresh home creates no state root at all
 (
     set -euo pipefail
     export FS_PKG_BACKEND=mock FS_MOCK_LOG="$FX_TMP/m2b.log" FS_MOCK_INSTALLED="$FX_TMP/i2b"
+    export FS_FAKE_LOG="$FX_TMP/f2b.log" FS_FAKE_INSTALLED="$FX_TMP/fs2b"
     export FS_HOME="$FX_TMP/fresh" FS_DRY_RUN=1 HOOK_LOG="$FX_TMP/hook2b.log" FAKE_LOG_REC="$FAKE/logrec"
-    : >"$FX_TMP/m2b.log"; : >"$FX_TMP/i2b"; : >"$FX_TMP/hook2b.log"
+    : >"$FX_TMP/m2b.log"; : >"$FX_TMP/i2b"; : >"$FX_TMP/hook2b.log"; : >"$FX_TMP/f2b.log"; : >"$FX_TMP/fs2b"
+    export PATH="$FAKE:$PATH"
     eval "$SRC"
     runner_run "$M" "$P" "full" "rpm"
 ) >"$FX_OUT" 2>"$FX_ERR"
 FX_BLOCK_RC=$?
 fx_block_rc "dry run fresh home rc0" 0
-fx_out '^# would run: mock install a1 a2 b1 c1 org.sample.C$'
+fx_out '^# would run: mock install a1 a2 b1 c1$'
+fx_out '^# would run: flatpak install --user --noninteractive --assumeyes org.sample.C$'
 if [[ ! -e "$FX_TMP/fresh/.local/state" ]]; then fx_ok; else fx_bad "dry run created a state root"; fi
 
 # --- mid-run failure: safe-continue, log, resume skips completed ---------
@@ -177,12 +261,15 @@ if [[ ! -e "$FX_TMP/fresh/.local/state" ]]; then fx_ok; else fx_bad "dry run cre
 HOOK_LOG="$FX_TMP/hook3.log"
 MOCK_LOG="$FX_TMP/m3.log"
 INSTALLED="$FX_TMP/i3"
-: >"$MOCK_LOG"; : >"$INSTALLED"
+FAKE_LOG="$FX_TMP/f3.log"
+FAKEST="$FX_TMP/fs3"
+: >"$MOCK_LOG"; : >"$INSTALLED"; : >"$FAKE_LOG"; : >"$FAKEST"
 (
     set -euo pipefail
     export FS_PKG_BACKEND=mock FS_MOCK_LOG="$MOCK_LOG" FS_MOCK_INSTALLED="$INSTALLED"
+    export FS_FAKE_LOG="$FAKE_LOG" FS_FAKE_INSTALLED="$FAKEST"
     export FS_HOME="$FX_TMP/m3" FS_DRY_RUN=0 HOOK_LOG FAKE_LOG_REC="$FAKE/logrec"
-    export FAKE B_FLAG="$FX_TMP/m3-flag"
+    export FAKE B_FLAG="$FX_TMP/m3-flag" PATH="$FAKE:$PATH"
     eval "$SRC"
     runner_run "$M" "$P" "full" "rpm"
 ) >"$FX_OUT" 2>"$FX_ERR"
@@ -201,13 +288,17 @@ else
 fi
 RCMI=$(grep -c '^mock install ' "$MOCK_LOG")
 if [[ "$RCMI" == "1" ]]; then fx_ok; else fx_bad "run1 batch once (got $RCMI)"; fi
+RFI=$(grep -c '^flatpak install ' "$FAKE_LOG")
+if [[ "$RFI" == "1" ]]; then fx_ok; else fx_bad "run1 flatpak batch once (got $RFI)"; fi
+if grep -qxF 'org.sample.C' "$FAKEST"; then fx_ok; else fx_bad "run1 recorded flatpak installed"; fi
 
 # resume: a and c skipped, b retried and completed, no new batch
 (
     set -euo pipefail
     export FS_PKG_BACKEND=mock FS_MOCK_LOG="$MOCK_LOG" FS_MOCK_INSTALLED="$INSTALLED"
+    export FS_FAKE_LOG="$FAKE_LOG" FS_FAKE_INSTALLED="$FAKEST"
     export FS_HOME="$FX_TMP/m3" FS_DRY_RUN=0 HOOK_LOG FAKE_LOG_REC="$FAKE/logrec"
-    export FAKE B_FLAG="$FX_TMP/m3-flag"
+    export FAKE B_FLAG="$FX_TMP/m3-flag" PATH="$FAKE:$PATH"
     eval "$SRC"
     runner_run "$M" "$P" "full" "rpm"
 ) >"$FX_OUT" 2>"$FX_ERR"
@@ -220,6 +311,8 @@ fx_out '^  - 2 skipped$'
 if [[ -f "$(STATE_DIR "$FX_TMP/m3")/b" ]]; then fx_ok; else fx_bad "resume marked b"; fi
 RCMI=$(grep -c '^mock install ' "$MOCK_LOG")
 if [[ "$RCMI" == "1" ]]; then fx_ok; else fx_bad "resume added a batch (total $RCMI)"; fi
+RFI=$(grep -c '^flatpak install ' "$FAKE_LOG")
+if [[ "$RFI" == "1" ]]; then fx_ok; else fx_bad "resume re-ran flatpak batch (total $RFI)"; fi
 if [[ "$(cat "$HOOK_LOG")" == "A
 C" ]]; then fx_ok; else fx_bad "resume re-ran completed hooks"; fi
 
@@ -229,11 +322,15 @@ standard_hook b
 HOOK_LOG="$FX_TMP/hook4.log"
 MOCK_LOG="$FX_TMP/m4.log"
 INSTALLED="$FX_TMP/i4"
-: >"$MOCK_LOG"; : >"$INSTALLED"
+FAKE_LOG="$FX_TMP/f4.log"
+FAKEST="$FX_TMP/fs4"
+: >"$MOCK_LOG"; : >"$INSTALLED"; : >"$FAKE_LOG"; : >"$FAKEST"
 (
     set -euo pipefail
     export FS_PKG_BACKEND=mock FS_MOCK_LOG="$MOCK_LOG" FS_MOCK_INSTALLED="$INSTALLED"
+    export FS_FAKE_LOG="$FAKE_LOG" FS_FAKE_INSTALLED="$FAKEST"
     export FS_HOME="$FX_TMP/m4" FS_DRY_RUN=0 HOOK_LOG FAKE_LOG_REC="$FAKE/logrec"
+    export PATH="$FAKE:$PATH"
     eval "$SRC"
     runner_run "$M" "$P" "nav" "rpm"
 ) >"$FX_OUT" 2>"$FX_ERR"
@@ -262,7 +359,7 @@ INSTALLED="$FX_TMP/i5"
 (
     set -euo pipefail
     export FS_PKG_BACKEND=mock FS_MOCK_LOG="$MOCK_LOG" FS_MOCK_INSTALLED="$INSTALLED"
-    export FS_HOME="$FX_TMP/m5" FS_DRY_RUN=0 HOOK_LOG="$FX_TMP/hook5.log" FAKE_LOG_REC="$FAKE/logrec"
+    export FS_HOME="$FX_TMP/m5" FS_DRY_RUN=0 HOOK_LOG="$FX_TMP/hook5.log" FAKE_LOG_REC="$FAKE/logrec" PATH="$FAKE:$PATH"
     eval "$SRC"
     runner_run "$M" "$P" "fam" "rpm"
 ) >"$FX_OUT" 2>"$FX_ERR"
@@ -280,7 +377,7 @@ INSTALLED="$FX_TMP/i6"
 (
     set -euo pipefail
     export FS_PKG_BACKEND=mock FS_MOCK_LOG="$MOCK_LOG" FS_MOCK_INSTALLED="$INSTALLED"
-    export FS_HOME="$FX_TMP/m6" FS_DRY_RUN=0 HOOK_LOG="$FX_TMP/hook6.log" FAKE_LOG_REC="$FAKE/logrec"
+    export FS_HOME="$FX_TMP/m6" FS_DRY_RUN=0 HOOK_LOG="$FX_TMP/hook6.log" FAKE_LOG_REC="$FAKE/logrec" PATH="$FAKE:$PATH"
     eval "$SRC"
     runner_run "$M" "$P" "minimal" "rpm"
 ) >"$FX_OUT" 2>"$FX_ERR"
@@ -298,11 +395,14 @@ standard_hook b
 MOCK_LOG="$FX_TMP/m7.log"
 INSTALLED="$FX_TMP/i7"
 HOOK_LOG="$FX_TMP/hook7.log"
-: >"$MOCK_LOG"; : >"$INSTALLED"
+FAKE_LOG="$FX_TMP/f7.log"
+FAKEST="$FX_TMP/fs7"
+: >"$MOCK_LOG"; : >"$INSTALLED"; : >"$HOOK_LOG"; : >"$FAKE_LOG"; : >"$FAKEST"
 (
     set -euo pipefail
     export FS_PKG_BACKEND=mock FS_MOCK_LOG="$MOCK_LOG" FS_MOCK_INSTALLED="$INSTALLED"
-    export FS_HOME="$FX_TMP/m7" FS_DRY_RUN=0 HOOK_LOG FAKE_LOG_REC="$FAKE/logrec"
+    export FS_FAKE_LOG="$FAKE_LOG" FS_FAKE_INSTALLED="$FAKEST"
+    export FS_HOME="$FX_TMP/m7" FS_DRY_RUN=0 HOOK_LOG FAKE_LOG_REC="$FAKE/logrec" PATH="$FAKE:$PATH"
     eval "$SRC"
     runner_run "$M" "$P" "minimal" "rpm" c
 ) >"$FX_OUT" 2>"$FX_ERR"
@@ -311,10 +411,15 @@ fx_block_rc "CLI module rc0" 0
 if [[ "$(cat "$HOOK_LOG")" == "A
 B
 C" ]]; then fx_ok; else fx_bad "CLI module closure ran deps-first"; fi
-if grep -qxF 'mock install a1 a2 b1 c1 org.sample.C' "$MOCK_LOG"; then
+if grep -qxF 'mock install a1 a2 b1 c1' "$MOCK_LOG"; then
     fx_ok
 else
-    fx_bad "CLI batch content mismatch"
+    fx_bad "CLI system batch content mismatch"
+fi
+if grep -qxF 'flatpak install --user --noninteractive --assumeyes org.sample.C' "$FAKE_LOG"; then
+    fx_ok
+else
+    fx_bad "CLI flatpak batch missing"
 fi
 fx_out '^  - 3 ok$'
 fx_out 'profile: minimal'
@@ -327,7 +432,7 @@ INSTALLED="$FX_TMP/i8"
 (
     set -euo pipefail
     export FS_PKG_BACKEND=mock FS_MOCK_LOG="$MOCK_LOG" FS_MOCK_INSTALLED="$INSTALLED"
-    export FS_HOME="$FX_TMP/m8" FS_DRY_RUN=0 HOOK_LOG="$FX_TMP/hook8.log" FAKE_LOG_REC="$FAKE/logrec"
+    export FS_HOME="$FX_TMP/m8" FS_DRY_RUN=0 HOOK_LOG="$FX_TMP/hook8.log" FAKE_LOG_REC="$FAKE/logrec" PATH="$FAKE:$PATH"
     eval "$SRC"
     runner_run "$M" "$P" "cfgx" "rpm"
 ) >"$FX_OUT" 2>"$FX_ERR"
@@ -345,7 +450,7 @@ INSTALLED="$FX_TMP/i9"
 (
     set -euo pipefail
     export FS_PKG_BACKEND=mock FS_MOCK_LOG="$MOCK_LOG" FS_MOCK_INSTALLED="$INSTALLED"
-    export FS_HOME="$FX_TMP/m9" FS_DRY_RUN=0 HOOK_LOG="$FX_TMP/hook9.log" FAKE_LOG_REC="$FAKE/logrec"
+    export FS_HOME="$FX_TMP/m9" FS_DRY_RUN=0 HOOK_LOG="$FX_TMP/hook9.log" FAKE_LOG_REC="$FAKE/logrec" PATH="$FAKE:$PATH"
     rc=0
     eval "$SRC"
     runner_run "$M" "$P" "leak" "rpm" || rc=$?
@@ -366,7 +471,7 @@ INSTALLED="$FX_TMP/i10"
 (
     set -euo pipefail
     export FS_PKG_BACKEND=mock FS_MOCK_LOG="$MOCK_LOG" FS_MOCK_INSTALLED="$INSTALLED"
-    export FS_HOME="$FX_TMP/m10" FS_DRY_RUN=0 HOOK_LOG="$FX_TMP/hook10.log" FAKE_LOG_REC="$FAKE/logrec"
+    export FS_HOME="$FX_TMP/m10" FS_DRY_RUN=0 HOOK_LOG="$FX_TMP/hook10.log" FAKE_LOG_REC="$FAKE/logrec" PATH="$FAKE:$PATH"
     eval "$SRC"
     runner_run "$M" "$P" "bare" "rpm"
 ) >"$FX_OUT" 2>"$FX_ERR"
@@ -383,7 +488,7 @@ INSTALLED="$FX_TMP/i11"
 (
     set -euo pipefail
     export FS_PKG_BACKEND=mock FS_MOCK_LOG="$MOCK_LOG" FS_MOCK_INSTALLED="$INSTALLED"
-    export FS_HOME="$FX_TMP/m11" FS_DRY_RUN=0 HOOK_LOG="$FX_TMP/hook11.log" FAKE_LOG_REC="$FAKE/logrec"
+    export FS_HOME="$FX_TMP/m11" FS_DRY_RUN=0 HOOK_LOG="$FX_TMP/hook11.log" FAKE_LOG_REC="$FAKE/logrec" PATH="$FAKE:$PATH"
     eval "$SRC"
     runner_run "$M" "$P" "norun" "rpm"
 ) >"$FX_OUT" 2>"$FX_ERR"

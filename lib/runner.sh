@@ -26,18 +26,38 @@
 #                            <family> (the P4.2 list-usability gate: e.g.
 #                            on rpm a module must declare packages.list,
 #                            packages.rpm.list, or flatpaks.list), and its
-#                            packages.list + packages.<family>.list +
-#                            flatpaks.list entries (P4.3) are gathered into
-#                            ONE merged id set. A io_info "module: <id>
-#                            (<risk>)" line is printed per module; risks
-#                            are remembered for the failure policy.
+#                            packages.list + packages.<family>.list
+#                            entries (P4.3) go into the SYSTEM id set and
+#                            flatpaks.list entries into the FLATPAK id
+#                            set -- two namespaces, never one merged set.
+#                            A io_info "module: <id> (<risk>)" line is
+#                            printed per module; risks are remembered for
+#                            the failure policy.
 #                         3. BATCH -- plan_install (P3.8) is called at
-#                            most ONCE for the whole run with the merged
-#                            set: dedupe -> diff against installed ->
-#                            single pkg_install_batch. This is the
-#                            "packages batched once" invariant; a failing
-#                            transaction aborts (`package batch failed`,
-#                            rc1, no hooks run). An empty set makes no
+#                            most ONCE PER NAMESPACE, not once for the
+#                            whole run (P5.7 NB-A corrective fix): the
+#                            SYSTEM set goes through the active family
+#                            backend as before (dedupe -> diff against
+#                            the system installed state -> single
+#                            pkg_install_batch), while the FLATPAK set is
+#                            routed to the flatpak backend in a subshell
+#                            (FS_PKG_BACKEND=flatpak, self-restoring:
+#                            _pkg_load re-selects on the name change, the
+#                            caller's env is untouched). "packages batched
+#                            once" therefore holds per backend. System
+#                            runs BEFORE flatpak so a module such as core
+#                            can install the flatpak CLI first. Note: the
+#                            flatpak namespace gates on the flatpak
+#                            backend's own flatpak_supported check (a
+#                            bare `command -v flatpak`) even in dry-run,
+#                            so a dry-run of a flatpak-bearing selection
+#                            fails rc1 on a host without the flatpak
+#                            binary in PATH. A failing
+#                            system transaction aborts (`package batch
+#                            failed`, rc1, no hooks run); a failing
+#                            flatpak transaction aborts (`flatpak batch
+#                            failed`, rc1, no hooks run, after the system
+#                            batch committed). An empty namespace makes no
 #                            call at all.
 #                         4. HOOKS + STATE -- per module, in the resolved
 #                            deps-first order: already-completed modules
@@ -109,7 +129,7 @@ runner_run() {
         done <<<"$resolved"
     fi
     local -A risks=()
-    local -a pkgs=()
+    local -a pkgs=() apps=()
     local sid="" dir="" out="" p=""
     for sid in ${ids[@]+"${ids[@]}"}; do
         dir="$modules_dir/$sid"
@@ -125,13 +145,23 @@ runner_run() {
         out="$(list_flatpaks "$dir")" || return 1
         if [[ -n "$out" ]]; then
             while IFS= read -r p; do
-                pkgs+=("$p")
+                apps+=("$p")
             done <<<"$out"
         fi
     done
     if (( ${#pkgs[@]} > 0 )); then
         plan_install "${pkgs[@]}" || {
             io_error "package batch failed"
+            return 1
+        }
+    fi
+    if (( ${#apps[@]} > 0 )); then
+        (
+            FS_PKG_BACKEND=flatpak
+            export FS_PKG_BACKEND
+            plan_install "${apps[@]}"
+        ) || {
+            io_error "flatpak batch failed"
             return 1
         }
     fi
