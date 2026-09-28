@@ -1,0 +1,664 @@
+#!/usr/bin/env bash
+# tests/fixtures/gnome.sh - P6.1 fixture for the GNOME gsettings layer
+# (lib/gnome.sh). Covers the P6.1 verification bullet: fixture gsettings
+# output arrays parse/merge correctly; idempotent sets are no-ops;
+# malformed keys error safely (rc1, io_error) and never via sed rewriting
+# of system files (the lib contains no sed); dry-run renders exact
+# `# would run: ...` lines and never probes dconf.
+# Mock strategy mirrors pkg_flatpak.sh: a PATH-visible fake `gsettings`
+# logs `get`/`set` invocations to $FAKE_LOG, answers `get` from
+# $FAKE_GET and can fail `set` via $FAKE_SET_RC. No real system state;
+# everything lives under FX_TMP. Usage: bash tests/fixtures/gnome.sh
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+source "$ROOT/tests/fixtures/lib.sh"
+fx_init
+mkdir -p "$FX_TMP/fakebin" "$FX_TMP/notools"
+FX_EXPECT="$FX_TMP/expect"
+FAKE_LOG="$FX_TMP/fake.log"
+
+cat >"$FX_TMP/fakebin/gsettings" <<'EOF'
+#!/usr/bin/env bash
+: >>"$FAKE_LOG" 2>/dev/null || :
+case "$1" in
+    get)
+        printf 'get %s %s\n' "$2" "$3" >>"$FAKE_LOG" 2>/dev/null || :
+        printf '%s\n' "${FAKE_GET:-@as []}"
+        exit "${FAKE_GET_RC:-0}"
+        ;;
+    set)
+        printf 'set %s %s %s\n' "$2" "$3" "$4" >>"$FAKE_LOG" 2>/dev/null || :
+        exit "${FAKE_SET_RC:-0}"
+        ;;
+    *) exit 0 ;;
+esac
+EOF
+chmod +x "$FX_TMP/fakebin/gsettings"
+
+cat >"$FX_TMP/fakebin/gnome-extensions" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+chmod +x "$FX_TMP/fakebin/gnome-extensions"
+
+printf 'P6.1 gnome gsettings layer\n'
+
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH"
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_gsettings_available
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "gsettings available present" 0
+
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/notools"
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_gsettings_available
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "gsettings available absent" 1
+
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH"
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_extensions_available
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "gnome-extensions available present" 0
+
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/notools"
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_extensions_available
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "gnome-extensions available absent" 1
+
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH"
+    export FAKE_GET="'Adwaita'" FAKE_LOG
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_gsettings_get org.gnome.desktop.interface gtk-theme
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "get scalar present" 0
+printf "'Adwaita'\n" >"$FX_EXPECT"
+cmp "$FX_EXPECT" "$FX_OUT" >/dev/null 2>&1 && fx_ok || fx_bad "get scalar value"
+grep -Fqx "get org.gnome.desktop.interface gtk-theme" "$FAKE_LOG" && fx_ok || fx_bad "get probe logged"
+
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH"
+    export FAKE_GET="['/org/gnome/plugins/a/', '/org/gnome/plugins/b/']" FAKE_LOG
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_gsettings_get org.gnome.settings-daemon.plugins.media-keys custom-keybindings
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "get array present" 0
+printf "['/org/gnome/plugins/a/', '/org/gnome/plugins/b/']\n" >"$FX_EXPECT"
+cmp "$FX_EXPECT" "$FX_OUT" >/dev/null 2>&1 && fx_ok || fx_bad "get array passthrough"
+
+: >"$FAKE_LOG"
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH"
+    export FAKE_GET="'x'" FAKE_LOG
+    export FS_DRY_RUN=1
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_gsettings_get org.gnome.desktop.interface gtk-theme
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "get under dry-run rejects" 1
+fx_err "cannot probe gsettings in dry-run"
+fx_empty "dry-run get produces no stdout" "$FX_OUT"
+[[ ! -s "$FAKE_LOG" ]] && fx_ok || fx_bad "dry-run get never probes"
+
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/notools"
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_gsettings_get org.gnome.desktop.interface gtk-theme
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "get without gsettings rejects" 1
+fx_err "gsettings not found on PATH"
+
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH"
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_gsettings_get ../../etc/fstab gtk-theme
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "get invalid schema rejects" 1
+fx_err "invalid schema"
+
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH"
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_gsettings_get org.gnome.desktop.interface gtk/theme
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "get invalid key rejects" 1
+fx_err "invalid key"
+
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH"
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_gsettings_get
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "get without args rejects" 1
+fx_err "invalid schema"
+
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH"
+    export FAKE_GET="'Adwaita'" FAKE_LOG
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_gsettings_set org.gnome.desktop.interface gtk-theme "'new'"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "set new value" 0
+grep -Fqx "set org.gnome.desktop.interface gtk-theme 'new'" "$FAKE_LOG" && fx_ok || fx_bad "set invocation logged"
+grep -Fqx "get org.gnome.desktop.interface gtk-theme" "$FAKE_LOG" && fx_ok || fx_bad "set probes current value first"
+fx_out_not "would run"
+
+: >"$FAKE_LOG"
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH"
+    export FAKE_GET="'new'" FAKE_LOG
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_gsettings_set org.gnome.desktop.interface gtk-theme "'new'"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "idempotent set" 0
+grep -Fqx "set org.gnome.desktop.interface gtk-theme 'new'" "$FAKE_LOG" && fx_bad "idempotent set must not write" || fx_ok
+grep -Fqx "get org.gnome.desktop.interface gtk-theme" "$FAKE_LOG" && fx_ok || fx_bad "idempotent set still probes"
+
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH"
+    export FAKE_GET="'old'" FAKE_SET_RC=1 FAKE_LOG
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_gsettings_set org.gnome.desktop.interface gtk-theme "'new'"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "failed set is graceful keep-going" 0
+fx_err "command failed (rc=1)"
+
+: >"$FAKE_LOG"
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH"
+    export FAKE_GET="'old'" FAKE_GET_RC=1 FAKE_LOG
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_gsettings_set org.gnome.desktop.interface gtk-theme "'new'"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "set with failed pre-write read refuses" 1
+fx_err "gsettings get failed"
+grep -q '^set ' "$FAKE_LOG" && fx_bad "refused set must not write" || fx_ok
+
+: >"$FAKE_LOG"
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH"
+    export FAKE_GET="'old'" FAKE_LOG
+    export FS_DRY_RUN=1
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_gsettings_set org.gnome.desktop.interface gtk-theme "'new'"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "dry-run set renders" 0
+fx_out "# would run: gsettings set org.gnome.desktop.interface gtk-theme"
+[[ $(grep -c '^# would run:' "$FX_OUT") == 1 ]] && fx_ok || fx_bad "dry-run set single render line"
+[[ ! -s "$FAKE_LOG" ]] && fx_ok || fx_bad "dry-run set never probes or writes"
+
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/notools"
+    export FS_DRY_RUN=1
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_gsettings_set org.gnome.desktop.interface gtk-theme "'new'"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "dry-run set works without gsettings" 0
+fx_out "would run"
+
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH"
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_gsettings_set org.gnome.desktop.interface gtk-theme "$(printf 'line1\nline2')"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "set control-char value rejects" 1
+fx_err "invalid value"
+
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH"
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_gsettings_set org.gnome.desktop.interface gtk-theme
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "set missing value rejects" 1
+fx_err "invalid value"
+
+(
+    set -euo pipefail
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_strv_parse "['/org/gnome/plugins/a/', '/org/gnome/plugins/b/', '/org/gnome/plugins/c/']"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "parse array of strings" 0
+printf "/org/gnome/plugins/a/\n/org/gnome/plugins/b/\n/org/gnome/plugins/c/\n" >"$FX_EXPECT"
+cmp "$FX_EXPECT" "$FX_OUT" >/dev/null 2>&1 && fx_ok || fx_bad "array elements parsed line-wise"
+
+(
+    set -euo pipefail
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_strv_parse "@as []"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "parse @as []" 0
+fx_empty "empty type-prefixed array parses to nothing" "$FX_OUT"
+
+(
+    set -euo pipefail
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_strv_parse "[]"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "parse bare empty array" 0
+fx_empty "empty array parses to nothing" "$FX_OUT"
+
+(
+    set -euo pipefail
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_strv_parse "[1, 2, 3]"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "parse numeric array" 0
+printf "1\n2\n3\n" >"$FX_EXPECT"
+cmp "$FX_EXPECT" "$FX_OUT" >/dev/null 2>&1 && fx_ok || fx_bad "bare numeric tokens parsed"
+
+(
+    set -euo pipefail
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_strv_parse "['a\\'b']"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "parse escaped quote" 0
+printf "a'b\n" >"$FX_EXPECT"
+cmp "$FX_EXPECT" "$FX_OUT" >/dev/null 2>&1 && fx_ok || fx_bad "backslash escape decoded"
+
+(
+    set -euo pipefail
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_strv_parse "['a', ]"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "parse trailing comma" 0
+printf "a\n" >"$FX_EXPECT"
+cmp "$FX_EXPECT" "$FX_OUT" >/dev/null 2>&1 && fx_ok || fx_bad "trailing comma tolerated"
+
+(
+    set -euo pipefail
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_strv_parse "$(printf "[ 'a',\n\t'b' ]")"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "parse mixed whitespace" 0
+printf "a\nb\n" >"$FX_EXPECT"
+cmp "$FX_EXPECT" "$FX_OUT" >/dev/null 2>&1 && fx_ok || fx_bad "spaces/tabs/newlines tolerated"
+
+(
+    set -euo pipefail
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_strv_parse ""
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "parse empty input" 0
+fx_empty "empty input is the empty array" "$FX_OUT"
+
+(
+    set -euo pipefail
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_strv_parse "'a'"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "parse bare string rejects" 1
+fx_err "malformed GVariant array"
+
+(
+    set -euo pipefail
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_strv_parse "['a'"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "parse unclosed element rejects" 1
+fx_err "malformed GVariant array"
+
+(
+    set -euo pipefail
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_strv_parse "$(printf "['a\nb']")"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "parse control byte in quoted element rejects" 1
+fx_err "malformed GVariant array"
+
+(
+    set -euo pipefail
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_strv_parse "[ , ]"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "parse empty element rejects" 1
+fx_err "malformed GVariant array"
+
+(
+    set -euo pipefail
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_strv_parse "garbage"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "parse non-array rejects" 1
+fx_err "malformed GVariant array"
+
+(
+    set -euo pipefail
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_strv_parse "['a', 'b' x]"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "parse stray token rejects" 1
+fx_err "malformed GVariant array"
+
+(
+    set -euo pipefail
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_strv_build
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "build empty" 0
+printf "@as []\n" >"$FX_EXPECT"
+cmp "$FX_EXPECT" "$FX_OUT" >/dev/null 2>&1 && fx_ok || fx_bad "empty build emits @as []"
+
+(
+    set -euo pipefail
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_strv_build "org.foo.App" "org.bar.App"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "build two elements" 0
+printf "['org.foo.App', 'org.bar.App']\n" >"$FX_EXPECT"
+cmp "$FX_EXPECT" "$FX_OUT" >/dev/null 2>&1 && fx_ok || fx_bad "quoted, comma-separated, single line"
+
+(
+    set -euo pipefail
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_strv_build "bad'quote"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "build invalid element rejects" 1
+fx_err "invalid array element"
+
+(
+    set -euo pipefail
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    built="$(gnome_strv_build "/org/gnome/plugins/a/" "/org/gnome/plugins/b/")"
+    gnome_strv_parse "$built"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "build/parse roundtrip" 0
+printf "/org/gnome/plugins/a/\n/org/gnome/plugins/b/\n" >"$FX_EXPECT"
+cmp "$FX_EXPECT" "$FX_OUT" >/dev/null 2>&1 && fx_ok || fx_bad "built array parses back identical"
+
+(
+    set -euo pipefail
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_strv_merge "['/org/gnome/plugins/a/', '/org/gnome/plugins/b/']" "/org/gnome/plugins/c/"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "merge appends new" 0
+printf "['/org/gnome/plugins/a/', '/org/gnome/plugins/b/', '/org/gnome/plugins/c/']\n" >"$FX_EXPECT"
+cmp "$FX_EXPECT" "$FX_OUT" >/dev/null 2>&1 && fx_ok || fx_bad "existing order preserved, new appended"
+
+(
+    set -euo pipefail
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_strv_merge "" "/org/gnome/plugins/c/"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "merge from empty" 0
+printf "['/org/gnome/plugins/c/']\n" >"$FX_EXPECT"
+cmp "$FX_EXPECT" "$FX_OUT" >/dev/null 2>&1 && fx_ok || fx_bad "empty current is replaced by the new array"
+
+(
+    set -euo pipefail
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_strv_merge "['/org/gnome/plugins/a/', '/org/gnome/plugins/b/']" "/org/gnome/plugins/a/" "/org/gnome/plugins/c/" "/org/gnome/plugins/b/" "/org/gnome/plugins/a/"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "merge dedupes first-seen" 0
+printf "['/org/gnome/plugins/a/', '/org/gnome/plugins/b/', '/org/gnome/plugins/c/']\n" >"$FX_EXPECT"
+cmp "$FX_EXPECT" "$FX_OUT" >/dev/null 2>&1 && fx_ok || fx_bad "duplicates dropped, order stable"
+
+(
+    set -euo pipefail
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_strv_merge "['/a/']" "has space"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "merge invalid new rejects" 1
+fx_err "invalid element"
+
+(
+    set -euo pipefail
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_strv_merge "['a'
+" "/org/gnome/plugins/c/"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "merge malformed current rejects" 1
+fx_err "malformed"
+
+: >"$FAKE_LOG"
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH"
+    export FAKE_GET="@as []" FAKE_LOG
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_custom_keybindings_merge_add "/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom0/"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "keybindings add from empty" 0
+grep -Fqx "set org.gnome.settings-daemon.plugins.media-keys custom-keybindings ['/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom0/']" "$FAKE_LOG" && fx_ok || fx_bad "empty-current merge writes the new array"
+
+: >"$FAKE_LOG"
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH"
+    export FAKE_GET="['/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom0/', '/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom1/']" FAKE_LOG
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_custom_keybindings_merge_add "/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom2/"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "keybindings preserve and append" 0
+grep -Fqx "set org.gnome.settings-daemon.plugins.media-keys custom-keybindings ['/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom0/', '/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom1/', '/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom2/']" "$FAKE_LOG" && fx_ok || fx_bad "existing bindings kept, new appended"
+
+: >"$FAKE_LOG"
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH"
+    export FAKE_GET="['/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom0/', '/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom1/']" FAKE_LOG
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_custom_keybindings_merge_add "/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom1/"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "keybindings idempotent merge" 0
+grep -q '^set ' "$FAKE_LOG" && fx_bad "idempotent keybinding merge must not write" || fx_ok
+grep -q '^get ' "$FAKE_LOG" && fx_ok || fx_bad "idempotent keybinding merge still probes"
+
+: >"$FAKE_LOG"
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH"
+    export FAKE_GET="['/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom0/']" FAKE_LOG
+    export FS_DRY_RUN=1
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_custom_keybindings_merge_add "/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom1/"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "keybindings dry-run renders merge" 0
+fx_out "# would run: gsettings set org.gnome.settings-daemon.plugins.media-keys custom-keybindings"
+[[ $(grep -c '^# would run:' "$FX_OUT") == 1 ]] && fx_ok || fx_bad "dry-run keybindings single render line"
+grep -q 'get org.gnome.settings-daemon.plugins.media-keys' "$FX_OUT" && fx_bad "dry-run keybindings must not probe" || fx_ok
+[[ ! -s "$FAKE_LOG" ]] && fx_ok || fx_bad "dry-run keybindings never writes"
+
+(
+    set -euo pipefail
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_custom_keybindings_merge_add
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "keybindings without paths rejects" 1
+fx_err "requires at least one dconf path"
+
+: >"$FAKE_LOG"
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH"
+    export FAKE_GET="@as []" FAKE_LOG
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_custom_keybindings_merge_add "has space"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "keybindings invalid path rejects" 1
+fx_err "invalid element"
+grep -q '^set ' "$FAKE_LOG" && fx_bad "rejected merge must not write" || fx_ok
+
+(
+    set -euo pipefail
+    export FS_DRY_RUN=1
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_custom_keybindings_merge_add "bad'quote"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "keybindings dry-run invalid path rejects" 1
+fx_err "invalid array element"
+
+grep -nE '\b(sed|awk)\b' "$ROOT/lib/gnome.sh" >/dev/null 2>&1 &&
+    fx_bad "lib/gnome.sh must not reference sed/awk" || fx_ok
+
+fx_summary
