@@ -1,0 +1,10 @@
+# Debian/Ubuntu family package for the gnome-extensions module (P6.3).
+# Deliberately a single shared bundle: dash-to-dock ships as
+# gnome-shell-extension-dashtodock on Debian but is absent under that and
+# any standard dash-to-dock name on Ubuntu noble (packages.ubuntu.com has no
+# such package; Ubuntu preinstalls its own ubuntu-dock), so a family-common
+# dash-to-dock declaration would fail on one of the two. The
+# gnome-shell-extensions bundle carries user-theme (and friends) on both
+# distros, and user-theme is therefore enabled from the curated set only
+# when its uuid is actually installed.
+gnome-shell-extensions

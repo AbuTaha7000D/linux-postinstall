@@ -70,6 +70,22 @@
 #         <schema> must be plain or relocatable; <key> plain. Dry-run renders
 #         the write of the new-only build (the current value is not
 #         probeable) and never probes. A failed pre-write read aborts rc1.
+# gnome_shell_version
+#         print the numeric GNOME Shell version token probed from
+#         `gnome-shell --version` (real mode only: refuses under
+#         FS_DRY_RUN with no probing; rc1 when gnome-shell is absent, the
+#         probe fails, or the token is not digits/dots without leading,
+#         trailing, or doubled dots -- so `50.5`, `3.38.4` are accepted,
+#         anything else rejected). Used by P6.3 to report extension
+#         compatibility notes -- always a report, never a write.
+# gnome_extensions_list [--enabled]
+#         print `gnome-extensions list` (all installed) or `gnome-extensions
+#         list --enabled` output verbatim, one entry per line. Real mode only
+#         (refuses probing in dry-run); rc1 when gnome-extensions is absent,
+#         the flag is unknown, or the probe fails. Callers must expect bare
+#         uuid lines (`name` only, no state/number columns); lines carrying
+#         extra columns that fail the bare-uuid filter are dropped by the
+#         consumer (see modules/gnome-extensions/hooks.sh).
 
 gnome_gsettings_available() {
     command -v gsettings >/dev/null 2>&1
@@ -432,4 +448,66 @@ gnome_custom_keybindings_merge_add() {
         return 1
     fi
     gnome_strv_merge_set "$schema" "$key" "$@"
+}
+
+gnome_shell_version() {
+    local bin="" out="" rc=0 version=""
+    if (( FS_DRY_RUN == 1 )); then
+        io_error "gnome_shell_version: cannot probe gnome-shell version in dry-run"
+        return 1
+    fi
+    if ! command -v gnome-shell >/dev/null 2>&1; then
+        io_error "gnome_shell_version: gnome-shell not found on PATH"
+        return 1
+    fi
+    bin="$(command -v gnome-shell)"
+    rc=0
+    out="$("$bin" --version 2>/dev/null)" || rc=$?
+    if (( rc != 0 )); then
+        io_error "gnome_shell_version: gnome-shell --version failed"
+        return 1
+    fi
+    version="${out##* }"
+    case "$version" in
+        "" | *[!0-9.]* | *..* | .* | *.)
+            io_error "gnome_shell_version: cannot parse version from: $out"
+            return 1
+            ;;
+    esac
+    printf '%s\n' "$version"
+    return 0
+}
+
+gnome_extensions_list() {
+    local flag="${1:-}" bin="" out="" rc=0
+    if (( FS_DRY_RUN == 1 )); then
+        io_error "gnome_extensions_list: cannot probe gnome-extensions in dry-run"
+        return 1
+    fi
+    if ! gnome_extensions_available; then
+        io_error "gnome_extensions_list: gnome-extensions not found on PATH"
+        return 1
+    fi
+    case "$flag" in
+        --enabled) ;;
+        "") ;;
+        *) io_error "gnome_extensions_list: unknown flag: $flag"
+           return 1
+           ;;
+    esac
+    bin="$(command -v gnome-extensions)"
+    local -a args=("$bin" list)
+    if [[ -n "$flag" ]]; then
+        args+=("$flag")
+    fi
+    rc=0
+    out="$("${args[@]}" 2>/dev/null)" || rc=$?
+    if (( rc != 0 )); then
+        io_error "gnome_extensions_list: gnome-extensions list failed"
+        return 1
+    fi
+    if [[ -n "$out" ]]; then
+        printf '%s\n' "$out"
+    fi
+    return 0
 }

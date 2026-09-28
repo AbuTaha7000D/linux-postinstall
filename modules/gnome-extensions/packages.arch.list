@@ -1,0 +1,6 @@
+# Arch family package for the gnome-extensions module (P6.3).
+# dash-to-dock is AUR-only on Arch (not in any official repo as of P6.3
+# research), so it is not declared here; the shared gnome-shell-extensions
+# bundle ships user-theme in extra, and the curated enables stay effective
+# for whatever the operator installs themselves.
+gnome-shell-extensions

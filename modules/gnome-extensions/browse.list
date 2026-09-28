@@ -1,0 +1,9 @@
+# Curated browse list for the gnome-extensions module (P6.3), opt-in via
+# --browse / FS_GNOME_BROWSE=1. At most the first two lines are opened, in
+# order, once, sequentially through run_cmd (never backgrounded). Lines
+# after the second are ignored even if present -- the limit is hard. URLs
+# must start with http:// or https://.
+# The two pages below are the stable extensions.gnome.org pages of the
+# curated enable set (dash-to-dock, user-themes).
+https://extensions.gnome.org/extension/307/dash-to-dock/
+https://extensions.gnome.org/extension/19/user-themes/

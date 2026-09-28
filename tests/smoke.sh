@@ -24,7 +24,8 @@ export TMPDIR="$TMP"
 trap 'rm -rf -- "$TMP"' EXIT
 
 unset -v FS_VERBOSE FS_DEBUG FS_DRY_RUN FS_YES FS_LOG_FILE FS_HOME FS_EUID \
-    FS_DISTRO_FILE FS_RUNNING_AS_ROOT FS_SUDO_AVAILABLE 2>/dev/null || :
+    FS_DISTRO_FILE FS_RUNNING_AS_ROOT FS_SUDO_AVAILABLE FS_GNOME_BROWSE \
+    FS_GNOME_COMPAT_FILE 2>/dev/null || :
 
 pass=0
 fail=0
@@ -151,9 +152,9 @@ smoke_cli() {
             . "$ROOT/lib/io.sh"
             . "$ROOT/lib/cli.sh"
             cli_parse "$@"
-            printf 'cmd=%s yes=%s dry=%s verbose=%s debug=%s list=%s profile=%s args=%s\n' \
+            printf 'cmd=%s yes=%s dry=%s verbose=%s debug=%s list=%s profile=%s browse=%s args=%s\n' \
                 "${FS_CMD:-}" "$FS_YES" "$FS_DRY_RUN" "$FS_VERBOSE" "$FS_DEBUG" \
-                "$FS_LIST" "${FS_PROFILE:-}" "${FS_CMD_ARGS[*]:-}"
+                "$FS_LIST" "${FS_PROFILE:-}" "$FS_GNOME_BROWSE" "${FS_CMD_ARGS[*]:-}"
         )
     }
     t_rc 0 "bare help default" cli_one
@@ -164,6 +165,8 @@ smoke_cli() {
     t_out "cmd=list"
     t_rc 0 "flags" cli_one --yes --dry-run check
     t_out "yes=1 dry=1"
+    t_rc 0 "browse flag" cli_one --browse install
+    t_out "cmd=install.*browse=1"
     t_rc 0 "profile value" cli_one --profile smoke install
     t_out "cmd=install.*profile=smoke"
     t_rc 0 "verbose flag" cli_one --verbose check

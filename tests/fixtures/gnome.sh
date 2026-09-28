@@ -39,9 +39,32 @@ chmod +x "$FX_TMP/fakebin/gsettings"
 
 cat >"$FX_TMP/fakebin/gnome-extensions" <<'EOF'
 #!/usr/bin/env bash
-exit 0
+: >>"${FAKE_LOG:-/dev/null}" 2>/dev/null || :
+case "$1" in
+    list)
+        printf 'list %s\n' "${2:-}" >>"${FAKE_LOG:-/dev/null}" 2>/dev/null || :
+        if [[ "$2" == --enabled ]]; then
+            cat "${FAKE_EXT_ENABLED:-/dev/null}" 2>/dev/null
+        else
+            cat "${FAKE_EXT_LIST:-/dev/null}" 2>/dev/null
+        fi
+        exit 0
+        ;;
+    *) exit 0 ;;
+esac
 EOF
 chmod +x "$FX_TMP/fakebin/gnome-extensions"
+
+cat >"$FX_TMP/fakebin/gnome-shell" <<'EOF'
+#!/usr/bin/env bash
+: >>"${FAKE_LOG:-/dev/null}" 2>/dev/null || :
+if [[ "$1" == --version ]]; then
+    printf 'version\n' >>"${FAKE_LOG:-/dev/null}" 2>/dev/null || :
+    printf '%s\n' "${FAKE_SHELL_VERSION:-GNOME Shell 50.5}"
+fi
+exit 0
+EOF
+chmod +x "$FX_TMP/fakebin/gnome-shell"
 
 printf 'P6.1 gnome gsettings layer\n'
 
@@ -901,5 +924,165 @@ grep -Fqx "set org.gnome.shell.custom-binding:/org/gnome/custom0/ favorite-apps 
 
 grep -nE '\b(sed|awk)\b' "$ROOT/lib/gnome.sh" >/dev/null 2>&1 &&
     fx_bad "lib/gnome.sh must not reference sed/awk" || fx_ok
+
+FAKE_EXT_LIST="$FX_TMP/ext-list"
+FAKE_EXT_ENABLED="$FX_TMP/ext-enabled"
+printf "dash-to-dock@micxgx.gmail.com\nuser-theme@gnome-shell-extensions.gcampax.github.com\nopenbar@neuromorph\n" >"$FAKE_EXT_LIST"
+printf "openbar@neuromorph\n" >"$FAKE_EXT_ENABLED"
+
+: >"$FAKE_LOG"
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH"
+    export FAKE_SHELL_VERSION="GNOME Shell 50.5" FAKE_LOG
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_shell_version
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "shell version present" 0
+printf "50.5\n" >"$FX_EXPECT"
+cmp "$FX_EXPECT" "$FX_OUT" >/dev/null 2>&1 && fx_ok || fx_bad "shell version token"
+grep -Fqx "version" "$FAKE_LOG" && fx_ok || fx_bad "shell version probe logged"
+
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/notools"
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_shell_version
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "shell version without gnome-shell rejects" 1
+fx_err "gnome-shell not found on PATH"
+
+: >"$FAKE_LOG"
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH"
+    export FS_DRY_RUN=1 FAKE_LOG FAKE_SHELL_VERSION="GNOME Shell 50.5"
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_shell_version
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "shell version dry-run rejects" 1
+fx_err "cannot probe gnome-shell version in dry-run"
+fx_empty "dry-run shell version produces no stdout" "$FX_OUT"
+[[ ! -s "$FAKE_LOG" ]] && fx_ok || fx_bad "dry-run shell version never probes"
+
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH"
+    export FAKE_SHELL_VERSION="junk version abc"
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_shell_version
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "shell version unparsable rejects" 1
+fx_err "cannot parse version"
+
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH"
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_shell_version
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "shell version default 50.5" 0
+printf "50.5\n" >"$FX_EXPECT"
+cmp "$FX_EXPECT" "$FX_OUT" >/dev/null 2>&1 && fx_ok || fx_bad "default fake shell version parsed"
+
+: >"$FAKE_LOG"
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH"
+    export FAKE_EXT_LIST="$FAKE_EXT_LIST" FAKE_EXT_ENABLED="$FAKE_EXT_ENABLED" FAKE_LOG
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_extensions_list
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "extensions list real" 0
+printf "dash-to-dock@micxgx.gmail.com\nuser-theme@gnome-shell-extensions.gcampax.github.com\nopenbar@neuromorph\n" >"$FX_EXPECT"
+cmp "$FX_EXPECT" "$FX_OUT" >/dev/null 2>&1 && fx_ok || fx_bad "extensions list passthrough"
+grep -Fqx "list " "$FAKE_LOG" && fx_ok || fx_bad "extensions list probe logged"
+
+: >"$FAKE_LOG"
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH"
+    export FAKE_EXT_ENABLED FAKE_LOG
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_extensions_list --enabled
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "extensions list enabled" 0
+printf "openbar@neuromorph\n" >"$FX_EXPECT"
+cmp "$FX_EXPECT" "$FX_OUT" >/dev/null 2>&1 && fx_ok || fx_bad "enabled list passthrough"
+grep -Fqx "list --enabled" "$FAKE_LOG" && fx_ok || fx_bad "enabled probe flag logged"
+
+: >"$FAKE_LOG"
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH"
+    export FS_DRY_RUN=1 FAKE_LOG
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_extensions_list
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "extensions list dry-run rejects" 1
+fx_err "cannot probe gnome-extensions in dry-run"
+fx_empty "dry-run extensions list produces no stdout" "$FX_OUT"
+[[ ! -s "$FAKE_LOG" ]] && fx_ok || fx_bad "dry-run extensions list never probes"
+
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/notools"
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_extensions_list
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "extensions list without binary rejects" 1
+fx_err "gnome-extensions not found on PATH"
+
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH"
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_extensions_list --bogus
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "extensions list unknown flag rejects" 1
+fx_err "unknown flag"
+
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH"
+    export FAKE_EXT_LIST="$FX_TMP/missing" FAKE_EXT_ENABLED="$FX_TMP/missing"
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_extensions_list
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "extensions list empty" 0
+fx_empty "empty extensions list is empty stdout" "$FX_OUT"
 
 fx_summary
