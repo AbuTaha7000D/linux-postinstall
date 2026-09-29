@@ -1,0 +1,4 @@
+# Family-divergent name (dev only): pip. Debian/Ubuntu base repos ship
+# python3-pip (verified `apt-cache policy` on Ubuntu 26.04.1). The other
+# pip name, python-pip, is arch-only and must never appear here.
+python3-pip

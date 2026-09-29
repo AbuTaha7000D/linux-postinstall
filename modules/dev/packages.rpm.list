@@ -1,0 +1,4 @@
+# Family-divergent name (dev only): pip. Fedora-family base repos ship
+# python3-pip (present in Fedora Everything repodata). The other pip name,
+# python-pip, is arch-only and must never appear here.
+python3-pip
