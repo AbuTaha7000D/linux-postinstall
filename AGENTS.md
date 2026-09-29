@@ -12,7 +12,7 @@ is a "module"; modules are grouped into profiles; everything runs through the co
 - **Process stance:** this is a gated rewrite. Each task must pass fresh-context Senior Review,
   be committed, and only then may the next task start. A phase ends with a report and explicit
   owner approval before the next phase begins.
-- **Current state:** P0–P5 are **DONE** and committed: P2.1 io … P2.9 `tests/smoke.sh` become
+- **Current state:** P0–P6 are **DONE** and committed: P2.1 io … P2.9 `tests/smoke.sh` become
   `103` asserts under P4.7 (now `105`), P3 backend beans live behind `FS_PKG_BACKEND`
   (`lib/pkg.sh` P3.1; plan/verify/planner/lists/sources in P3.2–P3.5, `tests/fixtures/pkg_*`),
   P4.1 hooks/sandbox … P4.7 selection UI + real `./setup install` wiring (`lib/ui.sh`,
@@ -20,7 +20,15 @@ is a "module"; modules are grouped into profiles; everything runs through the co
   P5.1–P5.6 base modules (`core`/`flatpak`/`git`/`fonts`/`terminal`), P5.7 profile wiring +
   package namespace routing (`minimal`/`desktop`; system→family backend, flatpaks→flatpak
   backend, system first), P5.8 bare install family→backend resolution fix (`c964fd7`).
-  **Next phase: P6.** Do not start P6 without owner approval.
+  P6.1 `lib/gnome.sh` gsettings layer, P6.2–P6.4 GNOME modules
+  (`gnome-base`/`gnome-extensions`/`gnome-theme`), P6.5 capability gating + verify hooks
+  (`--force`; gsettings-missing = graceful skip rc0), P6.6 idempotency sweep
+  (`tests/fixtures/idempotency.sh`; real bug fixed — `gnome_gsettings_set` compare-before-write
+  now also matches the single-quoted rendering real `gsettings get` returns for string scalars,
+  and the `gnome-base` verify wallpaper compare does the same). The `gnome-*` modules are
+  **NOT wired into any profile** (open owner decision from the P6 closure; run them explicitly
+  via `./setup install --yes <id>`).
+  **Next phase: P7.** Do not start P7 without owner approval.
 - Version: `FS_VERSION="0.1.0-dev"` (see `lib/bootstrap.sh`).
 
 ## 2. Repository structure
@@ -30,17 +38,20 @@ is a "module"; modules are grouped into profiles; everything runs through the co
 | `setup` | Executable launcher. Resolves its own path from `$0` (no CWD assumption), `set -euo pipefail`, `readlink -f` canonicalization, then `exec`s `lib/bootstrap.sh "$@"`. |
 | `lib/bootstrap.sh` | Entry: Bash≥4.3 check, tool/layout checks, sources `io.sh` + `cli.sh`, parses args, dispatches: `help`/`version`/`check`/`list`/`install` rc0 (install = P4.7 real wiring); `verify`/`export`/`update` rc1 "not implemented yet"; unknown → rc1. |
 | `lib/io.sh` | Leveled logging (error/warn/info/debug), TTY-only color, timestamps, progress/summary, audit-log init. `io_*` never abort the caller under `set -e`/`set -u`. |
-| `lib/cli.sh` | Flags `--yes/--dry-run/--verbose/--debug/--profile V/--list`, `-h/--help`, `--` end-of-options; commands `install|list|check|verify|export|update|help|version`; unknown → rc1. |
+| `lib/cli.sh` | Flags `--yes/--dry-run/--verbose/--debug/--profile V/--list/--force/--browse`, `-h/--help`, `--` end-of-options; commands `install|list|check|verify|export|update|help|version`; unknown → rc1. |
 | `lib/distro.sh` | Reads `/etc/os-release` (or `FS_DISTRO_FILE`, or 1st arg — read-only input). Capability matrix: family/id/pkgmgr/localpkg/flatpak-default/gnome. Test seam `FS_DISTRO_PKGMGR_OVERRIDE`. |
 | `lib/state.sh` | State root `$FS_HOME` (test) > `$XDG_STATE_HOME` > `$HOME`, joined with `/fedora-setup`. Run logs, module registry, backup registry. Symlink/confinement-guarded. |
 | `lib/fs.sh` | `fs_backup`, `fs_install`, `fs_managed_block`/`fs_managed_block_remove`. Atomic temp+rename; managed-block marker covenant (see §12). |
 | `lib/sudo.sh` | `sudo_detect`, `sudo_refresh`, `sudo_exec`. Never touches `/etc/sudoers`. Dry-run keeps probe OFF and executes nothing. |
 | `lib/run.sh` | `run_cmd`/`run_sudo` with label, `--stop`, `[DESTROY]` forced stop, dry-run `# would run:` lines, `FS_LOG_FILE` audit trail + `FS_LOG_INFRA` halt. |
+| `lib/gnome.sh` | P6.1: gsettings layer — availability checks; `gnome_gsettings_get`/`gnome_gsettings_set` (idempotent probe-then-write; real `gsettings get` renders string scalars single-quoted, so the compare also matches a bare target), strv parse/build/merge + custom-keybinding merge-add primitives; P6.5 capability gate `gnome_require_capable` (`FS_GNOME_FORCE` bypass > SSH-headless > non-GNOME XDG > gsettings-missing); P6.3 `gnome_shell_version`/`gnome_extensions_list`. |
 | `lib/runner.sh` | P4.6: `runner_run <modules_dir> <profiles_dir> <name> <family> [module...]` — resolve/plan/hooks+state/summary stages; deps-first execution, destructive-stop policy, dry-run state-free, hook subshell sandbox. BATCH (P5.7): one batch per namespace — system pkg ids once via the active family backend, flatpak ids once via `( FS_PKG_BACKEND=flatpak; export FS_PKG_BACKEND; plan_install ... )` subshell (self-restoring), system first. |
 | `lib/ui.sh` | P4.7: `ui_multiselect`/`ui_confirm` selection + confirm layer (no external TUI tool — no ncurses; Bash + coreutils execs only). TTY raw-key re-render vs deterministic line-mode; high-risk rows never digit/`a`-toggleable (opt-in prompt is their only checklist route); EOF/`q` abort rc1 fail-closed; atomic sel-file write via `mv -fT`; `ui_confirm` returns 0 under `--yes`; color helpers must keep `return 0` (set -e safety). |
-| `tests/smoke.sh` | Plain-bash smoke suite for P2.1–P2.8 + `setup install` dry-run (P4.7); 105 asserts (P10 adds bats/CI later). |
-| `assets/`, `docs/`, `modules/` | Skeletons (tracked `.gitkeep` only). Content arrives in later phases. |
-| `profiles/` | P4.5: loadable skeleton profiles `{minimal,desktop,developer,full}.conf` (comment-only, valid empty until P5–P8 content); consumed via `lib/profiles.sh`. |
+| `tests/smoke.sh` | Plain-bash smoke suite for P2.1–P2.8 + `setup install` dry-run (P4.7) + GNOME capability/`--force` cells (P6.5); 125 asserts (P10 adds bats/CI later). |
+| `modules/` | P5/P6 module tree: `core`/`flatpak`/`git`/`fonts`/`terminal` (P5.1–P5.6) + `gnome-base`/`gnome-extensions`/`gnome-theme` (P6.2–P6.4), each `module.sh` + `hooks.sh` + list/config data files. |
+| `config/` | Static repo data: `nerdfonts.sha256` (P5.7 pinned release digests), `extensions.compat` (P6.3 GNOME extension-version report windows). |
+| `assets/`, `docs/` | Stubs (tracked `.gitkeep` only). Content arrives in later phases. |
+| `profiles/` | P4.5 loadable skeletons; P5.7 real sets: `minimal` = `core flatpak`, `desktop` = `core flatpak git fonts terminal` (comment-only `developer`/`full`). The P6 `gnome-*` modules are deliberately NOT wired into a profile (owner decision from the P6 closure; run them explicitly via `./setup install --yes <id>`). Consumed via `lib/profiles.sh`. |
 | `ROADMAP.md` | Internal execution plan. **Gitignored — never commit** (§10). |
 | `README.md` | **Stale:** documents the deleted prototype (`setup.sh` etc.). Rewritten only in P11.1 — do not keep it in sync per task. |
 
@@ -61,6 +72,12 @@ sync with code.
   `FS_MODULES_DIR` (module-dir override for `./setup list`), `FS_PROFILES_DIR` (profiles-dir source for
   profile resolution; consumed by the caller-level wiring planned in P4.6/P4.7, bootstrap default = repo `profiles/`). `FS_DISTRO_FAMILY` may be pointed at directly
   to skip distro detection for a `list` run.
+- Module seams (P5 base set): `FS_GIT_CONFIG` + `FS_GIT_USER_NAME`/`FS_GIT_USER_EMAIL`, `FS_FONTS_DIR`/
+  `FS_NERDFONT_SRC_DIR`/`FS_NERDFONT_CONFIG`/`FS_NERDFONT_SHA256_FILE`/`FS_NERDFONT_ASSETS_DIR`,
+  `FS_TERM_ALIASES`/`FS_OMP_{VERSION,ARCH,SRC_DIR}`/`FS_ATUIN_{VERSION,ARCH,SRC_DIR,BIN}`.
+- P6 GNOME seams: `FS_WALLPAPER_ASSETS_DIR` (gnome-base), `FS_GNOME_BROWSE`/`FS_GNOME_COMPAT_FILE`
+  (gnome-extensions), `FS_THEME_{NAME,SRC,ASSETS_DIR}`/`FS_CURSOR_{NAME,SRC,ASSETS_DIR}`/
+  `FS_GTK_BOOKMARKS_FILE` (gnome-theme), `FS_GNOME_FORCE` (P6.5 capability-gate bypass).
 
 ## 4. Development status and how ROADMAP.md is used
 
@@ -173,6 +190,12 @@ delivered; **stop and wait for explicit owner approval** before the next phase.
   the runner stays boring.
 - All code: `#!/usr/bin/env bash` + `set -euo pipefail`; **no comments inside function bodies**
   (file-level doc comments only); `set -e` rule of thumb: io_* wrappers must not abort callers.
+- `gsettings` string scalars: real `gsettings get` renders them single-quoted (`'file:///x'`).
+  Every compare-before-write must treat a bare target as equal to its quoted rendering
+  (`lib/gnome.sh` `gnome_gsettings_set`; the `gnome-base` verify wallpaper compare too) —
+  P6.6 found this was a real idempotency bug (wallpapers re-written on every real run). A value
+  needing GVariant escapes never matches and is re-written — fails safe (extra write, never a
+  skipped needed write).
 
 ## 13. Changing an established decision
 
