@@ -64,6 +64,31 @@ is a "module"; modules are grouped into profiles; everything runs through the co
   See §12 for the trust-boundary wording — the digest is **not** signature verification.
   **Next: close P7.6 (task + ledger commit), then report at the P7 phase boundary.** P8 needs
   owner approval, and the P7 report is blocked on the same `[REAL]` host gap.
+  **P7 phase boundary was passed and P8 is now CLOSED** (the line above is retained only as
+  history; the authoritative state is below). P8.1 (`dns`, code `7544c38`), P8.2 (`locale`, code
+  `2cdb053`) and P8.3 (risk gating, code `05ed1b5`) are all **DONE and committed**. **P8.1–P8.3
+  each shipped WITHOUT a Senior Reviewer PASS** under explicit owner instruction (P8.3's approval
+  is recorded in the P8.4 phase report); P8 therefore has the same process gap P7.5/P7.6 and P8.1
+  already carry, and unlike P0–P7. Do not treat the P8 ledger rows as reviewed.
+  P8.1/P8.2 are hooks-only `destructive` modules wired into NO profile (`MODULE_DEFAULT=off`),
+  run only by explicit id (`./setup install --yes dns`). P8.3 hardened that surface and found
+  **two real defects**: the `[high-risk]` red flag had **never rendered** (`lib/ui.sh` gated color
+  on `-z "$FS_NO_COLOR"` while `lib/io.sh` normalizes it to the string `"0"` — every color gate
+  must compare numerically), and a single `MODULE_DEPENDS` edge could install a destructive module
+  with no consent at all (`lib/runner.sh` now refuses rc1 on any high/destructive module in the
+  resolved-but-not-curated set). A third change — refusing high-risk selections whenever stdin is
+  not a TTY — was written, measured, and **rejected**; see §12.
+  **Known verification gap (P8) — NOT met, do not claim it:** the mutating half of the P8.1/P8.2
+  `[REAL]` criteria (DNS applied + revert restoring prior state; `localectl status` reflecting a
+  change with a backup file) was **deliberately not performed** — both are destructive system-wide
+  changes and both were owner-approved as out of scope. Reversibility and idempotency are proven
+  hermetically instead (`mod_dns.sh` 150 asserts, `mod_locale.sh` 120, against the real
+  `fs_backup`/`state_note`/`runner` code paths with stateful fakes), and the real `nmcli`/NM stack
+  and `localectl`/`/etc/locale.conf` were exercised **read-only**. P8 §8 "functional + reversible
+  on a real system" is therefore **not satisfied**; see the P8.4 phase report. The live host is at
+  defaults after P8 (`/etc/locale.conf` md5 `164aba1ef1298affaa58761647f2ceba`, NM `Home` with
+  empty `ipv4.dns` and `ipv4.ignore-auto-dns:no`).
+  **Next: P9 needs owner approval.** Do not start P9 until the P8 phase report is accepted.
 - Version: `FS_VERSION="0.1.0-dev"` (see `lib/bootstrap.sh`).
 
 ## 2. Repository structure
@@ -72,7 +97,7 @@ is a "module"; modules are grouped into profiles; everything runs through the co
 |---|---|
 | `setup` | Executable launcher. Resolves its own path from `$0` (no CWD assumption), `set -euo pipefail`, `readlink -f` canonicalization, then `exec`s `lib/bootstrap.sh "$@"`. |
 | `lib/bootstrap.sh` | Entry: Bash≥4.3 check, tool/layout checks, sources `io.sh` + `cli.sh`, parses args, dispatches: `help`/`version`/`check`/`list`/`install` rc0 (install = P4.7 real wiring); `verify`/`export`/`update` rc1 "not implemented yet"; unknown → rc1. |
-| `lib/io.sh` | Leveled logging (error/warn/info/debug), TTY-only color, timestamps, progress/summary, audit-log init. `io_*` never abort the caller under `set -e`/`set -u`. |
+| `lib/io.sh` | Leveled logging (error/warn/info/debug), TTY-only color, timestamps, progress/summary, audit-log init. `io_*` never abort the caller under `set -e`/`set -u`. `FS_NO_COLOR` is normalized to `0` at source time, so **every color gate must compare numerically** (`(( FS_NO_COLOR == 0 ))`) — a `-z` test is false for the string `"0"` and silently kills color (P8.3, §12). `io_alert` is the one stdout/un-timestamped emitter: it annotates a rendered plan, not the narration (P8.3, §12). |
 | `lib/cli.sh` | Flags `--yes/--dry-run/--verbose/--debug/--profile V/--list/--force/--browse`, `-h/--help`, `--` end-of-options; commands `install|list|check|verify|export|update|help|version`; unknown → rc1. |
 | `lib/distro.sh` | Reads `/etc/os-release` (or `FS_DISTRO_FILE`, or 1st arg — read-only input). Capability matrix: family/id/pkgmgr/localpkg/flatpak-default/gnome. Test seam `FS_DISTRO_PKGMGR_OVERRIDE`. |
 | `lib/state.sh` | State root `$FS_HOME` (test) > `$XDG_STATE_HOME` > `$HOME`, joined with `/fedora-setup`. Run logs, module registry, backup registry. Symlink/confinement-guarded. |
@@ -80,14 +105,14 @@ is a "module"; modules are grouped into profiles; everything runs through the co
 | `lib/sudo.sh` | `sudo_detect`, `sudo_refresh`, `sudo_exec`. Never touches `/etc/sudoers`. Dry-run keeps probe OFF and executes nothing. |
 | `lib/run.sh` | `run_cmd`/`run_sudo` with label, `--stop`, `[DESTROY]` forced stop, dry-run `# would run:` lines, `FS_LOG_FILE` audit trail + `FS_LOG_INFRA` halt. |
 | `lib/gnome.sh` | P6.1: gsettings layer — availability checks; `gnome_gsettings_get`/`gnome_gsettings_set` (idempotent probe-then-write; real `gsettings get` renders string scalars single-quoted, so the compare also matches a bare target), strv parse/build/merge + custom-keybinding merge-add primitives; P6.5 capability gate `gnome_require_capable` (`FS_GNOME_FORCE` bypass > SSH-headless > non-GNOME XDG > gsettings-missing); P6.3 `gnome_shell_version`/`gnome_extensions_list`. |
-| `lib/runner.sh` | P4.6: `runner_run <modules_dir> <profiles_dir> <name> <family> [module...]` — resolve/plan/prereq/batch/hooks+state/summary stages; deps-first execution, destructive-stop policy, dry-run state-free, hook subshell sandbox. BATCH (P5.7): one batch per namespace — system pkg ids once via the active family backend, flatpak ids once via `( FS_PKG_BACKEND=flatpak; export FS_PKG_BACKEND; plan_install ... )` subshell (self-restoring), system first. PREREQ (P7.5): per module in resolved order, `prerepo.sh` (if present) is sourced in a subshell and `prerepo()` runs ONCE, always (never state-skipped) and BEFORE both batches; `state_init` stays after the batches. Any prerepo failure stops the run (rc1, no batch/hooks/summary) whatever the risk — including a `prerepo.sh` that never defines `prerepo()`. Both hook subshells get `FS_MODULE_FAMILY` **exported** and call `module_load <dir> strict` BEFORE sourcing the hook file, so a hook always sees its own metadata instead of the last module the PLAN stage loaded. |
+| `lib/runner.sh` | P4.6: `runner_run <modules_dir> <profiles_dir> <name> <family> [module...]` — resolve/plan/prereq/batch/hooks+state/summary stages; deps-first execution, destructive-stop policy, dry-run state-free, hook subshell sandbox. BATCH (P5.7): one batch per namespace — system pkg ids once via the active family backend, flatpak ids once via `( FS_PKG_BACKEND=flatpak; export FS_PKG_BACKEND; plan_install ... )` subshell (self-restoring), system first. PREREQ (P7.5): per module in resolved order, `prerepo.sh` (if present) is sourced in a subshell and `prerepo()` runs ONCE, always (never state-skipped) and BEFORE both batches; `state_init` stays after the batches. Any prerepo failure stops the run (rc1, no batch/hooks/summary) whatever the risk — including a `prerepo.sh` that never defines `prerepo()`. Both hook subshells get `FS_MODULE_FAMILY` **exported** and call `module_load <dir> strict` BEFORE sourcing the hook file, so a hook always sees its own metadata instead of the last module the PLAN stage loaded. RISK GATE (P8.3): refuses rc1 before any prerepo/batch/hook on a high/destructive module that is in the resolved set but NOT in the curated set (the passed module args, or the profile FILE's own ids via `profile_load`) — one `MODULE_DEPENDS` line must never put a destructive module on a system nobody named; a module the profile *does* name stays on the reviewed P4.7 drop-with-alert rc0 path (§12). |
 | `lib/modules.sh` | Module contract: metadata loading/validation, `module_has_hooks`/`module_has_prerepo`, `list_packages`/`list_flatpaks` for a family, deps, and the P7.5 flatpak-alternative pair `MODULE_FLATPAK_ALT_ID` + `MODULE_FLATPAK_ALT_SEAM` resolved by `module_flatpak_alt` (truthy seam `1|true|yes|on`, case-insensitive). Metadata is parsed TEXTUALLY, never executed; every optional key is reset at load time so a module can never inherit another module's value, and the alt pair is all-or-nothing (id without seam, or a seam that is not an env-var name, fails validation). |
 | `lib/ui.sh` | P4.7: `ui_multiselect`/`ui_confirm` selection + confirm layer (no external TUI tool — no ncurses; Bash + coreutils execs only). TTY raw-key re-render vs deterministic line-mode; high-risk rows never digit/`a`-toggleable (opt-in prompt is their only checklist route); EOF/`q` abort rc1 fail-closed; atomic sel-file write via `mv -fT`; `ui_confirm` returns 0 under `--yes`; color helpers must keep `return 0` (set -e safety). |
 | `tests/smoke.sh` | Plain-bash smoke suite for P2.1–P2.8 + `setup install` dry-run (P4.7) + GNOME capability/`--force` cells (P6.5); 125 asserts (P10 adds bats/CI later). |
-| `modules/` | Module tree: `core`/`flatpak`/`git`/`fonts`/`terminal` (P5.1–P5.6) + `gnome-base`/`gnome-extensions`/`gnome-theme` (P6.2–P6.4) + `vscode` (P7.5) + `chrome` (P7.6), each `module.sh` + list/config data files, optional `hooks.sh` (`run()`/`verify()`) and optional `prerepo.sh` (`prerepo()`, P7.5). `vscode` is the first prerepo user: it adds the Microsoft repository and imports/dearmors the pinned key before the batch, and has NO `hooks.sh`. `chrome` is the first **hooks-only** module: no list file at all, because its bundle version floats and is resolved at run time. |
+| `modules/` | Module tree: `core`/`flatpak`/`git`/`fonts`/`terminal` (P5.1–P5.6) + `gnome-base`/`gnome-extensions`/`gnome-theme` (P6.2–P6.4) + `vscode` (P7.5) + `chrome` (P7.6) + `dns` (P8.1) + `locale` (P8.2), each `module.sh` + list/config data files, optional `hooks.sh` (`run()`/`verify()`) and optional `prerepo.sh` (`prerepo()`, P7.5). `vscode` is the first prerepo user: it adds the Microsoft repository and imports/dearmors the pinned key before the batch, and has NO `hooks.sh`. `chrome` is the first **hooks-only** module: no list file at all, because its bundle version floats and is resolved at run time. `dns`/`locale` are hooks-only **destructive** modules (`MODULE_DEFAULT=off`, in NO profile), mutating NetworkManager / the systemd locale and both reversible via a state-note record. |
 | `config/` | Static repo data: `nerdfonts.sha256` (P5.7 pinned release digests), `extensions.compat` (P6.3 GNOME extension-version report windows), `vscode-gpg.fingerprint` (P7.5 pinned Microsoft repo signing-key fingerprint + provenance). |
 | `assets/`, `docs/` | Stubs (tracked `.gitkeep` only). Content arrives in later phases. |
-| `profiles/` | P4.5 loadable skeletons; P5.7 real sets: `minimal` = `core flatpak`, `desktop` = `core flatpak git fonts terminal` (comment-only `developer`/`full`). The P6 `gnome-*` modules are deliberately NOT wired into a profile (owner decision from the P6 closure; run them explicitly via `./setup install --yes <id>`). Consumed via `lib/profiles.sh`. P7 modules follow the same explicit-invocation pattern and need no wiring: `vscode` (P7.5) and `chrome` (P7.6) are run by id. `chrome` additionally contributes to *neither* batch namespace, since a hooks-only module ships no list file, so its native work happens entirely in `hooks.sh`. |
+| `profiles/` | P4.5 loadable skeletons; P5.7 real sets: `minimal` = `core flatpak`, `desktop` = `core flatpak git fonts terminal` (comment-only `developer`/`full`). The P6 `gnome-*` modules are deliberately NOT wired into a profile (owner decision from the P6 closure; run them explicitly via `./setup install --yes <id>`). Consumed via `lib/profiles.sh`. P7 modules follow the same explicit-invocation pattern and need no wiring: `vscode` (P7.5) and `chrome` (P7.6) are run by id. `chrome` additionally contributes to *neither* batch namespace, since a hooks-only module ships no list file, so its native work happens entirely in `hooks.sh`. The P8 `dns`/`locale` modules are in **no** profile by design (P8 owner rule: never default-on); `./setup install --yes dns` is the only route, and a `MODULE_DEPENDS` edge cannot pull one in (`lib/runner.sh` refuses it — §12). |
 | `ROADMAP.md` | Internal execution plan. **Gitignored — never commit** (§10). |
 | `README.md` | **Stale:** documents the deleted prototype (`setup.sh` etc.). Rewritten only in P11.1 — do not keep it in sync per task. |
 
@@ -123,6 +148,13 @@ sync with code.
 - P6 GNOME seams: `FS_WALLPAPER_ASSETS_DIR` (gnome-base), `FS_GNOME_BROWSE`/`FS_GNOME_COMPAT_FILE`
   (gnome-extensions), `FS_THEME_{NAME,SRC,ASSETS_DIR}`/`FS_CURSOR_{NAME,SRC,ASSETS_DIR}`/
   `FS_GTK_BOOKMARKS_FILE` (gnome-theme), `FS_GNOME_FORCE` (P6.5 capability-gate bypass).
+- P8.1 seams: `FS_DNS_CONNECTION` (name the connection explicitly, so dry-run renders it exactly),
+  `FS_DNS_SERVERS` (default `8.8.8.8 8.8.4.4`, space-in/comma-out for nmcli), `FS_DNS_REVERT=1`,
+  `FS_DNS_REACTIVATE` (skip the best-effort `nmcli connection up`), `FS_DNS_CHECK_HOST` (default
+  `flathub.org`), `FS_DNS_RESOLVE_ATTEMPTS` (clamped 1–5).
+- P8.2 seams: `FS_LOCALE` (target locale, default `en_US.UTF-8`; this is the deliberate
+  non-prompt alternative to the task's "language choice prompted" clause), `FS_LOCALE_CONF` (file
+  to back up, default `/etc/locale.conf`), `FS_LOCALE_REVERT=1`.
 
 ## 4. Development status and how ROADMAP.md is used
 
@@ -334,6 +366,42 @@ delivered; **stop and wait for explicit owner approval** before the next phase.
   P6.6 found this was a real idempotency bug (wallpapers re-written on every real run). A value
   needing GVariant escapes never matches and is re-written — fails safe (extra write, never a
   skipped needed write).
+- **A color gate must compare `FS_NO_COLOR` NUMERICALLY** (P8.3). `lib/io.sh` normalizes
+  `FS_NO_COLOR="${FS_NO_COLOR:-0}"` at source time, so the variable is the *string* `"0"` for the
+  rest of the run and a `-z "$FS_NO_COLOR"` test is false. `lib/ui.sh` gated its red
+  `[high-risk]` flag exactly that way, so **the flag had never once rendered on any TTY** — the
+  risk signal the P8.1/P8.2 ledger rows both cite as load-bearing was text-only. The rule is
+  `(( FS_NO_COLOR == 0 ))` plus a separate `[[ -t fd ]]`; keep the TTY check so piped output stays
+  byte-identical and fixtures never have to know about ANSI. This is the same class of bug as
+  P8.1's/P8.2's untrustworthy-rc findings: a plausible-looking condition that silently never fires.
+- **A risk gate must distinguish the CURATED set from the RESOLVED set** (P8.3).
+  `lib/bootstrap.sh`'s pre-seed filter walks only the profile's curated ids, while
+  `lib/profiles.sh` `profile_resolve` then closes that set over `MODULE_DEPENDS` with no risk
+  awareness — so the filter had **no teeth over the closure**, exactly like the P4.6 note that the
+  state registry gates hooks but not planning. Live repro: one `MODULE_DEPENDS="locale"` line on
+  the safe `core` module made `--yes --profile minimal` run `sudo localectl set-locale` with no
+  opt-in row, no confirmation, and `locale` in no profile at all. `lib/runner.sh` now refuses rc1
+  on any high/destructive module in the resolved set that is not curated (module args, or the
+  profile FILE's own ids via `profile_load`), **after** the plan loop — `module_validate` is what
+  classifies risk, and planning is pure metadata reading, so rc1 there is as side-effect-free as a
+  resolve error. Deliberately NOT extended to the curated case: a high-risk module a profile
+  genuinely names is dropped from the checklist with a loud `io_alert` and the run continues rc0,
+  which is the reviewed P4.7 contract `install.sh` still pins. Both halves are asserted.
+- **`io_alert` goes to stdout and carries no timestamp** (P8.3) — the one deliberate departure
+  from the timestamped `io_*` convention. It annotates a *rendered plan* (the dry-run `!!` warning
+  for a high/destructive module), so it must interleave with the plan lines in order, and a
+  timestamp would only blur that alignment. Bold+red on a TTY; byte-identical `!! <msg>` when
+  piped, so no fixture assertion has to know about ANSI. Audit-logged via `_io_logline` under the
+  same prefix.
+- **Refusing high-risk selections when stdin is not a TTY was written, measured, and REJECTED**
+  (P8.3). It broke `tests/fixtures/install.sh` (4 FAILs) because those reviewed cells drive the
+  high-risk opt-in + confirmation **entirely by piped stdin** — refusing every piped high-risk
+  selection makes the whole P4.7 consent flow untestable without a pty. It also contradicts the
+  P8.3 task text, which names a *direct `install dns` invocation* as consent in its own right, and
+  it defends against nothing: a script able to pipe `y` into `./setup` can just run `nmcli`
+  directly. The shipped contract is the pre-existing one — naming the module is consent, the
+  confirmation is real, declining it aborts rc1 before any batch. Do not re-propose this gate
+  without a new argument.
 
 ## 13. Changing an established decision
 
