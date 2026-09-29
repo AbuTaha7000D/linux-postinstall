@@ -560,8 +560,10 @@ smoke_entry() {
     t_rc 0 "help rc" "$ROOT/setup" --help
     t_out "Usage:"
     t_rc 0 "positional help rc" "$ROOT/setup" help
-    t_rc 0 "check stub" "$ROOT/setup" check
-    t_out "prerequisites OK (stub)"
+    t_rc 0 "check rc" env FS_HOME="$TMP/checkh" FS_PKG_BACKEND=mock FS_EUID=0 "$ROOT/setup" check
+    t_out "== preflight check =="
+    t_out "PASS distro:"
+    t_out "preflight OK"
     t_rc 0 "list rc" env FS_HOME="$TMP/listh" FS_DISTRO_FAMILY=rpm "$ROOT/setup" list
     if grep -q '^core\b' "$OUT" 2>/dev/null; then ok; else bad "list shows core module"; fi
     t_rc 0 "--list alias rc" env FS_HOME="$TMP/listh" FS_DISTRO_FAMILY=rpm "$ROOT/setup" --list

@@ -52,11 +52,15 @@ _fs_check_layout() {
     [[ -f "$1/setup" ]] || _fs_die "repository layout broken: missing '$1/setup'"
 }
 
-_cli_check_stub() {
-    local root="${1:-}"
+_cli_check_impl() {
+    local root="$1" name rc=0
     [[ -n "$root" ]] || _fs_die "check requires the repository root"
     _fs_check_layout "$root"
-    printf 'check: baseline prerequisites OK (stub)\n'
+    for name in distro sudo state check; do
+        . "$root/lib/$name.sh"
+    done
+    check_run "$root" || rc=1
+    return "$rc"
 }
 
 _cli_install_sources() {
@@ -307,7 +311,7 @@ main() {
             cli_help
             ;;
         check)
-            _cli_check_stub "$root"
+            _cli_check_impl "$root"
             ;;
         list)
             . "$root/lib/modules.sh"
