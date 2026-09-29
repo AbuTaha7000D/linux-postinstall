@@ -2,7 +2,7 @@
 # lib/modules.sh - module contract + loader for fedora-setup.
 # Depends on lib/io.sh only (io_error/io_warn); source io.sh first.
 #
-# A module is a directory <root>/modules/<id>/. Only three file kinds are
+# A module is a directory <root>/modules/<id>/. Only four file kinds are
 # recognized; anything else is ignored:
 #   module.sh   REQUIRED metadata file. Parsed textually, NEVER executed,
 #               so `./setup list` never runs module code. Line-oriented
@@ -13,7 +13,10 @@
 #               MODULE_ID  (required, safe id)  MODULE_TITLE
 #               MODULE_DESCRIPTION              MODULE_RISK  (default none)
 #               MODULE_DEFAULT (default off)    MODULE_DEPENDS
-#               (space-separated ids). A line naming an unknown key
+#               (space-separated ids), and the P7.5 flatpak-alternative
+#               pair MODULE_FLATPAK_ALT_ID (one Flathub app id) +
+#               MODULE_FLATPAK_ALT_SEAM (name of the env variable that
+#               selects it, FS_*-style). A line naming an unknown key
 #               triggers io_warn but does not fail the load; module_load
 #               with the strict argument escalates it to io_error + rc 1
 #               (validation uses strict).
@@ -21,6 +24,19 @@
 #               sourced at load time; the P4.6 runner sources it in a
 #               subshell and calls run() for install, verify() for
 #               `setup verify`. module_has_hooks only reports presence.
+#   prerepo.sh  OPTIONAL file defining prerepo(), the P7.5 pre-batch
+#               hook: the runner sources it in a subshell and calls
+#               prerepo() AFTER list collection and BEFORE the package
+#               batch, so a module can add a repository (and import the
+#               key it needs) that its own packages.*.list entries
+#               resolve from. module_has_prerepo only reports presence.
+#               A prerepo.sh that does not define prerepo() is a PREREQ
+#               FAILURE: the runner stops the whole run, whatever the
+#               module's risk (see lib/runner.sh). That is deliberately
+#               NOT the hooks.sh/run() policy, where a missing run()
+#               fails one module and the run continues. This is the
+#               only hook that runs before the batch; hooks.sh always
+#               runs after it.
 #   packages.list, packages.rpm.list, packages.deb.list,
 #   packages.arch.list, flatpaks.list
 #               OPTIONAL declarative lists. Precedence (P4.3, lib/lists.sh):
@@ -31,7 +47,7 @@
 #               reports which exist so consumers do not guess filenames.
 #
 # module_load <dir> [strict]
-#                       reset the six contract globals, fill them from
+#                       reset the EIGHT contract globals, fill them from
 #                       module.sh. rc 1 with io_error on: missing dir,
 #                       missing module.sh, or absent/invalid MODULE_ID.
 #                       Unknown keys io_warn and the load continues by
@@ -50,14 +66,33 @@
 #                       none|low|medium|high|destructive, MODULE_DEFAULT
 #                       in on|off. MODULE_TITLE/MODULE_DESCRIPTION must
 #                       not contain control characters (TSV safety).
-#                       When family is rpm|deb|arch and the
-#                       dir carries any list file (packages.* or
-#                       flatpaks.list), at least one of packages.list,
-#                       packages.<family>.list, or flatpaks.list must
-#                       exist (unsupported-family rejection); a module
-#                       with no list files (hooks-only) always passes.
-#                       Non-rpm/deb/arch family is treated as "skip the
-#                       family check". rc 1 with io_error naming reason.
+#                       The P7.5 flatpak-alternative pair must be
+#                       declared together or not at all (half a pair is
+#                       an alternative that silently never appears, so
+#                       it fails closed), the seam name must be a plain
+#                       env-var name, and the id must be a single
+#                       whitespace-free token. When family is
+#                       rpm|deb|arch and the dir carries any list file
+#                       (packages.* or flatpaks.list), at least one of
+#                       packages.list, packages.<family>.list, or
+#                       flatpaks.list must exist (unsupported-family
+#                       rejection); a module with no list files
+#                       (hooks-only) always passes. Non-rpm/deb/arch
+#                       family is treated as "skip the family check".
+#                       rc 1 with io_error naming reason.
+# module_flatpak_alt    print the loaded module's P7.5 flatpak
+#                       alternative app id (MODULE_FLATPAK_ALT_ID) when
+#                       the declared seam variable (MODULE_FLATPAK_ALT_SEAM)
+#                       is set in the environment to 1, true, yes or on
+#                       (case-insensitive) -- the runner then contributes
+#                       ONLY that id to the flatpak namespace and the
+#                       module's packages.* files are ignored, so the
+#                       alternative can never install alongside the
+#                       native path. Prints nothing and rc 0 when the
+#                       module declares no alternative or the seam is
+#                       unset/falsey. Reads the most recent
+#                       module_load's globals; never executes module code
+#                       and never reads a list file.
 # module_validate_set <dir>...
 #                       whole-set check: every dir must module_load, no
 #                       MODULE_ID may repeat, and every MODULE_DEPENDS
@@ -70,6 +105,8 @@
 # module_list_files <dir> print existing declared list-file basenames,
 #                         one per line, in MODULE_LIST_NAMES order.
 # module_has_hooks <dir>  rc 0 when <dir>/hooks.sh is a regular file.
+# module_has_prerepo <dir>
+#                       rc 0 when <dir>/prerepo.sh is a regular file.
 # module_valid_id <id>    rc 0 for a safe [A-Za-z0-9._-] id (no "", "." ,
 #                         ".."); mirrors state.sh's _state_valid_name
 #                         (kept separate so modules.sh depends only on
@@ -77,10 +114,13 @@
 #                         reuses it.
 #
 # Globals MODULE_ID/MODULE_TITLE/MODULE_DESCRIPTION/MODULE_RISK/
-# MODULE_DEFAULT/MODULE_DEPENDS hold the most recent load; RISK/DEFAULT
+# MODULE_DEFAULT/MODULE_DEPENDS/MODULE_FLATPAK_ALT_ID/
+# MODULE_FLATPAK_ALT_SEAM hold the most recent load; RISK/DEFAULT
 # reset to the documented defaults none/off, the rest to "". Single-
 # writer: callers load one module at a time and read the globals
-# immediately. Effect-free: no writes, no sudo, no execution of module
+# immediately -- module_load always resets ALL of them, so an optional
+# key a module omits can never leak from a previously loaded module.
+# Effect-free: no writes, no sudo, no execution of module
 # code. Bash >= 4.3 safe (no namerefs).
 
 MODULE_LIST_NAMES=(packages.list packages.rpm.list packages.deb.list packages.arch.list flatpaks.list)
@@ -90,6 +130,8 @@ MODULE_DESCRIPTION=""
 MODULE_RISK="none"
 MODULE_DEFAULT="off"
 MODULE_DEPENDS=""
+MODULE_FLATPAK_ALT_ID=""
+MODULE_FLATPAK_ALT_SEAM=""
 
 module_valid_id() {
     case "${1:-}" in
@@ -108,6 +150,8 @@ module_load() {
     MODULE_RISK="none"
     MODULE_DEFAULT="off"
     MODULE_DEPENDS=""
+    MODULE_FLATPAK_ALT_ID=""
+    MODULE_FLATPAK_ALT_SEAM=""
     if [[ -z "$dir" ]]; then
         io_error "module_load requires a directory"
         return 1
@@ -141,7 +185,8 @@ module_load() {
         fi
         case "$key" in
             MODULE_ID | MODULE_TITLE | MODULE_DESCRIPTION | \
-                MODULE_RISK | MODULE_DEFAULT | MODULE_DEPENDS) ;;
+                MODULE_RISK | MODULE_DEFAULT | MODULE_DEPENDS | \
+                MODULE_FLATPAK_ALT_ID | MODULE_FLATPAK_ALT_SEAM) ;;
             *)
                 if [[ "$strict" == "strict" ]]; then
                     io_error "unknown metadata key '$key' in $dir/module.sh"
@@ -158,6 +203,8 @@ module_load() {
             MODULE_RISK) MODULE_RISK="$val" ;;
             MODULE_DEFAULT) MODULE_DEFAULT="$val" ;;
             MODULE_DEPENDS) MODULE_DEPENDS="$val" ;;
+            MODULE_FLATPAK_ALT_ID) MODULE_FLATPAK_ALT_ID="$val" ;;
+            MODULE_FLATPAK_ALT_SEAM) MODULE_FLATPAK_ALT_SEAM="$val" ;;
         esac
     done <"$dir/module.sh"
     if [[ -z "$MODULE_ID" ]]; then
@@ -194,6 +241,32 @@ module_has_hooks() {
     [[ -f "$dir/hooks.sh" ]]
 }
 
+module_has_prerepo() {
+    local dir="${1:-}"
+    if [[ -z "$dir" || ! -d "$dir" ]]; then
+        io_error "module_has_prerepo requires a module directory"
+        return 1
+    fi
+    [[ -f "$dir/prerepo.sh" ]]
+}
+
+module_flatpak_alt() {
+    local seam="${MODULE_FLATPAK_ALT_SEAM:-}" val=""
+    if [[ -z "$seam" || -z "$MODULE_FLATPAK_ALT_ID" ]]; then
+        return 0
+    fi
+    if [[ ! "$seam" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+        return 0
+    fi
+    val="${!seam:-}"
+    case "${val,,}" in
+        1 | true | yes | on) ;;
+        *) return 0 ;;
+    esac
+    printf '%s\n' "$MODULE_FLATPAK_ALT_ID"
+    return 0
+}
+
 module_validate() {
     local dir="${1:-}" family="${2:-}" name="" f="" has=0
     if [[ -z "$dir" ]]; then
@@ -220,6 +293,20 @@ module_validate() {
             return 1
             ;;
     esac
+    if [[ -n "$MODULE_FLATPAK_ALT_ID" || -n "$MODULE_FLATPAK_ALT_SEAM" ]]; then
+        if [[ -z "$MODULE_FLATPAK_ALT_ID" || -z "$MODULE_FLATPAK_ALT_SEAM" ]]; then
+            io_error "$MODULE_ID declares only one of MODULE_FLATPAK_ALT_ID/MODULE_FLATPAK_ALT_SEAM (both or neither)"
+            return 1
+        fi
+        if [[ ! "$MODULE_FLATPAK_ALT_SEAM" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+            io_error "invalid MODULE_FLATPAK_ALT_SEAM '$MODULE_FLATPAK_ALT_SEAM' in $dir/module.sh (want an env var name)"
+            return 1
+        fi
+        if [[ "$MODULE_FLATPAK_ALT_ID" == *[[:space:]]* ]]; then
+            io_error "invalid MODULE_FLATPAK_ALT_ID '$MODULE_FLATPAK_ALT_ID' in $dir/module.sh (want one app id)"
+            return 1
+        fi
+    fi
     case "$MODULE_TITLE" in
         *$'\t'* | *$'\n'* | *$'\r'*)
             io_error "MODULE_TITLE must not contain control characters (module $MODULE_ID)"

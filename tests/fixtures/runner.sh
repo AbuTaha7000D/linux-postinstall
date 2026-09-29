@@ -1,14 +1,20 @@
 #!/usr/bin/env bash
 # tests/fixtures/runner.sh - P4.6 fixture for lib/runner.sh.
-# End-to-end mock run of the full resolve -> plan -> per-namespace batch
-# (system through the mock family backend, flatpaks through a stateful
-# fake flatpak binary, one transaction per backend) -> ordered hooks ->
-# state-marking -> summary pipeline, plus resume (already-completed
-# modules skipped), safe-continue vs destructive stop, family gate,
-# dry-run side-effect-freedom, CLI override, hookless modules, and
-# hook-subshell isolation. State, mock installed-set/call log, and the
-# flatpak fake log/installed set all live under FX_TMP so no system path
-# or privilege is touched.
+# End-to-end mock run of the full resolve -> plan -> prereq -> per-
+# namespace batch (system through the mock family backend, flatpaks
+# through a stateful fake flatpak binary, one transaction per backend)
+# -> ordered hooks -> state-marking -> summary pipeline, plus resume
+# (already-completed modules skipped), safe-continue vs destructive
+# stop, family gate, dry-run side-effect-freedom, CLI override and
+# hookless modules. P7.5 adds: the prereq stage (order relative to both
+# batches, always-run, fail-fast even for a low-risk module, a
+# prerepo.sh with no prerepo() function, dry-run rendering), hook-
+# subshell isolation (FS_MODULE_FAMILY exported, and each hook seeing
+# its OWN module's metadata when it does not sort last), and the
+# flatpak-alternative pair (exclusive with the native SYSTEM path,
+# additive with the module's own flatpaks.list). State, mock
+# installed-set/call log, and the flatpak fake log/installed set all
+# live under FX_TMP so no system path or privilege is touched.
 # Usage: bash tests/fixtures/runner.sh  (exit 0 on success)
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -99,6 +105,56 @@ printf 'cfgx\n'   >"$M/cfg/packages.list"
 printf 'leakp\n'  >"$M/leak/packages.list"
 : >"$M/bare/packages.list"
 
+# `prep` carries a prerepo hook that records WHERE it ran: before both
+# batches ("before") or after one of them ("late"). Its run() hook records
+# the mirror image, so the cell can prove the whole stage order and that
+# FS_MODULE_FAMILY is exported into BOTH hook subshells.
+mkmod prep
+printf 'p1\n' >"$M/prep/packages.list"
+printf 'org.sample.P\n' >"$M/prep/flatpaks.list"
+cat >"$M/prep/prerepo.sh" <<'HOOK'
+#!/usr/bin/env bash
+prerepo() {
+    local phase=prebatch
+    if [[ -s "${FS_MOCK_LOG:?}" || -s "${FS_FAKE_INSTALLED:?}" ]]; then phase=postbatch; fi
+    printf 'prerepo id=%s family=%s phase=%s child=%s\n' \
+        "${MODULE_ID:-NONE}" "${FS_MODULE_FAMILY:-NONE}" "$phase" \
+        "$(bash -c 'printf %s "${FS_MODULE_FAMILY:-UNSET}"')" >>"${ORDER:?}"
+}
+HOOK
+cat >"$M/prep/hooks.sh" <<'HOOK'
+#!/usr/bin/env bash
+run() {
+    local phase=postbatch
+    if [[ -z "${FS_MOCK_LOG:?}" ]]; then phase=prebatch; fi
+    printf 'run id=%s family=%s phase=%s child=%s\n' \
+        "${MODULE_ID:-NONE}" "${FS_MODULE_FAMILY:-NONE}" "$phase" \
+        "$(bash -c 'printf %s "${FS_MODULE_FAMILY:-UNSET}"')" >>"${ORDER:?}"
+}
+HOOK
+
+# a LOW-risk module whose prerepo fails: the stage must abort the run anyway
+mkmod badprep
+printf 'p2\n' >"$M/badprep/packages.list"
+printf '#!/usr/bin/env bash\nprerepo() {\n    printf "badprep ran\\n" >>"${ORDER:?}"\n    echo "prerepo refused" >&2\n    return 1\n}\n' \
+    >"$M/badprep/prerepo.sh"
+
+# a prerepo.sh that forgets to define prerepo()
+mkmod noprep
+printf 'p3\n' >"$M/noprep/packages.list"
+printf '#!/usr/bin/env bash\nsetup_stuff() { :; }\n' >"$M/noprep/prerepo.sh"
+
+# dry mode: prerepo is still CALLED, and whatever it renders precedes the batch
+mkmod dryprep
+printf 'p4\n' >"$M/dryprep/packages.list"
+{
+    printf '#!/usr/bin/env bash\n'
+    printf 'prerepo() {\n'
+    printf '    printf "prerepo ran\\n" >>"${ORDER:?}"\n'
+    printf '    run_cmd "prep prerepo" -- echo prerepo-rendered\n'
+    printf '}\n'
+} >"$M/dryprep/prerepo.sh"
+
 # --- profiles ------------------------------------------------------------
 
 printf 'c\nb\na\n' >"$P/full.conf"
@@ -109,6 +165,20 @@ printf 'leak\n' >"$P/leak.conf"
 printf 'bare\n' >"$P/bare.conf"
 printf 'norun\n' >"$P/norun.conf"
 printf 'd\ne\n' >"$P/nav.conf"
+mkdir -p "$M/dual" "$P"
+printf 'MODULE_ID=dual\nMODULE_RISK=none\nMODULE_DEFAULT=off\nMODULE_FLATPAK_ALT_ID=org.example.Alt\nMODULE_FLATPAK_ALT_SEAM=FX_DUAL_SEAM\n' >"$M/dual/module.sh"
+printf 'dual-native\n' >"$M/dual/packages.list"
+printf 'org.example.Own\n' >"$M/dual/flatpaks.list"
+printf 'dual\n' >"$P/dual.conf"
+
+mkmod zafter
+printf 'z1\n' >"$M/zafter/packages.list"
+printf '#!/usr/bin/env bash\nrun() { printf "run id=%%s after\\n" "${MODULE_ID:-NONE}" >>"${ORDER:?}"; }\n' \
+    >"$M/zafter/hooks.sh"
+printf 'prep\nzafter\n' >"$P/prep.conf"
+printf 'badprep\n' >"$P/badprep.conf"
+printf 'noprep\n' >"$P/noprep.conf"
+printf 'dryprep\n' >"$P/dryprep.conf"
 
 SRC="source \"\$ROOT/lib/io.sh\"; source \"\$ROOT/lib/run.sh\"; source \"\$ROOT/lib/pkg.sh\"; source \"\$ROOT/lib/planner.sh\"; source \"\$ROOT/lib/state.sh\"; source \"\$ROOT/lib/lists.sh\"; source \"\$ROOT/lib/modules.sh\"; source \"\$ROOT/lib/depgraph.sh\"; source \"\$ROOT/lib/profiles.sh\"; source \"\$ROOT/lib/runner.sh\""
 
@@ -531,5 +601,126 @@ fx_err "runner_run requires a modules dir, a profiles dir, a name, and a family"
 FX_BLOCK_RC=$?
 fx_block_rc "unknown profile rc1" 1
 fx_err 'list file missing or not a regular file'
+
+# --- prerepo stage: order, family export, isolation ---------------------
+
+ORDER="$FX_TMP/order12.log"
+MOCK_LOG="$FX_TMP/m12.log"
+INSTALLED="$FX_TMP/i12"
+FAKE_LOG="$FX_TMP/f12.log"
+FAKEST="$FX_TMP/fs12"
+: >"$ORDER"; : >"$MOCK_LOG"; : >"$INSTALLED"; : >"$FAKE_LOG"; : >"$FAKEST"
+(
+    set -euo pipefail
+    export FS_PKG_BACKEND=mock FS_MOCK_LOG="$MOCK_LOG" FS_MOCK_INSTALLED="$INSTALLED"
+    export FS_FAKE_LOG="$FAKE_LOG" FS_FAKE_INSTALLED="$FAKEST"
+    export FS_HOME="$FX_TMP/m12" FS_DRY_RUN=0 ORDER HOOK_LOG="$FX_TMP/hook12.log" PATH="$FAKE:$PATH"
+    eval "$SRC"
+    runner_run "$M" "$P" "prep" "rpm"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "prerepo stage order rc0" 0
+fx_out '^  - 2 ok$'
+if grep -qxF 'prerepo id=prep family=rpm phase=prebatch child=rpm' "$ORDER"; then fx_ok; else fx_bad "prerepo did not run before both batches with its own metadata and FS_MODULE_FAMILY exported"; fi
+if grep -qxF 'run id=prep family=rpm phase=postbatch child=rpm' "$ORDER"; then fx_ok; else fx_bad "run hook did not run after the batches with its own metadata and FS_MODULE_FAMILY exported"; fi
+if grep -q '^prerepo .*phase=postbatch\|^run .*phase=prebatch' "$ORDER"; then fx_bad "a hook ran in the wrong order relative to the batches"; else fx_ok; fi
+if grep -q 'id=NONE\|family=NONE\|child=UNSET' "$ORDER"; then fx_bad "a hook subshell saw no module metadata or no FS_MODULE_FAMILY"; else fx_ok; fi
+if grep -qxF 'mock install p1 z1' "$MOCK_LOG"; then fx_ok; else fx_bad "system batch content"; fi
+if grep -qxF 'org.sample.P' "$FAKEST"; then fx_ok; else fx_bad "flatpak batch content"; fi
+if [[ -f "$(STATE_DIR "$FX_TMP/m12")/prep" ]]; then fx_ok; else fx_bad "prep not marked done"; fi
+
+# --- the alt pair replaces the NATIVE SYSTEM path only -------------------
+# The module's own flatpaks.list is still collected, and its packages.list
+# is never even read, so a stale native id cannot reach a batch.
+(
+    set -euo pipefail
+    export FS_PKG_BACKEND=mock FS_MOCK_INSTALLED="$FX_TMP/dual.inst"
+    export FS_MOCK_LOG="$FX_TMP/dual.log" FX_DUAL_SEAM=1
+    export FS_FAKE_LOG="$FX_TMP/dual.fake" FS_FAKE_INSTALLED="$FX_TMP/dual.fakest"
+    export FS_HOME="$FX_TMP/mdual" FS_DRY_RUN=0 PATH="$FAKE:$PATH"
+    : >"$FX_TMP/dual.fakest"; : >"$FX_TMP/dual.log"
+    eval "$SRC"
+    runner_run "$M" "$P" "dual" "mock"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "alt + own flatpaks + stale native rc0" 0
+if grep -qxF 'mock install' "$FX_TMP/dual.log"; then
+    fx_bad "a stale native package reached the system batch"
+else
+    fx_ok
+fi
+if grep -qxF 'org.example.Alt' "$FX_TMP/dual.fakest" && grep -qxF 'org.example.Own' "$FX_TMP/dual.fakest"; then fx_ok; else fx_bad "both the alternative and the module's own flatpak are missing"; fi
+if [[ -s "$FX_TMP/dual.inst" ]]; then fx_bad "a native package was installed from the alt path"; else fx_ok; fi
+fx_out_not 'dual-native'
+
+# --- prerepo failure aborts the run even for a low-risk module ----------
+
+ORDER="$FX_TMP/order13.log"
+MOCK_LOG="$FX_TMP/m13.log"
+INSTALLED="$FX_TMP/i13"
+FAKE_LOG="$FX_TMP/f13.log"
+FAKEST="$FX_TMP/fs13"
+: >"$ORDER"; : >"$MOCK_LOG"; : >"$INSTALLED"; : >"$FAKE_LOG"; : >"$FAKEST"
+(
+    set -euo pipefail
+    export FS_PKG_BACKEND=mock FS_MOCK_LOG="$MOCK_LOG" FS_MOCK_INSTALLED="$INSTALLED"
+    export FS_FAKE_LOG="$FAKE_LOG" FS_FAKE_INSTALLED="$FAKEST"
+    export FS_HOME="$FX_TMP/m13" FS_DRY_RUN=0 ORDER HOOK_LOG="$FX_TMP/hook13.log" PATH="$FAKE:$PATH"
+    eval "$SRC"
+    runner_run "$M" "$P" "badprep" "rpm"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "prerepo failure rc1" 1
+fx_err 'prerepo refused'
+fx_err 'module prerepo failed: badprep'
+fx_err 'stopping run (prerepo failed for badprep)'
+fx_out_not 'run complete'
+fx_empty "prerepo failure skipped the system batch" "$MOCK_LOG"
+fx_empty "prerepo failure skipped the flatpak batch" "$FAKE_LOG"
+if [[ ! -e "$(STATE_DIR "$FX_TMP/m13")/badprep" ]]; then fx_ok; else fx_bad "failed prerepo was marked done"; fi
+
+# --- prerepo.sh without prerepo(): module fails, nothing installed -------
+
+ORDER="$FX_TMP/order14.log"
+MOCK_LOG="$FX_TMP/m14.log"
+INSTALLED="$FX_TMP/i14"
+: >"$ORDER"; : >"$MOCK_LOG"; : >"$INSTALLED"
+(
+    set -euo pipefail
+    export FS_PKG_BACKEND=mock FS_MOCK_LOG="$MOCK_LOG" FS_MOCK_INSTALLED="$INSTALLED"
+    export FS_HOME="$FX_TMP/m14" FS_DRY_RUN=0 ORDER HOOK_LOG="$FX_TMP/hook14.log" PATH="$FAKE:$PATH"
+    eval "$SRC"
+    runner_run "$M" "$P" "noprep" "rpm"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "no prerepo() rc1" 1
+fx_err 'module prerepo failed: noprep'
+fx_err 'stopping run (prerepo failed for noprep)'
+fx_out_not 'run complete'
+fx_empty "no prerepo() skipped the batches" "$MOCK_LOG"
+if [[ ! -e "$(STATE_DIR "$FX_TMP/m14")/noprep" ]]; then fx_ok; else fx_bad "module without prerepo() was marked done"; fi
+
+# --- dry run still calls prerepo, and renders it before the batch -------
+
+ORDER="$FX_TMP/order15.log"
+MOCK_LOG="$FX_TMP/m15.log"
+INSTALLED="$FX_TMP/i15"
+: >"$ORDER"; : >"$MOCK_LOG"; : >"$INSTALLED"
+(
+    set -euo pipefail
+    export FS_PKG_BACKEND=mock FS_MOCK_LOG="$MOCK_LOG" FS_MOCK_INSTALLED="$INSTALLED"
+    export FS_HOME="$FX_TMP/dryprep-home" FS_DRY_RUN=1 ORDER HOOK_LOG="$FX_TMP/hook15.log" PATH="$FAKE:$PATH"
+    eval "$SRC"
+    runner_run "$M" "$P" "dryprep" "rpm"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "dry prerepo rc0" 0
+if grep -qxF 'prerepo ran' "$ORDER"; then fx_ok; else fx_bad "dry run did not call prerepo"; fi
+fx_out '^# would run: echo prerepo-rendered$'
+if grep -qxF 'mock install p4' "$MOCK_LOG"; then fx_bad "dry run executed the batch"; else fx_ok; fi
+if [[ ! -e "$FX_TMP/dryprep-home/.local/state" ]]; then fx_ok; else fx_bad "dry run created a state root"; fi
+_dr="$(grep -n 'echo prerepo-rendered' "$FX_OUT" | head -1 | cut -d: -f1)"
+_db="$(grep -n 'mock install p4' "$FX_OUT" | head -1 | cut -d: -f1)"
+if [[ -n "$_dr" && -n "$_db" ]] && (( _dr < _db )); then fx_ok; else fx_bad "dry prerepo render must precede the batch render (prerepo line $_dr, batch line $_db)"; fi
 
 fx_summary

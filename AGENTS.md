@@ -28,7 +28,25 @@ is a "module"; modules are grouped into profiles; everything runs through the co
   and the `gnome-base` verify wallpaper compare does the same). The `gnome-*` modules are
   **NOT wired into any profile** (open owner decision from the P6 closure; run them explicitly
   via `./setup install --yes <id>`).
-  **Next phase: P7.** Do not start P7 without owner approval.
+  P7 is in progress. P7.1–P7.4 are **DONE and committed** (the `apps`, `media`, `dev` and
+  `containers` modules). Do not expect `verify`/`export`/`update` to work — `setup verify` is
+  still `not implemented yet` (rc1, P9.2) and `lib/depgraph.sh` is the P4.4 dependency-graph
+  stage, not P7 work.
+  P7.5 (`vscode`) is implemented and under review: it adds the pre-batch `prerepo` stage, the
+  `MODULE_FLATPAK_ALT_ID`+`MODULE_FLATPAK_ALT_SEAM` alternative pair, and the first module that
+  pins a third-party repository key at run time. Deliberate owner decisions: **no native Arch/AUR
+  path** (`vscode` on Arch warns and is a no-op; use `FS_VSCODE_FLATPAK=1`), and the Microsoft
+  key is **fetched, never vendored**, so a first install needs network.
+  **Known verification gap (P7.5):** the task's `[REAL]` Fedora-container run is **DEFERRED** —
+  this host has no `podman`/`docker` and `unshare -Ur` fails (`write failed /proc/self/uid_map`).
+  Everything else is covered by `tests/fixtures/mod_vscode.sh` and the runner fixture against
+  `FS_PKG_BACKEND=mock`/`rpm`; the live vendor endpoints (key, `repodata/repomd.xml.asc`
+  signature, rpm/deb metadata, Flathub app id) were verified directly and the pin is committed in
+  `config/vscode-gpg.fingerprint`. Do not claim a real Fedora run happened. On this host the full
+  fixture battery also needs the pre-existing rpm shim on `PATH` (`/tmp/opencode/ubin`) because
+  `tests/fixtures/planner.sh` shells out to a real `rpm` for its rpm-family cells.
+  **Next: finish P7.5 (review + commit), then the rest of P7.** Do not start P8 without owner
+  approval.
 - Version: `FS_VERSION="0.1.0-dev"` (see `lib/bootstrap.sh`).
 
 ## 2. Repository structure
@@ -45,11 +63,12 @@ is a "module"; modules are grouped into profiles; everything runs through the co
 | `lib/sudo.sh` | `sudo_detect`, `sudo_refresh`, `sudo_exec`. Never touches `/etc/sudoers`. Dry-run keeps probe OFF and executes nothing. |
 | `lib/run.sh` | `run_cmd`/`run_sudo` with label, `--stop`, `[DESTROY]` forced stop, dry-run `# would run:` lines, `FS_LOG_FILE` audit trail + `FS_LOG_INFRA` halt. |
 | `lib/gnome.sh` | P6.1: gsettings layer — availability checks; `gnome_gsettings_get`/`gnome_gsettings_set` (idempotent probe-then-write; real `gsettings get` renders string scalars single-quoted, so the compare also matches a bare target), strv parse/build/merge + custom-keybinding merge-add primitives; P6.5 capability gate `gnome_require_capable` (`FS_GNOME_FORCE` bypass > SSH-headless > non-GNOME XDG > gsettings-missing); P6.3 `gnome_shell_version`/`gnome_extensions_list`. |
-| `lib/runner.sh` | P4.6: `runner_run <modules_dir> <profiles_dir> <name> <family> [module...]` — resolve/plan/hooks+state/summary stages; deps-first execution, destructive-stop policy, dry-run state-free, hook subshell sandbox. BATCH (P5.7): one batch per namespace — system pkg ids once via the active family backend, flatpak ids once via `( FS_PKG_BACKEND=flatpak; export FS_PKG_BACKEND; plan_install ... )` subshell (self-restoring), system first. |
+| `lib/runner.sh` | P4.6: `runner_run <modules_dir> <profiles_dir> <name> <family> [module...]` — resolve/plan/prereq/batch/hooks+state/summary stages; deps-first execution, destructive-stop policy, dry-run state-free, hook subshell sandbox. BATCH (P5.7): one batch per namespace — system pkg ids once via the active family backend, flatpak ids once via `( FS_PKG_BACKEND=flatpak; export FS_PKG_BACKEND; plan_install ... )` subshell (self-restoring), system first. PREREQ (P7.5): per module in resolved order, `prerepo.sh` (if present) is sourced in a subshell and `prerepo()` runs ONCE, always (never state-skipped) and BEFORE both batches; `state_init` stays after the batches. Any prerepo failure stops the run (rc1, no batch/hooks/summary) whatever the risk — including a `prerepo.sh` that never defines `prerepo()`. Both hook subshells get `FS_MODULE_FAMILY` **exported** and call `module_load <dir> strict` BEFORE sourcing the hook file, so a hook always sees its own metadata instead of the last module the PLAN stage loaded. |
+| `lib/modules.sh` | Module contract: metadata loading/validation, `module_has_hooks`/`module_has_prerepo`, `list_packages`/`list_flatpaks` for a family, deps, and the P7.5 flatpak-alternative pair `MODULE_FLATPAK_ALT_ID` + `MODULE_FLATPAK_ALT_SEAM` resolved by `module_flatpak_alt` (truthy seam `1|true|yes|on`, case-insensitive). Metadata is parsed TEXTUALLY, never executed; every optional key is reset at load time so a module can never inherit another module's value, and the alt pair is all-or-nothing (id without seam, or a seam that is not an env-var name, fails validation). |
 | `lib/ui.sh` | P4.7: `ui_multiselect`/`ui_confirm` selection + confirm layer (no external TUI tool — no ncurses; Bash + coreutils execs only). TTY raw-key re-render vs deterministic line-mode; high-risk rows never digit/`a`-toggleable (opt-in prompt is their only checklist route); EOF/`q` abort rc1 fail-closed; atomic sel-file write via `mv -fT`; `ui_confirm` returns 0 under `--yes`; color helpers must keep `return 0` (set -e safety). |
 | `tests/smoke.sh` | Plain-bash smoke suite for P2.1–P2.8 + `setup install` dry-run (P4.7) + GNOME capability/`--force` cells (P6.5); 125 asserts (P10 adds bats/CI later). |
-| `modules/` | P5/P6 module tree: `core`/`flatpak`/`git`/`fonts`/`terminal` (P5.1–P5.6) + `gnome-base`/`gnome-extensions`/`gnome-theme` (P6.2–P6.4), each `module.sh` + `hooks.sh` + list/config data files. |
-| `config/` | Static repo data: `nerdfonts.sha256` (P5.7 pinned release digests), `extensions.compat` (P6.3 GNOME extension-version report windows). |
+| `modules/` | Module tree: `core`/`flatpak`/`git`/`fonts`/`terminal` (P5.1–P5.6) + `gnome-base`/`gnome-extensions`/`gnome-theme` (P6.2–P6.4) + `vscode` (P7.5), each `module.sh` + list/config data files, optional `hooks.sh` (`run()`) and optional `prerepo.sh` (`prerepo()`, P7.5). `vscode` is the first prerepo user: it adds the Microsoft repository and imports/dearmors the pinned key before the batch, and has NO `hooks.sh`. |
+| `config/` | Static repo data: `nerdfonts.sha256` (P5.7 pinned release digests), `extensions.compat` (P6.3 GNOME extension-version report windows), `vscode-gpg.fingerprint` (P7.5 pinned Microsoft repo signing-key fingerprint + provenance). |
 | `assets/`, `docs/` | Stubs (tracked `.gitkeep` only). Content arrives in later phases. |
 | `profiles/` | P4.5 loadable skeletons; P5.7 real sets: `minimal` = `core flatpak`, `desktop` = `core flatpak git fonts terminal` (comment-only `developer`/`full`). The P6 `gnome-*` modules are deliberately NOT wired into a profile (owner decision from the P6 closure; run them explicitly via `./setup install --yes <id>`). Consumed via `lib/profiles.sh`. |
 | `ROADMAP.md` | Internal execution plan. **Gitignored — never commit** (§10). |
@@ -75,6 +94,11 @@ sync with code.
 - Module seams (P5 base set): `FS_GIT_CONFIG` + `FS_GIT_USER_NAME`/`FS_GIT_USER_EMAIL`, `FS_FONTS_DIR`/
   `FS_NERDFONT_SRC_DIR`/`FS_NERDFONT_CONFIG`/`FS_NERDFONT_SHA256_FILE`/`FS_NERDFONT_ASSETS_DIR`,
   `FS_TERM_ALIASES`/`FS_OMP_{VERSION,ARCH,SRC_DIR}`/`FS_ATUIN_{VERSION,ARCH,SRC_DIR,BIN}`.
+- P7.5 seams: `FS_VSCODE_FLATPAK` (truthy `1|true|yes|on` swaps the native install for the
+  Flatpak id — exclusive, never additive), `FS_VSCODE_KEY_FILE` (override the pinned
+  fingerprint file), `FS_VSCODE_KEYRING` (override the tool-owned dearmored keyring path).
+  `FS_MODULE_FAMILY` is not an input seam: the runner EXPORTS it into both `prerepo.sh` and
+  `hooks.sh` subshells so a hook never re-detects the distro.
 - P6 GNOME seams: `FS_WALLPAPER_ASSETS_DIR` (gnome-base), `FS_GNOME_BROWSE`/`FS_GNOME_COMPAT_FILE`
   (gnome-extensions), `FS_THEME_{NAME,SRC,ASSETS_DIR}`/`FS_CURSOR_{NAME,SRC,ASSETS_DIR}`/
   `FS_GTK_BOOKMARKS_FILE` (gnome-theme), `FS_GNOME_FORCE` (P6.5 capability-gate bypass).
@@ -188,6 +212,39 @@ delivered; **stop and wait for explicit owner approval** before the next phase.
   fail-loud (`*)` arm) so a future command without a case arm fails loudly.
 - Module contract is deliberately restrained: metadata vars + optional hooks + declarative lists;
   the runner stays boring.
+- Module hooks are two separate, single-purpose files (P7.5): `hooks.sh`/`run()` runs AFTER the
+  batches, `prerepo.sh`/`prerepo()` runs BEFORE them so a module can configure the repository its
+  own `packages.*.list` entries resolve from. `prerepo()` is always-run and idempotent (never
+  state-skipped — the P3 `add_repo` primitives are `--if-not-exists`, so it self-heals a deleted
+  repo file) and is a **fail-fast** stage: any failure, including a `prerepo.sh` that forgets to
+  define `prerepo()`, stops the whole run (rc1) regardless of risk, because the batch it precedes
+  may depend on the repository the hook establishes. That is deliberately *not* the
+  safe-continue-per-module policy a missing/failing `run()` gets: prerepo is detected before
+  anything is installed, so stopping costs no work and no state, while continuing would install
+  that module's packages anyway.
+- A flatpak alternative is a static metadata pair, never an `if` in a list file (P7.5):
+  `MODULE_FLATPAK_ALT_ID` + `MODULE_FLATPAK_ALT_SEAM` (an env-var name). When the seam variable is
+  truthy (`1|true|yes|on`) the id goes to the FLATPAK namespace and the module contributes NOTHING
+  to the SYSTEM namespace, so the two paths can never install side by side — the SYSTEM list files of
+  that module are not even read, so a stale native id there can never reach a batch. The skip is
+  scoped to the SYSTEM namespace: the module's own `flatpaks.list` is still read and is additive to
+  whichever alternative it declares. "Never side by side" is a **within-one-run** guarantee: the
+  state registry gates hooks only, not planning or batches (P4.6 design), so a user who installed
+  natively and later flips the seam keeps both on disk. Switching is a manual uninstall, not a
+  runner decision. A module without a native package (P7.5 `vscode` on Arch) still
+  ships a family list file, even comment-only, because the P4.2 family gate requires one.
+- A third-party repository key is **fetched and verified at run time, never vendored** (P7.5): the
+  full 40-hex fingerprint from `gpg --show-keys --with-colons` must equal the committed pin, and a
+  mismatch refuses everything (no import, no repo file, rc1). rpm imports the key into the rpmdb
+  and the repo file relies on it (`gpgcheck=1`, no `gpgkey=`); deb dearmors to a TOOL-OWNED
+  keyring and pins it with `signed-by=`. Never overwrite a distro-shipped keyring. `pkg_add_repo`'s
+  rc is not trustworthy for a failed write, so the postcondition (repo file / keyring exists and is
+  non-empty) is checked after the call, and `pkg_update_metadata` runs explicitly because the
+  `_deb_repos_changed` flag cannot cross the prerepo subshell. A downloaded key file holding
+  **more than one key** is refused outright, so a bundle cannot be made to satisfy a single-key
+  fingerprint check with the expected key listed first. Trade-off, accepted deliberately: pinning
+  means a *first* install cannot be done offline, because the key is fetched, never vendored — and
+  the tool has no existing offline/cache story to borrow. Do not "fix" this by committing a key.
 - All code: `#!/usr/bin/env bash` + `set -euo pipefail`; **no comments inside function bodies**
   (file-level doc comments only); `set -e` rule of thumb: io_* wrappers must not abort callers.
 - `gsettings` string scalars: real `gsettings get` renders them single-quoted (`'file:///x'`).

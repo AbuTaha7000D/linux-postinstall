@@ -1,0 +1,44 @@
+# config/vscode-gpg.fingerprint - P7.5 trust anchor for the vscode module.
+#
+# The single line below is the ONLY thing this repository trusts about the
+# signing key it fetches for the Microsoft package repository. modules/
+# vscode/prerepo.sh downloads the armored key, reads the primary-key
+# fingerprint with `gpg --show-keys --with-colons`, and refuses to import
+# anything that does not match this value byte for byte. A key rotation is
+# therefore a visible, reviewable change to this file -- never a silent
+# "trust whatever the URL served today".
+#
+# Provenance (measured 2026-09-29, not copied from any documentation):
+#   - https://packages.microsoft.com/yumrepos/vscode/repodata/repomd.xml.key
+#     and https://packages.microsoft.com/keys/microsoft.asc are the SAME
+#     key (RSA 2048, created 2015-10-28, uid "Microsoft (Release signing)
+#     <gpgsecurity@microsoft.com>").
+#   - `gpg --verify` of that repository's live repodata/repomd.xml.asc
+#     against this key reported "Good signature" -- i.e. this key really
+#     signs the metadata the module is about to trust, and not merely
+#     some other key Microsoft publishes.
+#   - gpg also prints "This key is not certified with a trusted signature"
+#     for this key: there is no web-of-trust path to it, which is exactly
+#     why the fingerprint is pinned here instead of being discovered at
+#     run time.
+#   - Microsoft's own config.repo in that directory ships gpgcheck=0 and
+#     repo_gpgcheck=0. The module deliberately does better than the vendor
+#     default: it imports the key into the rpm keyring (rpm) or a
+#     tool-owned keyring referenced with signed-by= (deb) and lets the
+#     backend verify every package signature.
+#
+# Re-verify after a rotation (fails loudly, never "fixes" the pin). Download
+# to a file first: nothing is ever piped into gpg, which is also what
+# prerepo.sh does. Compare the PRIMARY-key fpr line to the pin below, and
+# confirm the repository metadata signature as well -- a key that parses is
+# not proof it signed this repository:
+#   d=$(mktemp -d)
+#   curl -fsSL --proto '=https' --tlsv1.2 -o "$d/key" \
+#     https://packages.microsoft.com/yumrepos/vscode/repodata/repomd.xml.key
+#   gpg --show-keys --with-colons "$d/key" | grep -m1 '^fpr:'
+#   curl -fsSL --proto '=https' --tlsv1.2 -o "$d/repomd.xml.asc" \
+#     https://packages.microsoft.com/yumrepos/vscode/repodata/repomd.xml.asc
+#   curl -fsSL --proto '=https' --tlsv1.2 -o "$d/repomd.xml" \
+#     https://packages.microsoft.com/yumrepos/vscode/repodata/repomd.xml
+#   gpg --verify "$d/repomd.xml.asc" "$d/repomd.xml"   # want: Good signature
+BC528686B50D79E339D3721CEB3E94ADBE1229CF

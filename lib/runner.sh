@@ -13,7 +13,7 @@
 # and the pkg layer's operations (FS_LOG_FILE).
 #
 # runner_run <modules_dir> <profiles_dir> <name> <family> [module...]
-#                       end-to-end bootstrap of one profile, in five
+#                       end-to-end bootstrap of one profile, in six
 #                       stages:
 #                         1. RESOLVE -- profile_resolve (P4.5) folds the
 #                            profile plus any CLI module ids and closes
@@ -30,10 +30,73 @@
 #                            entries (P4.3) go into the SYSTEM id set and
 #                            flatpaks.list entries into the FLATPAK id
 #                            set -- two namespaces, never one merged set.
-#                            A io_info "module: <id> (<risk>)" line is
-#                            printed per module; risks are remembered for
-#                            the failure policy.
-#                         3. BATCH -- plan_install (P3.8) is called at
+#                            A module that declares the P7.5
+#                            flatpak-alternative pair contributes ONLY
+#                            its MODULE_FLATPAK_ALT_ID to the FLATPAK set
+#                            and NOTHING to the SYSTEM set when its seam
+#                            variable is truthy (module_flatpak_alt), so
+#                            the alternative can never install alongside
+#                            the native path: the module's SYSTEM list
+#                            files are not even read, so a stale package
+#                            id there can never reach a batch. The skip is
+#                            scoped to the SYSTEM namespace -- the
+#                            module's own flatpaks.list is still read, and
+#                            is additive to whichever alternative it
+#                            declares. A io_info "module: <id>
+#                            (<risk>)" line is printed per module; risks
+#                            are remembered for the failure policy.
+#                         3. PREREQ (P7.5) -- per module, in the resolved
+#                            deps-first order, prerepo.sh (if present) is
+#                            sourced INSIDE a subshell and prerepo() is
+#                            called once. This is the only hook that runs
+#                            BEFORE the batch, so a module can add the
+#                            repository its own packages.*.list entries
+#                            resolve from; the subshell sandbox mirrors
+#                            hooks.sh/run(), and both hook subshells are
+#                            given FS_MODULE_FAMILY=<family> so a hook
+#                            never re-detects the distro. BOTH hook
+#                            subshells call `module_load <dir> strict`
+#                            BEFORE sourcing the hook file, so a hook always
+#                            sees its OWN module's metadata: without it the
+#                            globals would still hold whatever the PLAN
+#                            stage loaded last, and a prerepo() that asks
+#                            `module_flatpak_alt` would silently answer for
+#                            a different module. Unlike the hooks
+#                            stage, prerepo() is NOT skipped for an
+#                            already-completed module and the registry is
+#                            not consulted at all: its contract is
+#                            idempotent-and-always-run (the P3 add_repo
+#                            primitives are --if-not-exists), which also
+#                            self-heals a repository file that was removed
+#                            after the module was marked done. Dry-run
+#                            DOES call prerepo -- the hook renders its own
+#                            steps -- so a dry run shows the repository
+#                            work in the same place a real run does it.
+#                            BOTH hook subshells are the CONDITION of an
+#                            `if`, which SUSPENDS errexit inside them, so
+#                            a hook must not lean on a bare `set -e` to
+#                            stop itself: it has to guard the steps it
+#                            cares about with `|| return 1`. That is not
+#                            new to prerepo -- the hooks.sh stage has
+#                            always behaved this way -- it is just written
+#                            down now that a hook is allowed to refuse the
+#                            whole run.
+#                            A prerepo failure stops the run immediately
+#                            ("module prerepo failed: <id>", rc1, no
+#                            batch, no hooks, no summary) whatever the
+#                            module's risk: the batch it precedes may
+#                            depend on the repository the hook
+#                            establishes, so a safe-continue would only
+#                            cascade into a confusing "package batch
+#                            failed". That includes a prerepo.sh that
+#                            never defines prerepo(): it counts as a
+#                            prerepo failure, NOT as the skippable
+#                            per-module failure a missing run() is,
+#                            because nothing has been installed when it
+#                            is detected -- stopping there costs no work
+#                            and no state, while continuing would install
+#                            that module's packages anyway.
+#                         4. BATCH -- plan_install (P3.8) is called at
 #                            most ONCE PER NAMESPACE, not once for the
 #                            whole run (P5.7 NB-A corrective fix): the
 #                            SYSTEM set goes through the active family
@@ -59,7 +122,7 @@
 #                            failed`, rc1, no hooks run, after the system
 #                            batch committed). An empty namespace makes no
 #                            call at all.
-#                         4. HOOKS + STATE -- per module, in the resolved
+#                         5. HOOKS + STATE -- per module, in the resolved
 #                            deps-first order: already-completed modules
 #                            (state_module_check, real mode only) print
 #                            "already completed: <id>" and are skipped for
@@ -79,7 +142,7 @@
 #                            On hook success the module is marked done in
 #                            the registry (state_module_mark, real mode
 #                            only; dry-run counts ok but writes nothing).
-#                         5. SUMMARY -- io_summary "run complete" with
+#                         6. SUMMARY -- io_summary "run complete" with
 #                            "N ok", "N failed", "N skipped" counts. rc0
 #                            iff every selected module ended done (hook
 #                            success or already-completed); rc1 if any
@@ -130,23 +193,44 @@ runner_run() {
     fi
     local -A risks=()
     local -a pkgs=() apps=()
-    local sid="" dir="" out="" p=""
+    local sid="" dir="" out="" p="" alt=""
     for sid in ${ids[@]+"${ids[@]}"}; do
         dir="$modules_dir/$sid"
         module_validate "$dir" "$family" || return 1
         risks[$sid]="$MODULE_RISK"
         io_info "module: $sid (${risks[$sid]})"
-        out="$(list_packages "$dir" "$family")" || return 1
-        if [[ -n "$out" ]]; then
-            while IFS= read -r p; do
-                pkgs+=("$p")
-            done <<<"$out"
+        alt="$(module_flatpak_alt)" || return 1
+        if [[ -n "$alt" ]]; then
+            apps+=("$alt")
+        else
+            out="$(list_packages "$dir" "$family")" || return 1
+            if [[ -n "$out" ]]; then
+                while IFS= read -r p; do
+                    pkgs+=("$p")
+                done <<<"$out"
+            fi
         fi
         out="$(list_flatpaks "$dir")" || return 1
         if [[ -n "$out" ]]; then
             while IFS= read -r p; do
                 apps+=("$p")
             done <<<"$out"
+        fi
+    done
+    for sid in ${ids[@]+"${ids[@]}"}; do
+        dir="$modules_dir/$sid"
+        if module_has_prerepo "$dir"; then
+            if ! (
+                FS_MODULE_FAMILY="$family"
+                export FS_MODULE_FAMILY
+                module_load "$dir" strict || exit 1
+                source "$dir/prerepo.sh"
+                prerepo
+            ); then
+                io_error "module prerepo failed: $sid"
+                io_error "stopping run (prerepo failed for $sid)"
+                return 1
+            fi
         fi
     done
     if (( ${#pkgs[@]} > 0 )); then
@@ -179,7 +263,13 @@ runner_run() {
         fi
         if module_has_hooks "$dir"; then
             rc=0
-            ( source "$dir/hooks.sh"; run ) || rc=$?
+            (
+                FS_MODULE_FAMILY="$family"
+                export FS_MODULE_FAMILY
+                module_load "$dir" strict || exit 1
+                source "$dir/hooks.sh"
+                run
+            ) || rc=$?
             if (( rc != 0 )); then
                 io_error "module failed: $sid"
                 if [[ "${risks[$sid]:-none}" == destructive ]]; then

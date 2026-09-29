@@ -1,0 +1,5 @@
+# VS Code has no official Arch package (AUR: visual-studio-code-bin needs an
+# AUR helper or a manual makepkg build), so this module contributes nothing
+# on arch -- see modules/vscode/module.sh. The file exists so the P4.2
+# list-usability gate passes explicitly. Use FS_VSCODE_FLATPAK=1 for the
+# flatpak build.
