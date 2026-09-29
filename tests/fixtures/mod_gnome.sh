@@ -15,6 +15,10 @@
 # command-signature idempotency (second run writes nothing, registered
 # notices); user-has-command collision (skips, never clobbers);
 # malformed shortcuts.list fail-closed rc1; wallpaper apply + skip paths.
+# Note: this fake echoes stored values VERBATIM (no single-quoted rendering);
+# its idempotency cells therefore pass via the exact-match arm only.
+# tests/fixtures/idempotency.sh is the fixture with the faithful real-gsettings
+# quoting model (string scalars returned single-quoted).
 # Usage: bash tests/fixtures/mod_gnome.sh  (exit 0 on success)
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"

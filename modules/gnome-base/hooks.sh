@@ -208,7 +208,7 @@ _gnome_base_verify_wallpaper() {
     uri="file://$img"
     cur="$(gnome_gsettings_get org.gnome.desktop.background picture-uri)" || rc=1
     if (( rc == 0 )); then
-        if [[ "$cur" == "$uri" ]]; then
+        if [[ "$cur" == "$uri" || "$cur" == "'$uri'" ]]; then
             io_info "gnome-base: verify ok: wallpaper picture-uri set"
         else
             io_error "gnome-base: verify FAILED: wallpaper picture-uri ($cur != $uri)"
@@ -217,7 +217,7 @@ _gnome_base_verify_wallpaper() {
     fi
     cur="$(gnome_gsettings_get org.gnome.desktop.background picture-uri-dark)" || rc=1
     if (( rc == 0 )); then
-        if [[ "$cur" == "$uri" ]]; then
+        if [[ "$cur" == "$uri" || "$cur" == "'$uri'" ]]; then
             io_info "gnome-base: verify ok: wallpaper picture-uri-dark set"
         else
             io_error "gnome-base: verify FAILED: wallpaper picture-uri-dark ($cur != $uri)"

@@ -330,6 +330,38 @@ fx_out "gnome-base: verify ok: wallpaper picture-uri set"
 fx_out "gnome-base: verify passed"
 [[ ! -s "$LOG" ]] && fx_ok || fx_bad "verify must never write gsettings"
 
+# --- 7b. gnome-base verify passes when the stored URI is single-quoted (the
+# real `gsettings get` rendering for string scalars) ---
+echo "--- cell: gnome-base verify pass quoted-URI (real get rendering)"
+: >"$LOG"
+cat >"$FX_TMP/keys_q" <<EOD
+org.gnome.shell/favorite-apps|['org.gnome.Nautilus.desktop', 'firefox.desktop']
+org.gnome.desktop.background/picture-uri|'file://$FX_TMP/wall/adwaita.png'
+org.gnome.desktop.background/picture-uri-dark|'file://$FX_TMP/wall/adwaita.png'
+org.gnome.settings-daemon.plugins.media-keys/custom-keybindings|['$CK/custom0/', '$CK/custom1/', '$CK/custom2/', '$CK/custom3/']
+org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:$CK/custom0//command|'flatpak run net.nokyan.Resources'
+org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:$CK/custom1//command|'gnome-control-center'
+org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:$CK/custom2//command|'gnome-terminal'
+org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:$CK/custom3//command|'amixer set Capture toggle'
+EOD
+(   set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH"
+    export XDG_CURRENT_DESKTOP=GNOME
+    export FAKE_LOG="$LOG" FAKE_KEY_FILE="$FX_TMP/keys_q"
+    export FS_WALLPAPER_ASSETS_DIR="$FX_TMP/wall"
+    export FS_DRY_RUN=0
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/modules/gnome-base/hooks.sh"
+    verify
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "gnome-base verify pass quoted-URI rc" 0
+fx_out "gnome-base: verify ok: wallpaper picture-uri set"
+fx_out "gnome-base: verify ok: wallpaper picture-uri-dark set"
+fx_out "gnome-base: verify passed"
+[[ ! -s "$LOG" ]] && fx_ok || fx_bad "verify quoted-URI must never write gsettings"
+
 # --- 8. gnome-base verify fails on a fresh (unapplied) state, rc1, no writes ---
 echo "--- cell: gnome-base verify fail"
 : >"$LOG"

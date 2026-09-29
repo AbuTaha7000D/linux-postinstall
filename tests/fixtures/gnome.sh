@@ -236,6 +236,21 @@ fx_block_rc "idempotent set" 0
 grep -Fqx "set org.gnome.desktop.interface gtk-theme 'new'" "$FAKE_LOG" && fx_bad "idempotent set must not write" || fx_ok
 grep -Fqx "get org.gnome.desktop.interface gtk-theme" "$FAKE_LOG" && fx_ok || fx_bad "idempotent set still probes"
 
+: >"$FAKE_LOG"
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH"
+    export FAKE_GET="'Adwaita'" FAKE_LOG
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_gsettings_set org.gnome.desktop.interface gtk-theme Adwaita
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "bare target matching quoted get is a no-op" 0
+grep -Fqx "set org.gnome.desktop.interface gtk-theme Adwaita" "$FAKE_LOG" && fx_bad "bare target equal to quoted get must not write" || fx_ok
+grep -Fqx "get org.gnome.desktop.interface gtk-theme" "$FAKE_LOG" && fx_ok || fx_bad "bare-no-op still probes"
+
 (
     set -euo pipefail
     export PATH="$FX_TMP/fakebin:$PATH"

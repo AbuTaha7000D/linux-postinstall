@@ -9,7 +9,13 @@
 #     audited by the run layer. Reads probe dconf, so a read is refused
 #     while FS_DRY_RUN=1 (fail-closed: dry-run never probes).
 #   - Idempotency: a real-mode set reads the current value first and skips
-#     silently (rc0, no write) when it already equals the target.
+#     silently (rc0, no write) when it already equals the target. Real
+#     `gsettings get` renders string scalars single-quoted ('file:///x'), so a
+#     bare target must also match its single-quoted rendering; a target that
+#     needs GVariant escapes (embedded quote, backslash) never matches and is
+#     re-written -- fails safe (extra write, never a skipped needed write);
+#     whether such a value is accepted by real `gsettings set` is left to the
+#     run layer (a rejected value is audited and the run keeps going).
 #   - GVariant string arrays are parsed, merged and rebuilt in memory; the
 #     old prototype's stateful text rewriting of dconf output is never used
 #     (P6.1 verification: malformed keys error safely, never via direct
@@ -54,6 +60,10 @@
 #         <gvariant> must be non-empty printable ASCII without tab/
 #         newline/CR (scalar values may contain spaces and quotes). A
 #         failed pre-write read aborts the set with rc1 and no write.
+#         Equality is textual against the current value OR its single-quoted
+#         rendering, because real `gsettings get` quotes string scalars
+#         ('file:///x'); a bare target therefore matches an applied bare or
+#         quoted value and is a no-op.
 # gnome_strv_parse <gvariant>
 #         print one array element per line. Accepts ['a', 'b'], @as [],
 #         [], bare numeric tokens and backslash escapes (decoded); empty
@@ -433,7 +443,7 @@ gnome_gsettings_set() {
         if (( rc != 0 )); then
             return 1
         fi
-        if [[ "$cur" == "$value" ]]; then
+        if [[ "$cur" == "$value" || "$cur" == "'$value'" ]]; then
             io_debug "gsettings $schema/$key already at target; no-op"
             return 0
         fi
