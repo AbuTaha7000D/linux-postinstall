@@ -6,7 +6,14 @@
 # parent directories and replace a leaf symlink with a regular file
 # (backing up the resolved content first). All writes are atomic via
 # temp+rename, so an interrupted run can leave at most a *.XXXXXX
-# temp file, never a partially written target.
+# temp file, never a partially written target. fs_dedupe_lines is the
+# plain per-line dedupe primitive (first occurrence wins, order kept)
+# used by the P6.4 gnome-theme bookmarks fix; its write is atomic and
+# mode-preserving (_fs_write_atomic) and, like the managed-block helpers,
+# a leaf symlink target is replaced by a regular file. Blank lines are
+# ordinary lines: the first occurrence of every distinct value (including
+# the empty line) is kept. It never parses, never inserts markers, and
+# writes back only when duplicates were removed.
 
 _fs_valid_name() {
     local name="$1"
@@ -464,4 +471,53 @@ fs_managed_block_remove() {
     else
         _fs_write_atomic "$file"
     fi
+}
+
+fs_dedupe_lines() {
+    local file="${1:-}" line=""
+    local -a in=() out=()
+    local -A seen=()
+    local -i i=0 dup=0
+    if [[ -z "$file" ]]; then
+        io_error "fs_dedupe_lines requires a file path"
+        return 1
+    fi
+    case "$file" in
+        *$'\n'* | *$'\r'* | */ | .. | ../* | *"/../"* | *"/..")
+            io_error "invalid dedupe target: $file"
+            return 1
+            ;;
+    esac
+    [[ -f "$file" ]] || {
+        io_error "cannot dedupe non-regular path: $file"
+        return 1
+    }
+    [[ -r "$file" ]] || {
+        io_error "cannot read: $file"
+        return 1
+    }
+    if [[ -z "${FS_STATE_DIR:-}" ]]; then
+        io_error "fs_dedupe_lines requires initialized state (lib/state.sh)"
+        return 1
+    fi
+    if ! mapfile -t in <"$file"; then
+        io_error "cannot read: $file"
+        return 1
+    fi
+    for ((i = 0; i < ${#in[@]}; i++)); do
+        line="${in[i]}"
+        if [[ -n "${seen["L$line"]:-}" ]]; then
+            dup=$(( dup + 1 ))
+            continue
+        fi
+        seen["L$line"]=1
+        out+=("$line")
+    done
+    if (( dup == 0 )); then
+        printf '0\n'
+        return 0
+    fi
+    fs_backup "$file" >/dev/null || return 1
+    _fs_write_atomic "$file" "${out[@]}" || return 1
+    printf '%d\n' "$dup"
 }

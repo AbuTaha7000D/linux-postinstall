@@ -25,7 +25,10 @@ trap 'rm -rf -- "$TMP"' EXIT
 
 unset -v FS_VERBOSE FS_DEBUG FS_DRY_RUN FS_YES FS_LOG_FILE FS_HOME FS_EUID \
     FS_DISTRO_FILE FS_RUNNING_AS_ROOT FS_SUDO_AVAILABLE FS_GNOME_BROWSE \
-    FS_GNOME_COMPAT_FILE 2>/dev/null || :
+    FS_GNOME_COMPAT_FILE FS_THEME_NAME FS_THEME_SRC FS_THEME_ASSETS_DIR \
+    FS_CURSOR_NAME FS_CURSOR_SRC FS_CURSOR_ASSETS_DIR FS_GTK_BOOKMARKS_FILE \
+    FS_STATE_DIR \
+    2>/dev/null || :
 
 pass=0
 fail=0
@@ -313,6 +316,62 @@ smoke_fs() {
     t_rc 0 "no block markers after remove" test "$(grep -c '# BEGIN fedora-setup' "$target")" -eq 0
 }
 smoke_fs
+
+printf 'P2.5b fs_dedupe_lines (P6.4)\n'
+smoke_fs_dedupe() {
+    local f="$TMP/home/dedupe.txt" g="$TMP/home/dedupe_blank.txt" h="$TMP/home/dedupe_nl.txt"
+    printf 'x\ny\nx\nz\nx\n' >"$f"
+    printf 'x\ny\nz\n' >"$TMP/home/dedupe_expected.txt"
+    (
+        set -euo pipefail
+        export FS_HOME="$TMP/home"
+        . "$ROOT/lib/io.sh"
+        . "$ROOT/lib/state.sh"
+        . "$ROOT/lib/fs.sh"
+        state_init
+        printf 'dedupe_count:%s\n' "$(fs_dedupe_lines "$f")"
+        printf 'blank_count:%s\n' "$(printf 'a\n\na\n' >"$g"; fs_dedupe_lines "$g")"
+        printf '\n' >"$h"
+        cp "$h" "$TMP/home/dedupe_nl_copy.txt"
+        printf 'nl_count:%s\n' "$(fs_dedupe_lines "$h")"
+    ) >"$OUT" 2>"$ERR"
+    block_rc_last=$?
+    t_block_rc "dedupe block" 0
+    t_out "dedupe_count:2"
+    t_out "blank_count:1"
+    t_out "nl_count:0"
+    t_err_not "bad array subscript"
+    t_rc 0 "first-seen order kept" cmp -s "$f" "$TMP/home/dedupe_expected.txt"
+    t_rc 0 "blank line kept once" cmp -s "$g" <(printf 'a\n\n')
+    t_rc 0 "newline-only file untouched" cmp -s "$h" "$TMP/home/dedupe_nl_copy.txt"
+    (
+        set -euo pipefail
+        . "$ROOT/lib/io.sh"
+        . "$ROOT/lib/fs.sh"
+        rc=0
+        fs_dedupe_lines "$f" || rc=$?
+        printf 'no_state:%s\n' "$rc"
+        exit 0
+    ) >"$OUT" 2>"$ERR"
+    block_rc_last=$?
+    t_block_rc "no-state block" 0
+    t_out "no_state:1"
+    t_err "requires initialized state"
+    (
+        set -euo pipefail
+        . "$ROOT/lib/io.sh"
+        . "$ROOT/lib/fs.sh"
+        rc=0
+        fs_dedupe_lines "$TMP/../x" || rc=$?
+        printf 'dotdot:%s\n' "$rc"
+        exit 0
+    ) >"$OUT" 2>"$ERR"
+    block_rc_last=$?
+    t_block_rc "dotdot block" 0
+    t_out "dotdot:1"
+    t_err "invalid dedupe target"
+}
+smoke_fs_dedupe
 
 printf 'P2.6 sudo\n'
 smoke_sudo() {
