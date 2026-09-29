@@ -1,8 +1,22 @@
 #!/usr/bin/env bash
-# lib/state.sh - state dir, run logs, module registry, backup registry.
+# lib/state.sh - state dir, run logs, module registry, backup registry,
+# and single-line notes.
 # Depends on lib/io.sh for io_error (source io.sh first).
 # State root: $FS_HOME (test override) > $XDG_STATE_HOME > $HOME, joined
 # with /fedora-setup. Single-writer assumption: callers use one process.
+#
+# Two registries with different shapes, deliberately not merged:
+#   - backups/registry (state_backup_add/get) records FILE copies:
+#     "<src>|<backup path>|<timestamp>", one line per backup.
+#   - notes/<key> (state_note/get/remove) records a single opaque
+#     single-line VALUE under a validated key. It exists for the P8.1
+#     "registry of changed connections": the dns module stores the prior
+#     NetworkManager connection properties there so its revert can
+#     restore exactly what was there before. A value must not contain a
+#     newline or CR, so a record can never be mistaken for several lines;
+#     the field encoding inside a value belongs to the caller.
+# Every write is atomic (temp+rename) and confined by _state_chain_ok /
+# _state_subdir_ok, exactly like the module and backup registries.
 
 FS_STATE_BASE=""
 FS_STATE_DIR=""
@@ -115,10 +129,10 @@ state_init() {
         return 1
     fi
     dir="$base/fedora-setup"
-    if ! _state_dir_content_ok "$dir" logs modules backups; then
+    if ! _state_dir_content_ok "$dir" logs modules backups notes; then
         return 1
     fi
-    if ! mkdir -p -- "$dir/logs" "$dir/modules" "$dir/backups" 2>/dev/null; then
+    if ! mkdir -p -- "$dir/logs" "$dir/modules" "$dir/backups" "$dir/notes" 2>/dev/null; then
         io_error "cannot create state dir: $dir"
         return 1
     fi
@@ -255,4 +269,77 @@ state_backup_get() {
         fi
     done <"$regfile"
     return 0
+}
+
+state_note() {
+    local key="${1:-}" value="${2:-}" file=""
+    if [[ -z "$FS_STATE_DIR" ]]; then
+        io_error "state not initialized (call state_init first)"
+        return 1
+    fi
+    if ! _state_valid_name "$key"; then
+        io_error "invalid state note key"
+        return 1
+    fi
+    if [[ "$value" == *$'\n'* || "$value" == *$'\r'* ]]; then
+        io_error "state note value must be a single line"
+        return 1
+    fi
+    _state_chain_ok "$FS_STATE_DIR/notes" || return 1
+    _state_subdir_ok notes || return 1
+    file="$FS_STATE_DIR/notes/$key"
+    if [[ -L "$file" ]]; then
+        io_error "state note is a symlink: $file"
+        return 1
+    fi
+    if [[ -e "$file" && ! -f "$file" ]]; then
+        io_error "state note is not a regular file: $file"
+        return 1
+    fi
+    _state_write "$file" "$value"
+}
+
+state_note_get() {
+    local key="${1:-}" file=""
+    if [[ -z "$FS_STATE_DIR" ]]; then
+        io_error "state not initialized (call state_init first)"
+        return 1
+    fi
+    if ! _state_valid_name "$key"; then
+        return 1
+    fi
+    _state_chain_ok "$FS_STATE_DIR/notes" || return 1
+    _state_subdir_ok notes || return 1
+    file="$FS_STATE_DIR/notes/$key"
+    if [[ -L "$file" ]]; then
+        io_error "state note is a symlink: $file"
+        return 1
+    fi
+    if [[ -e "$file" && ! -f "$file" ]]; then
+        io_error "state note is not a regular file: $file"
+        return 1
+    fi
+    [[ -f "$file" && -r "$file" ]] || return 1
+    cat -- "$file"
+}
+
+state_note_remove() {
+    local key="${1:-}" file=""
+    if [[ -z "$FS_STATE_DIR" ]]; then
+        io_error "state not initialized (call state_init first)"
+        return 1
+    fi
+    if ! _state_valid_name "$key"; then
+        io_error "invalid state note key"
+        return 1
+    fi
+    _state_chain_ok "$FS_STATE_DIR/notes" || return 1
+    _state_subdir_ok notes || return 1
+    file="$FS_STATE_DIR/notes/$key"
+    if [[ -L "$file" ]]; then
+        io_error "state note is a symlink: $file"
+        return 1
+    fi
+    rm -f -- "$file" 2>/dev/null
+    return $?
 }
