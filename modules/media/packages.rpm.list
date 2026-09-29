@@ -1,0 +1,8 @@
+# Fedora-family base repos do NOT carry obs-studio (rpmfusion-only), so the
+# rpm family intentionally declares NO native obs package here. The runner
+# renders no system batch on rpm; OBS comes via the flatpak alternative
+# (com.obsproject.Studio -- the real Flathub id, verified HTTP 200; the
+# org.* spelling is 404) or by enabling rpmfusion (out of this module's
+# remit -- see P7.5 for repo-add). This comment-only list file is the
+# documentation surface for that decision (the P4.2 family gate is already
+# satisfied by flatpaks.list alone).
