@@ -32,7 +32,8 @@ is a "module"; modules are grouped into profiles; everything runs through the co
   `containers` modules). Do not expect `verify`/`export`/`update` to work — `setup verify` is
   still `not implemented yet` (rc1, P9.2) and `lib/depgraph.sh` is the P4.4 dependency-graph
   stage, not P7 work.
-  P7.5 (`vscode`) is implemented and under review: it adds the pre-batch `prerepo` stage, the
+  P7.5 (`vscode`) is **DONE and committed** (code `b5e50ce`, ledger `a9418a7`; final review
+  `ses_f130947f7ffeq9QWe37lcpbPSj` = PASS): it added the pre-batch `prerepo` stage, the
   `MODULE_FLATPAK_ALT_ID`+`MODULE_FLATPAK_ALT_SEAM` alternative pair, and the first module that
   pins a third-party repository key at run time. Deliberate owner decisions: **no native Arch/AUR
   path** (`vscode` on Arch warns and is a no-op; use `FS_VSCODE_FLATPAK=1`), and the Microsoft
@@ -45,8 +46,24 @@ is a "module"; modules are grouped into profiles; everything runs through the co
   `config/vscode-gpg.fingerprint`. Do not claim a real Fedora run happened. On this host the full
   fixture battery also needs the pre-existing rpm shim on `PATH` (`/tmp/opencode/ubin`) because
   `tests/fixtures/planner.sh` shells out to a real `rpm` for its rpm-family cells.
-  **Next: finish P7.5 (review + commit), then the rest of P7.** Do not start P8 without owner
-  approval.
+  P7.6 (`chrome`) is implemented and Senior Review has **PASSED** — round 1 returned **REVISE**
+  with one blocking finding (a failed install was reported as success and the module latched as
+  done — §12, postcondition rule) plus 14 non-blocking findings; all were fixed and round 2 in the
+  same session (`ses_f12bcfd27ffew3DPMWqL6vUD8O`) returned **PASS**, 0 blocking. It is a
+  **hooks-only** module whose native path resolves an architecture-pinned `(URL, SHA-256)` pair
+  from the vendor's own repo index at run time, verifies the digest, then installs the bundle with
+  the existing `pkg_install_local` seam. It reuses the P7.5 alternative pair
+  (`FS_CHROME_FLATPAK=1`), ships **no** list file, and warns + no-ops on Arch.
+  **Known verification gap (P7.6) — NOT met, do not claim it:** the `[REAL]` half of the
+  criterion (a real mutating package install plus an installed `.desktop`) is **DEFERRED** because
+  this host has no `podman`/`docker` and `unshare -Ur` fails with
+  `write failed /proc/self/uid_map: Operation not permitted`, and a real install is out of bounds
+  under §9. The real *network* path **was** exercised end to end read-only (live index resolved →
+  142,114,088-byte bundle downloaded → digest matched → `pkg_install_local` reached with nothing
+  installed), and `tests/fixtures/mod_chrome.sh` (236 asserts) covers everything else hermetically.
+  See §12 for the trust-boundary wording — the digest is **not** signature verification.
+  **Next: close P7.6 (task + ledger commit), then report at the P7 phase boundary.** P8 needs
+  owner approval, and the P7 report is blocked on the same `[REAL]` host gap.
 - Version: `FS_VERSION="0.1.0-dev"` (see `lib/bootstrap.sh`).
 
 ## 2. Repository structure
@@ -67,10 +84,10 @@ is a "module"; modules are grouped into profiles; everything runs through the co
 | `lib/modules.sh` | Module contract: metadata loading/validation, `module_has_hooks`/`module_has_prerepo`, `list_packages`/`list_flatpaks` for a family, deps, and the P7.5 flatpak-alternative pair `MODULE_FLATPAK_ALT_ID` + `MODULE_FLATPAK_ALT_SEAM` resolved by `module_flatpak_alt` (truthy seam `1|true|yes|on`, case-insensitive). Metadata is parsed TEXTUALLY, never executed; every optional key is reset at load time so a module can never inherit another module's value, and the alt pair is all-or-nothing (id without seam, or a seam that is not an env-var name, fails validation). |
 | `lib/ui.sh` | P4.7: `ui_multiselect`/`ui_confirm` selection + confirm layer (no external TUI tool — no ncurses; Bash + coreutils execs only). TTY raw-key re-render vs deterministic line-mode; high-risk rows never digit/`a`-toggleable (opt-in prompt is their only checklist route); EOF/`q` abort rc1 fail-closed; atomic sel-file write via `mv -fT`; `ui_confirm` returns 0 under `--yes`; color helpers must keep `return 0` (set -e safety). |
 | `tests/smoke.sh` | Plain-bash smoke suite for P2.1–P2.8 + `setup install` dry-run (P4.7) + GNOME capability/`--force` cells (P6.5); 125 asserts (P10 adds bats/CI later). |
-| `modules/` | Module tree: `core`/`flatpak`/`git`/`fonts`/`terminal` (P5.1–P5.6) + `gnome-base`/`gnome-extensions`/`gnome-theme` (P6.2–P6.4) + `vscode` (P7.5), each `module.sh` + list/config data files, optional `hooks.sh` (`run()`) and optional `prerepo.sh` (`prerepo()`, P7.5). `vscode` is the first prerepo user: it adds the Microsoft repository and imports/dearmors the pinned key before the batch, and has NO `hooks.sh`. |
+| `modules/` | Module tree: `core`/`flatpak`/`git`/`fonts`/`terminal` (P5.1–P5.6) + `gnome-base`/`gnome-extensions`/`gnome-theme` (P6.2–P6.4) + `vscode` (P7.5) + `chrome` (P7.6), each `module.sh` + list/config data files, optional `hooks.sh` (`run()`/`verify()`) and optional `prerepo.sh` (`prerepo()`, P7.5). `vscode` is the first prerepo user: it adds the Microsoft repository and imports/dearmors the pinned key before the batch, and has NO `hooks.sh`. `chrome` is the first **hooks-only** module: no list file at all, because its bundle version floats and is resolved at run time. |
 | `config/` | Static repo data: `nerdfonts.sha256` (P5.7 pinned release digests), `extensions.compat` (P6.3 GNOME extension-version report windows), `vscode-gpg.fingerprint` (P7.5 pinned Microsoft repo signing-key fingerprint + provenance). |
 | `assets/`, `docs/` | Stubs (tracked `.gitkeep` only). Content arrives in later phases. |
-| `profiles/` | P4.5 loadable skeletons; P5.7 real sets: `minimal` = `core flatpak`, `desktop` = `core flatpak git fonts terminal` (comment-only `developer`/`full`). The P6 `gnome-*` modules are deliberately NOT wired into a profile (owner decision from the P6 closure; run them explicitly via `./setup install --yes <id>`). Consumed via `lib/profiles.sh`. |
+| `profiles/` | P4.5 loadable skeletons; P5.7 real sets: `minimal` = `core flatpak`, `desktop` = `core flatpak git fonts terminal` (comment-only `developer`/`full`). The P6 `gnome-*` modules are deliberately NOT wired into a profile (owner decision from the P6 closure; run them explicitly via `./setup install --yes <id>`). Consumed via `lib/profiles.sh`. P7 modules follow the same explicit-invocation pattern and need no wiring: `vscode` (P7.5) and `chrome` (P7.6) are run by id. `chrome` additionally contributes to *neither* batch namespace, since a hooks-only module ships no list file, so its native work happens entirely in `hooks.sh`. |
 | `ROADMAP.md` | Internal execution plan. **Gitignored — never commit** (§10). |
 | `README.md` | **Stale:** documents the deleted prototype (`setup.sh` etc.). Rewritten only in P11.1 — do not keep it in sync per task. |
 
@@ -99,6 +116,10 @@ sync with code.
   fingerprint file), `FS_VSCODE_KEYRING` (override the tool-owned dearmored keyring path).
   `FS_MODULE_FAMILY` is not an input seam: the runner EXPORTS it into both `prerepo.sh` and
   `hooks.sh` subshells so a hook never re-detects the distro.
+- P7.6 seams: `FS_CHROME_FLATPAK` (truthy `1|true|yes|on` swaps the native bundle for the
+  Flatpak id — exclusive, never additive, same P7.5 pair), `FS_CHROME_ARCH` (host-arch override
+  for the bundle/index URL, `x86_64|amd64|aarch64|arm64`; anything else is refused),
+  `FS_CHROME_DESKTOP_DIR` (verify() target directory, default `/usr/share/applications`).
 - P6 GNOME seams: `FS_WALLPAPER_ASSETS_DIR` (gnome-base), `FS_GNOME_BROWSE`/`FS_GNOME_COMPAT_FILE`
   (gnome-extensions), `FS_THEME_{NAME,SRC,ASSETS_DIR}`/`FS_CURSOR_{NAME,SRC,ASSETS_DIR}`/
   `FS_GTK_BOOKMARKS_FILE` (gnome-theme), `FS_GNOME_FORCE` (P6.5 capability-gate bypass).
@@ -245,6 +266,66 @@ delivered; **stop and wait for explicit owner approval** before the next phase.
   fingerprint check with the expected key listed first. Trade-off, accepted deliberately: pinning
   means a *first* install cannot be done offline, because the key is fetched, never vendored — and
   the tool has no existing offline/cache story to borrow. Do not "fix" this by committing a key.
+- A floating-version bundle resolves its `(URL, SHA-256)` pair **at run time from the vendor's own
+  repo index** (P7.6 `chrome`); nothing about the version is pinned in-repo. Measured 2026-09-29:
+  Google publishes a rolling `*_current_<arch>.deb`, but there is **no rolling rpm name at all**
+  (`*_current.<arch>.rpm` is 404), so a "pinned arch URL" is achievable for deb and impossible for
+  rpm. Hardcoding a version for either family would install a permanently stale browser. Instead
+  both fields come from the SAME stanza of `dists/stable/main/binary-<arch>/Packages` (deb
+  `Filename`+`SHA256`) or `repodata/primary.xml.gz` (rpm `<checksum type="sha256">`+
+  `<location href>`), so the digest always describes the exact URL. **The rpm `<location href>` is
+  repo-relative**: the URL must carry the per-arch repo dir (`.../stable/x86_64/<file>.rpm`); the
+  base without it 404s. That was a real bug found while building P7.6 and is pinned by
+  `mod_chrome.sh`. Resolution is a `while read` scan that selects the stanza by **exact** package
+  name — the indexes carry decoys (`google-chrome-repo`, `-beta`, `-canary`, `-unstable`) with their
+  own digests, so a substring or first-match read ships the wrong browser.
+- **A SHA-256 check is not signature verification, and P7.6's is deliberately weaker than P7.5's.**
+  The Chrome digest detects tampering and corruption in transit and pins the exact bytes the
+  metadata described; the index itself is trusted **purely over HTTPS to `dl.google.com`**, and
+  nothing verifies a vendor signature or a pinned key. P7.5 could pin a fingerprint because a
+  repository key rotates rarely; Chrome's stable channel is expected to move every few weeks, so
+  pinning its key into this repo would mean re-pinning constantly. Do not describe this as
+  "signature verification", and do not "upgrade" it to a vendored key without an owner decision.
+  Sharpening for the same reason: index and bundle arrive over the **same** TLS channel, so the
+  digest does not compensate for that channel — it buys corruption detection and a divergent
+  mirror/CDN edge, nothing against a compromised `dl.google.com` or a CA.
+- **A seam whose rc cannot be trusted must be confirmed by its postcondition** (P7.6, and a real
+  Senior Review blocking finding). `pkg_install_local` on rpm/deb calls `run_sudo` **without**
+  `--stop`, and `run_cmd`'s keep-going default logs `command failed (rc=N)` then returns 0 — so
+  that seam returns 0 for a failed install. Trusting it made the `chrome` module report `1 ok`,
+  exit 0, and let `lib/runner.sh` **mark the module done**, permanently skipping the install on
+  every later run. The fix is the same rule already recorded for `pkg_add_repo`: after the call,
+  require `pkg_query_installed google-chrome-stable` to be rc0, else error + cleanup + rc1. Two
+  consequences to preserve: (a) the P3 `run_sudo "install local package" -- …` missing-`--stop`
+  gap is a **separate owner ticket**, deliberately not fixed inside P7.6 (§13); (b) the mock
+  backend is NOT taught to record a local install, because `mock_install_local` receives only a
+  file path and no package name — inventing a filename→package convention is a P3 design change.
+  So the fixture drives the install-happy path through **real** rpm/deb seams with fakes that are
+  coupled to each other (the fake installer records the package, the fake `rpm -q`/`dpkg-query`
+  answers from that same file), which is also what makes the failure cell real. Honest limit of
+  the postcondition: it asks "is it installed", not "did my command succeed", so a host that
+  **already** has Chrome passes even if this run's install failed — a version bump that silently
+  did not happen is the one case it cannot detect.
+- A hooks-only module needs **no** list file (P7.6 `chrome`): `module_validate`'s family gate
+  passes on the *absence* of all three list kinds, so a bundle resolved at run time ships no
+  `packages.*.list` at all — which also removes any chance of a stale native id reaching a batch.
+  Note the practical difference from the P7.5 `vscode`-on-Arch case, which still needs a
+  comment-only family list to satisfy the gate: a hooks-only module is a separate case, and adding a
+  native list file to `chrome` would break the Flatpak exclusivity the pair guarantees.
+- **A dry run that cannot reach a seam must not fake it** (P7.6). The P3 `pkg_install_local` opens
+  with `[[ ! -f "$file" ]]`, so it requires a real file; a side-effect-free dry run has none. The
+  Chrome hook therefore renders the two `wget` steps (the metadata URL is statically derivable from
+  family+arch; the bundle URL carries the literal `RESOLVED-AT-RUN-TIME` marker because it only
+  exists after resolving the index) and **reports** the install step in an info line rather than
+  executing a seam it cannot reach. Dry-run still writes nothing and never touches the network. Do
+  not "fix" this by creating a placeholder file in dry-run or by relaxing the P3 precondition for
+  every other caller; if a rendered install command is ever required, that is a P3 change and needs
+  an owner decision.
+- Bash `[[ "$x" == "$pat" ]]` is a **full-string glob match, not a substring test** (P7.6). A line
+  read from an index carries leading whitespace, so an unanchored-looking comparison like
+  `[[ "$line" == "<name>pkg</name>" ]]` silently never matches while reading as a substring test.
+  Use `*"<name>pkg</name>"*` for a substring match, and `[[ "$x" == "exact" ]]` only when equality
+  is what you want. This was a real P7.6 bug; `mod_chrome.sh` pins it.
 - All code: `#!/usr/bin/env bash` + `set -euo pipefail`; **no comments inside function bodies**
   (file-level doc comments only); `set -e` rule of thumb: io_* wrappers must not abort callers.
 - `gsettings` string scalars: real `gsettings get` renders them single-quoted (`'file:///x'`).
