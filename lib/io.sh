@@ -4,6 +4,20 @@
 # configured FS_LOG_FILE is preserved even when appends fail, so callers
 # can reliably detect an unusable log path. io_* functions never abort
 # the caller under set -e / set -u.
+#
+# FS_NO_COLOR is normalized to 0 here, so EVERY color gate must compare it
+# NUMERICALLY (`(( FS_NO_COLOR == 0 ))`), never with `-z`: a `-z` test is
+# false for the string "0", which silently disables color. lib/ui.sh had
+# exactly that bug and P8.3 fixed it -- the `[high-risk]` red flag had never
+# once rendered. One gate, one comparison, or the flag is dead.
+#
+# io_alert is the one io_* that goes to STDOUT instead of its level's
+# stderr, and is deliberately un-timestamped: it annotates a rendered plan
+# (e.g. a dry run) rather than narrating it, so it must interleave with the
+# plan lines in order and a timestamp would only blur the alignment. It is
+# styled bold+red on a TTY and prints the byte-identical `!! <msg>` text when
+# piped, so a piped/fixture assertion never has to know about ANSI. It is
+# also audit-logged through _io_logline under the same `!!` prefix.
 
 FS_DEBUG="${FS_DEBUG:-0}"
 FS_VERBOSE="${FS_VERBOSE:-0}"
@@ -23,6 +37,7 @@ _io_ansi() {
         yellow) printf '%s' $'\033[33m' ;;
         green)  printf '%s' $'\033[32m' ;;
         dim)    printf '%s' $'\033[2m' ;;
+        bold)   printf '%s' $'\033[1m' ;;
     esac
 }
 
@@ -96,6 +111,18 @@ io_info() {
 
 io_debug() {
     _io_log 1 debug dim "$*"
+}
+
+io_alert() {
+    local msg="$*" col="" rst=""
+    _io_logline "!! $msg"
+    if (( FS_NO_COLOR == 0 )) && _io_fd_tty 1; then
+        col="$(_io_ansi red)$(_io_ansi bold)"
+        rst=$'\033[0m'
+    fi
+    {
+        printf '%s!! %s%s\n' "$col" "$msg" "$rst"
+    } >&1 2>/dev/null || true
 }
 
 io_progress() {

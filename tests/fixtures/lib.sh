@@ -128,6 +128,51 @@ fx_empty() {
     fi
 }
 
+FX_PTY=""
+fx_pty_available() {
+    if [[ -n "$FX_PTY" ]]; then
+        [[ "$FX_PTY" == yes ]]
+        return $?
+    fi
+    if command -v python3 >/dev/null 2>&1; then
+        FX_PTY=yes
+    else
+        FX_PTY=no
+    fi
+    [[ "$FX_PTY" == yes ]]
+}
+
+fx_pty_run() {
+    local stdin_data="$1" out_file="$2"
+    shift 2
+    python3 -c '
+import os, pty, sys
+data = sys.argv[1].encode()
+out = sys.argv[2]
+argv = sys.argv[3:]
+pid, fd = pty.fork()
+if pid == 0:
+    os.execvp(argv[0], argv)
+written = 0
+while written < len(data):
+    written += os.write(fd, data[written:])
+    os.read(fd, 4096)
+buf = b""
+try:
+    while True:
+        chunk = os.read(fd, 4096)
+        if not chunk:
+            break
+        buf += chunk
+except OSError:
+    pass
+os.waitpid(pid, 0)
+with open(out, "wb") as f:
+    f.write(buf)
+' "$stdin_data" "$out_file" "$@" 2>/dev/null || :
+    [[ -f "$out_file" ]]
+}
+
 fx_summary() {
     printf 'summary: %s passed, %s failed\n' "$FX_PASS" "$FX_FAIL"
     (( FX_FAIL == 0 ))

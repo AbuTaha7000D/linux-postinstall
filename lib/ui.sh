@@ -12,7 +12,10 @@
 #              ANSI cursor-up + erase after every key. Keys: 1..N toggle
 #              that row, `a` selects all non-high-risk rows, `n` clears the
 #              selection, `q` aborts (rc1, no write), Enter accepts. Colors
-#              only when stdout is a TTY and FS_NO_COLOR is unset.
+#              only when stdout is a TTY and FS_NO_COLOR is 0 (numeric --
+#              lib/io.sh normalizes it, so a `-z` test would be false for
+#              the string "0" and the red flag would never render; that was
+#              a real P8.3 bug, see lib/io.sh's header).
 #   line mode (anything else; pipes, scripts, CI): one prompt per line, and
 #              each accepted line re-renders the whole checklist (the
 #              scripted-fixture path, fully deterministic). Replies:
@@ -38,14 +41,14 @@ ui_tty_mode() {
 }
 
 _ui_color_red() {
-    if [[ -t 1 && -z "${FS_NO_COLOR:-}" ]]; then
+    if (( ${FS_NO_COLOR:-0} == 0 )) && [[ -t 1 ]]; then
         printf '\033[31m'
     fi
     return 0
 }
 
 _ui_color_reset() {
-    if [[ -t 1 && -z "${FS_NO_COLOR:-}" ]]; then
+    if (( ${FS_NO_COLOR:-0} == 0 )) && [[ -t 1 ]]; then
         printf '\033[0m'
     fi
     return 0

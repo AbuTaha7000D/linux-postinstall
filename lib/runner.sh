@@ -170,6 +170,28 @@
 #                       run_sudo.
 #                       Resolve/validate/plan errors print only io_error
 #                       lines and return rc1 -- no writes, no state.
+#
+# RISK GATE (P8.3). The curated set is what a human actually asked for: the
+# module args bootstrap passed (post-UI selection), or -- when it passed
+# none -- the profile FILE's own ids via profile_load. The resolved set is
+# that plus everything MODULE_DEPENDS drags in transitively. Any high/
+# destructive module in the resolved set but NOT in the curated set is
+# refused rc1 before any batch, prerepo, or hook: a single MODULE_DEPENDS
+# line must never be able to put a destructive module on a system nobody
+# named. This is a real P8.3 finding -- bootstrap's pre-seed filter
+# (lib/bootstrap.sh) only walks the curated list, so before this gate a dep
+# edge pulled `locale` into `--yes --profile minimal` and installed it with
+# no consent at all. A module that WAS curated is a different case: the
+# pre-seed filter drops it from the checklist with a loud io_alert and the
+# run continues rc0 (the reviewed P4.7 contract), so the gate deliberately
+# does not touch that path. The check runs after the plan loop because
+# module_validate is what classifies risk, and planning is pure metadata
+# reading -- no writes, no state, nothing privileged -- so rc1 here is as
+# side-effect-free as a resolve error.
+#
+# A high/destructive module in a DRY RUN additionally prints a bold io_alert
+# line, after the gate above so a refused module is never announced as
+# something that would have happened.
 
 runner_run() {
     local modules_dir="${1:-}" profiles_dir="${2:-}" name="${3:-}" family="${4:-}"
@@ -192,13 +214,33 @@ runner_run() {
         done <<<"$resolved"
     fi
     local -A risks=()
+    local -A curated=()
+    local -a cids=()
     local -a pkgs=() apps=()
-    local sid="" dir="" out="" p="" alt=""
+    if (( $# > 0 )); then
+        cids=("$@")
+    else
+        cids=()
+        while IFS= read -r id; do
+            [[ -n "$id" ]] && cids+=("$id")
+        done < <(profile_load "$profiles_dir" "$name") || return 1
+    fi
+    local cid=""
+    for cid in ${cids[@]+"${cids[@]}"}; do
+        curated[$cid]=1
+    done
+    local -a pulled=()
+    local sid="" pid="" dir="" out="" p="" alt=""
     for sid in ${ids[@]+"${ids[@]}"}; do
         dir="$modules_dir/$sid"
         module_validate "$dir" "$family" || return 1
         risks[$sid]="$MODULE_RISK"
         io_info "module: $sid (${risks[$sid]})"
+        case "${risks[$sid]}" in
+            high | destructive)
+                [[ -n "${curated[$sid]:-}" ]] || pulled+=("$sid")
+                ;;
+        esac
         alt="$(module_flatpak_alt)" || return 1
         if [[ -n "$alt" ]]; then
             apps+=("$alt")
@@ -217,6 +259,24 @@ runner_run() {
             done <<<"$out"
         fi
     done
+    if (( ${#pulled[@]} > 0 )); then
+        ptxt=""
+        for pid in ${pulled[@]+"${pulled[@]}"}; do
+            ptxt="$ptxt $pid"
+        done
+        io_error "high-risk module(s) pulled in transitively by a dependency:$ptxt"
+        io_error "name them on the command line to run them, or drop the dependency"
+        return 1
+    fi
+    if (( FS_DRY_RUN == 1 )); then
+        for sid in ${ids[@]+"${ids[@]}"}; do
+            case "${risks[$sid]}" in
+                high | destructive)
+                    io_alert "dry run: $sid is ${risks[$sid]}; a real run would change this system"
+                    ;;
+            esac
+        done
+    fi
     for sid in ${ids[@]+"${ids[@]}"}; do
         dir="$modules_dir/$sid"
         if module_has_prerepo "$dir"; then

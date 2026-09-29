@@ -166,6 +166,7 @@ _cli_install_impl() {
         printf '%s\t%s\t%s\n' "$MODULE_ID" "${MODULE_TITLE:-$MODULE_ID}" "$MODULE_RISK"
     done >"$entries"
     local -a safe=()
+    local -a held=()
     for id in ${defaults[@]+"${defaults[@]}"}; do
         module_load "$mdir/$id" || return 1
         have=0
@@ -176,11 +177,22 @@ _cli_install_impl() {
         done
         case "$MODULE_RISK" in
             high | destructive)
-                (( have == 0 )) || safe+=("$id")
+                if (( have == 0 )); then
+                    held+=("$id")
+                else
+                    safe+=("$id")
+                fi
                 ;;
             *) safe+=("$id") ;;
         esac
     done
+    if (( ${#held[@]} > 0 )); then
+        htxt=""
+        for id in ${held[@]+"${held[@]}"}; do
+            htxt="$htxt $id"
+        done
+        io_alert "high-risk module(s) not selected:$htxt; name one on the command line to run it"
+    fi
     _cli_write_defaults "$sel" ${safe[@]+"${safe[@]}"} || return 1
     if (( FS_YES != 1 )); then
         ui_multiselect "Select modules for profile '$name'" "$entries" "$sel" || return 1
