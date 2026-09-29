@@ -5,15 +5,20 @@
 # FS_YES / FS_DRY_RUN / FS_VERBOSE / FS_DEBUG / FS_PROFILE / FS_LIST.
 # --browse seeds FS_GNOME_BROWSE (module-scoped opt-in consumed only by
 # the gnome-extensions module: open at most two curated extension pages).
-# FS_YES / FS_DRY_RUN / FS_VERBOSE / FS_DEBUG / FS_GNOME_BROWSE each also
-# honor a pre-set environment value (test seam); FS_PROFILE and FS_LIST are
-# unconditionally reset by cli_parse (seam-less by design).
+# --force seeds FS_GNOME_FORCE (module-scoped opt-in consumed only by the
+# GNOME capability gate gnome_require_capable: run every GNOME module even
+# when the session looks non-GNOME / SSH / headless / gsettings-less).
+# FS_YES / FS_DRY_RUN / FS_VERBOSE / FS_DEBUG / FS_GNOME_BROWSE /
+# FS_GNOME_FORCE each also honor a pre-set environment value (test seam);
+# FS_PROFILE and FS_LIST are unconditionally reset by cli_parse (seam-less
+# by design).
 
 _CLI_ENV_VERBOSE="${FS_VERBOSE:-0}"
 _CLI_ENV_DEBUG="${FS_DEBUG:-0}"
 _CLI_ENV_DRY_RUN="${FS_DRY_RUN:-0}"
 _CLI_ENV_YES="${FS_YES:-0}"
 _CLI_ENV_BROWSE="${FS_GNOME_BROWSE:-0}"
+_CLI_ENV_FORCE="${FS_GNOME_FORCE:-0}"
 
 _cli_known_cmd() {
     case "$1" in
@@ -31,6 +36,7 @@ cli_parse() {
     FS_VERBOSE="$_CLI_ENV_VERBOSE"
     FS_DEBUG="$_CLI_ENV_DEBUG"
     FS_GNOME_BROWSE="$_CLI_ENV_BROWSE"
+    FS_GNOME_FORCE="$_CLI_ENV_FORCE"
     FS_PROFILE=""
     FS_CMD=""
     FS_CMD_ARGS=()
@@ -71,6 +77,11 @@ cli_parse() {
                     ;;
                 --browse)
                     FS_GNOME_BROWSE=1
+                    i=$(( i + 1 ))
+                    continue
+                    ;;
+                --force)
+                    FS_GNOME_FORCE=1
                     i=$(( i + 1 ))
                     continue
                     ;;
@@ -144,6 +155,7 @@ Global flags:
   --verbose    More verbose output
   --debug      Debug-level output
   --browse     Opt-in: gnome-extensions may open browse URLs (at most 2)
+  --force      Opt-in: run GNOME modules even when not a GNOME session
   --profile P  Select profile P
   --list       Alias for the 'list' command
   -h, --help   Show this help text

@@ -25,9 +25,10 @@ trap 'rm -rf -- "$TMP"' EXIT
 
 unset -v FS_VERBOSE FS_DEBUG FS_DRY_RUN FS_YES FS_LOG_FILE FS_HOME FS_EUID \
     FS_DISTRO_FILE FS_RUNNING_AS_ROOT FS_SUDO_AVAILABLE FS_GNOME_BROWSE \
-    FS_GNOME_COMPAT_FILE FS_THEME_NAME FS_THEME_SRC FS_THEME_ASSETS_DIR \
+    FS_GNOME_COMPAT_FILE FS_GNOME_FORCE FS_THEME_NAME FS_THEME_SRC FS_THEME_ASSETS_DIR \
     FS_CURSOR_NAME FS_CURSOR_SRC FS_CURSOR_ASSETS_DIR FS_GTK_BOOKMARKS_FILE \
-    FS_STATE_DIR \
+    FS_STATE_DIR SSH_CONNECTION SSH_CLIENT SSH_TTY DISPLAY WAYLAND_DISPLAY \
+    XDG_CURRENT_DESKTOP \
     2>/dev/null || :
 
 pass=0
@@ -155,9 +156,9 @@ smoke_cli() {
             . "$ROOT/lib/io.sh"
             . "$ROOT/lib/cli.sh"
             cli_parse "$@"
-            printf 'cmd=%s yes=%s dry=%s verbose=%s debug=%s list=%s profile=%s browse=%s args=%s\n' \
+            printf 'cmd=%s yes=%s dry=%s verbose=%s debug=%s list=%s profile=%s browse=%s force=%s args=%s\n' \
                 "${FS_CMD:-}" "$FS_YES" "$FS_DRY_RUN" "$FS_VERBOSE" "$FS_DEBUG" \
-                "$FS_LIST" "${FS_PROFILE:-}" "$FS_GNOME_BROWSE" "${FS_CMD_ARGS[*]:-}"
+                "$FS_LIST" "${FS_PROFILE:-}" "$FS_GNOME_BROWSE" "$FS_GNOME_FORCE" "${FS_CMD_ARGS[*]:-}"
         )
     }
     t_rc 0 "bare help default" cli_one
@@ -170,6 +171,16 @@ smoke_cli() {
     t_out "yes=1 dry=1"
     t_rc 0 "browse flag" cli_one --browse install
     t_out "cmd=install.*browse=1"
+    t_rc 0 "force flag" cli_one --force install
+    t_out "cmd=install.*force=1"
+    (
+        set -euo pipefail
+        export FS_GNOME_FORCE=1
+        cli_one install
+    ) >"$OUT" 2>"$ERR"
+    block_rc_last=$?
+    t_block_rc "force env seam block" 0
+    t_out "force=1"
     t_rc 0 "profile value" cli_one --profile smoke install
     t_out "cmd=install.*profile=smoke"
     t_rc 0 "verbose flag" cli_one --verbose check

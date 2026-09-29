@@ -75,6 +75,7 @@ printf 'xdg-open %s\n' "$*" >>"${FAKE_LOG:-/dev/null}" 2>/dev/null || :
 exit 0
 EOF
 chmod +x "$FX_TMP/fakebin/xdg-open"
+ln -sf "${TRUE_BIN:-/bin/true}" "$FX_TMP/fakebin/gsettings"
 
 SETUP="$ROOT/setup"
 LOG="$FX_TMP/fake.log"
@@ -232,7 +233,7 @@ grep -F "extension/999/nope" "$LOG" && fx_bad "third browse url never opened in 
 grep -Fqx "enable $DDASH" "$LOG" && fx_ok || fx_bad "real --browse still runs the enable phase before browsing"
 grep -Fqx "enable $DUTHEME" "$LOG" && fx_ok || fx_bad "real --browse enables the full curated set"
 
-# --- 6. non-GNOME desktop: graceful skip, no plan ---
+# --- 6. non-GNOME desktop: graceful skip via the capability gate, no plan ---
 echo "--- cell: non-GNOME skip"
 cp "$ROOT/modules/gnome-extensions/module.sh" "$ROOT/modules/gnome-extensions/hooks.sh" \
     "$ROOT/modules/gnome-extensions/extensions.list" "$ROOT/modules/gnome-extensions/browse.list" \
@@ -254,12 +255,13 @@ rm -rf "$FX_TMP/h_kde"
 FX_BLOCK_RC=$?
 fx_block_rc "non-GNOME skip rc" 0
 [[ $(grep -c '^# would run:' "$FX_OUT") == 0 ]] && fx_ok || fx_bad "non-GNOME dry renders no plan"
-fx_out "no GNOME session"
+fx_out "skipped (not GNOME) (not a GNOME session"
 
-# --- 7. gnome-extensions missing: fail closed before anything (real) ---
+# --- 7. gnome-extensions missing (gsettings present): fail closed before anything (real) ---
 echo "--- cell: gnome-extensions missing"
 : >"$LOG"
 ln -sf "${DK_DIRNAME:-/usr/bin/dirname}" "$FX_TMP/notools/dirname"
+ln -sf "${TRUE_BIN:-/bin/true}" "$FX_TMP/notools/gsettings"
 (   set -euo pipefail
     export PATH="$FX_TMP/notools"
     export XDG_CURRENT_DESKTOP=GNOME
@@ -395,7 +397,7 @@ ln -sf "${DK_DIRNAME:-/usr/bin/dirname}" "$FX_TMP/noxdg/dirname"
 ln -sf "${DK_CAT:-/usr/bin/cat}" "$FX_TMP/noxdg/cat"
 ln -sf "${DK_ENV:-/usr/bin/env}" "$FX_TMP/noxdg/env"
 ln -sf "${BASH:-/usr/bin/bash}" "$FX_TMP/noxdg/bash"
-cp "$FX_TMP/fakebin/gnome-shell" "$FX_TMP/fakebin/gnome-extensions" "$FX_TMP/noxdg/"
+cp "$FX_TMP/fakebin/gnome-shell" "$FX_TMP/fakebin/gnome-extensions" "$FX_TMP/fakebin/gsettings" "$FX_TMP/noxdg/"
 : >"$LOG"
 (   set -euo pipefail
     export PATH="$FX_TMP/noxdg"

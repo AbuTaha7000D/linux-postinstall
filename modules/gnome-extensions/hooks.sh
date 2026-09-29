@@ -6,10 +6,12 @@
 # browse.list parsing) itself.
 #
 # run() strategy (prototype guard + ROADMAP P6.3):
-#   1. Desktop gate -- no GNOME session (XDG_CURRENT_DESKTOP not matching
-#      *GNOME*) means graceful skip (io_info, rc0).
+#   1. Capability gate -- gnome_require_capable (P6.5): non-GNOME session,
+#      SSH/headless context, or no gsettings on PATH means graceful skip
+#      (io_info "skipped (not GNOME)", rc0); --force (FS_GNOME_FORCE=1)
+#      overrides and runs anyway.
 #   2. Tool gate -- gnome-extensions missing from PATH fails closed (rc1)
-#      before anything else runs.
+#      before anything else runs (only reachable once gsettings is present).
 #   3. Real mode probes `gnome-shell --version` and the installed / enabled
 #      extension uuids ONCE (both probes fail closed rc1: enabling safely
 #      requires knowing the current state), then enables each curated
@@ -51,16 +53,11 @@
 #      (see lib/gnome.sh header).
 
 run() {
-    local root desktop dir compat cfile="" browse=""
+    local root dir cfile="" browse=""
     root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)" || return 1
     source "$root/lib/gnome.sh"
     source "$root/lib/lists.sh"
-    desktop="${XDG_CURRENT_DESKTOP:-}"
-    case "$desktop" in
-        *GNOME*) ;;
-        *) io_info "gnome-extensions: no GNOME session (XDG_CURRENT_DESKTOP='${desktop:-unset}'); skipping"
-           return 0 ;;
-    esac
+    gnome_require_capable gnome-extensions || return 0
     if ! gnome_extensions_available; then
         io_error "gnome-extensions: gnome-extensions not found on PATH"
         return 1
@@ -77,6 +74,76 @@ run() {
         _gnome_ext_browse "$dir" || return 1
     fi
     return 0
+}
+
+# verify() is the P6.5 read-only diagnostic (wired to `./setup verify` in
+# P9.2): it re-gates, refuses to run in dry-run (verification reads probe the
+# live extension list), then requires every curated extensions.list uuid to be
+# BOTH installed and enabled -- rc1 when any is missing, else io_info "verify
+# passed". read-only: never enables, never installs.
+verify() {
+    local root dir rc=0
+    root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)" || return 1
+    source "$root/lib/gnome.sh"
+    source "$root/lib/lists.sh"
+    gnome_require_capable gnome-extensions || return 0
+    if (( FS_DRY_RUN == 1 )); then
+        io_info "gnome-extensions: verify is read-only; runs only in real mode"
+        return 0
+    fi
+    if ! gnome_extensions_available; then
+        io_error "gnome-extensions: gnome-extensions not found on PATH"
+        return 1
+    fi
+    dir="$root/modules/gnome-extensions"
+    _gnome_ext_verify "$dir" || rc=1
+    if (( rc == 0 )); then
+        io_info "gnome-extensions: verify passed"
+    fi
+    return "$rc"
+}
+
+_gnome_ext_verify() {
+    local dir="$1" rc=0 uuid="" out=""
+    local -a uuids=()
+    local -A installed=() enabled=()
+    local -i n=0
+    _gnome_ext_uuids "$dir" uuids || return 1
+    if (( ${#uuids[@]} == 0 )); then
+        io_info "gnome-extensions: verify: extensions.list empty; nothing to verify"
+        return 0
+    fi
+    out="$(gnome_extensions_list)" || return 1
+    if [[ -n "$out" ]]; then
+        while IFS= read -r uuid; do
+            case "$uuid" in
+                "" | *[!A-Za-z0-9._@-]*) continue ;;
+            esac
+            installed[$uuid]=1
+        done <<<"$out"
+    fi
+    out="$(gnome_extensions_list --enabled)" || return 1
+    if [[ -n "$out" ]]; then
+        while IFS= read -r uuid; do
+            case "$uuid" in
+                "" | *[!A-Za-z0-9._@-]*) continue ;;
+            esac
+            enabled[$uuid]=1
+        done <<<"$out"
+    fi
+    for (( n = 0; n < ${#uuids[@]}; n++ )); do
+        uuid="${uuids[$n]}"
+        if [[ -z "${installed[$uuid]:-}" ]]; then
+            io_error "gnome-extensions: verify FAILED: extension not installed: $uuid"
+            rc=1
+        elif [[ -z "${enabled[$uuid]:-}" ]]; then
+            io_error "gnome-extensions: verify FAILED: extension not enabled: $uuid"
+            rc=1
+        else
+            io_info "gnome-extensions: verify ok: extension installed+enabled: $uuid"
+        fi
+    done
+    return "$rc"
 }
 
 _gnome_ext_uuids() {

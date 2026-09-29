@@ -7,11 +7,13 @@
 # gnome_strv_merge_set), so dry-run renders exact `# would run:` lines and
 # never probes, and real runs are audited.
 #
-# run() guards the module exactly like the prototype did, plus a validation
-# seam: no GNOME session (XDG_CURRENT_DESKTOP not matching *GNOME*) means
-# graceful skip (io_info, rc0); no gsettings on PATH or a non-absolute
-# FS_WALLPAPER_ASSETS_DIR means fail-closed (io_error, rc1) before anything
-# else runs. Then, in order:
+# run() guards the module like the prototype did, plus a validation seam:
+# gnome_require_capable (P6.5) decides -- a non-GNOME session (XDG_CURRENT_
+# DESKTOP not matching *GNOME*), an SSH/headless context, or no gsettings on
+# PATH all mean graceful skip (io_info "skipped (not GNOME)", rc0, nothing
+# probed); --force (FS_GNOME_FORCE=1) overrides the skip and runs anyway.
+# A non-absolute FS_WALLPAPER_ASSETS_DIR fails closed (io_error, rc1) before
+# anything else runs. Then, in order:
 #   1. Favorites -- gnome_strv_merge_set org.gnome.shell favorite-apps
 #      reads the current array, appends the curated favorites.list ids that
 #      are missing (first-seen dedupe, existing order preserved) and writes
@@ -46,19 +48,10 @@
 # any write.
 
 run() {
-    local root desktop wdir
+    local root wdir
     root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)" || return 1
     source "$root/lib/gnome.sh"
-    desktop="${XDG_CURRENT_DESKTOP:-}"
-    case "$desktop" in
-        *GNOME*) ;;
-        *) io_info "gnome-base: no GNOME session (XDG_CURRENT_DESKTOP='${desktop:-unset}'); skipping"
-           return 0 ;;
-    esac
-    if ! gnome_gsettings_available; then
-        io_error "gnome-base: gsettings not found on PATH"
-        return 1
-    fi
+    gnome_require_capable gnome-base || return 0
     wdir="${FS_WALLPAPER_ASSETS_DIR:-}"
     if [[ -n "$wdir" && "$wdir" != /* ]]; then
         io_error "gnome-base: FS_WALLPAPER_ASSETS_DIR must be absolute: $wdir"
@@ -69,6 +62,169 @@ run() {
     _gnome_base_shortcuts "$root" || return 1
     _gnome_base_wallpaper "$root" || return 1
     return 0
+}
+
+# verify() is the P6.5 read-only diagnostic (wired to `./setup verify` in
+# P9.2): it re-gates, refuses to run in dry-run (verification reads probe
+# dconf), then checks that the actual gsettings state matches what run()
+# would apply -- every curated dock favorite is present in favorite-apps,
+# every curated shortcut command signature is registered in custom-keybindings,
+# and the wallpaper URI matches the picked asset (when a wallpaper dir with
+# an image exists). Each check reports io_info on success or io_error on
+# mismatch; rc1 when anything is missing, else io_info "verify passed".
+verify() {
+    local root rc=0
+    root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)" || return 1
+    source "$root/lib/gnome.sh"
+    source "$root/lib/lists.sh"
+    gnome_require_capable gnome-base || return 0
+    if (( FS_DRY_RUN == 1 )); then
+        io_info "gnome-base: verify is read-only; runs only in real mode"
+        return 0
+    fi
+    _gnome_base_verify_favs "$root" || rc=1
+    _gnome_base_verify_shortcuts "$root" || rc=1
+    _gnome_base_verify_wallpaper "$root" || rc=1
+    if (( rc == 0 )); then
+        io_info "gnome-base: verify passed"
+    fi
+    return "$rc"
+}
+
+_gnome_base_verify_favs() {
+    local root="$1" dir="$root/modules/gnome-base" fav="" e=""
+    local rc=0 n=0 seen=0 out=""
+    local -a want=() cur=()
+    out="$(list_parse "$dir/favorites.list")" || return 1
+    if [[ -n "$out" ]]; then
+        while IFS= read -r fav; do
+            want+=("$fav")
+        done <<<"$out"
+    fi
+    if (( ${#want[@]} == 0 )); then
+        io_info "gnome-base: verify: favorites.list empty; nothing to verify"
+        return 0
+    fi
+    out="$(gnome_gsettings_get org.gnome.shell favorite-apps)" || return 1
+    if [[ "$out" != "@as []" && "$out" != "[]" ]]; then
+        while IFS= read -r e; do
+            cur+=("$e")
+        done <<<"$(gnome_strv_parse "$out")"
+    fi
+    for (( n = 0; n < ${#want[@]}; n++ )); do
+        fav="${want[$n]}"
+        seen=0
+        for e in "${cur[@]}"; do
+            if [[ "$e" == "$fav" ]]; then
+                seen=1
+                break
+            fi
+        done
+        if (( seen == 0 )); then
+            io_error "gnome-base: verify FAILED: dock favorite not applied: $fav"
+            rc=1
+        else
+            io_info "gnome-base: verify ok: dock favorite present: $fav"
+        fi
+    done
+    return "$rc"
+}
+
+_gnome_base_verify_shortcuts() {
+    local root="$1" dir="$root/modules/gnome-base"
+    local base="org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:"
+    local array_path="/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings"
+    local array_schema="org.gnome.settings-daemon.plugins.media-keys"
+    local line="" name="" command="" binding="" parsed="" p="" cmd="" sig="" out=""
+    local -a want=()
+    local -A seen=()
+    local rc=0 n=0 i=0
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        line="${line#"${line%%[![:space:]]*}"}"
+        line="${line%"${line##*[![:space:]]}"}"
+        case "$line" in
+            "" | \#*) continue ;;
+        esac
+        name="${line%%|*}"
+        command="${line#*|}"
+        command="${command%%|*}"
+        binding="${line##*|}"
+        if [[ -z "$name" || -z "$command" || -z "$binding" || "$line" != *\|*\|* ]]; then
+            io_error "gnome-base: malformed shortcuts.list line: $line"
+            return 1
+        fi
+        want+=("${command//\'/}")
+    done <"$dir/shortcuts.list"
+    if (( ${#want[@]} == 0 )); then
+        io_info "gnome-base: verify: shortcuts.list empty; nothing to verify"
+        return 0
+    fi
+    out="$(gnome_gsettings_get "$array_schema" custom-keybindings)" || return 1
+    if [[ -n "$out" && "$out" != "@as []" && "$out" != "[]" ]]; then
+        parsed="$(gnome_strv_parse "$out")" || return 1
+        if [[ -n "$parsed" ]]; then
+            while IFS= read -r p; do
+                case "$p" in
+                    "$array_path"/custom[0-9]*/)
+                        i=0
+                        cmd="$(gnome_gsettings_get "$base$p" command)" || i=$?
+                        if (( i == 0 )); then
+                            seen["${cmd//\'/}"]=1
+                        fi
+                        ;;
+                esac
+            done <<<"$parsed"
+        fi
+    fi
+    for (( n = 0; n < ${#want[@]}; n++ )); do
+        sig="${want[$n]}"
+        if [[ -n "${seen[$sig]:-}" ]]; then
+            io_info "gnome-base: verify ok: shortcut registered: $sig"
+        else
+            io_error "gnome-base: verify FAILED: shortcut not applied: $sig"
+            rc=1
+        fi
+    done
+    return "$rc"
+}
+
+_gnome_base_verify_wallpaper() {
+    local root="$1" dir="${FS_WALLPAPER_ASSETS_DIR:-$root/assets/wallpaper}" img="" f="" uri="" cur="" rc=0
+    if [[ ! -d "$dir" ]]; then
+        io_info "gnome-base: verify: no wallpaper asset dir; nothing to verify"
+        return 0
+    fi
+    for f in "$dir"/*; do
+        case "$f" in
+            *.jpg|*.jpeg|*.png|*.webp)
+                [[ -f "$f" ]] && { img="$f"; break; }
+                ;;
+        esac
+    done
+    if [[ -z "$img" ]]; then
+        io_info "gnome-base: verify: no wallpaper image; nothing to verify"
+        return 0
+    fi
+    uri="file://$img"
+    cur="$(gnome_gsettings_get org.gnome.desktop.background picture-uri)" || rc=1
+    if (( rc == 0 )); then
+        if [[ "$cur" == "$uri" ]]; then
+            io_info "gnome-base: verify ok: wallpaper picture-uri set"
+        else
+            io_error "gnome-base: verify FAILED: wallpaper picture-uri ($cur != $uri)"
+            rc=1
+        fi
+    fi
+    cur="$(gnome_gsettings_get org.gnome.desktop.background picture-uri-dark)" || rc=1
+    if (( rc == 0 )); then
+        if [[ "$cur" == "$uri" ]]; then
+            io_info "gnome-base: verify ok: wallpaper picture-uri-dark set"
+        else
+            io_error "gnome-base: verify FAILED: wallpaper picture-uri-dark ($cur != $uri)"
+            rc=1
+        fi
+    fi
+    return "$rc"
 }
 
 _gnome_base_favorites() {

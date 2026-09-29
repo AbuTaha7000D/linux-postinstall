@@ -8,8 +8,9 @@
 # seam. Covers: dry-run purity (exact `# would run:` plan incl. the escaped
 # single-quoted gsettings value, ZERO probes/writes, no state dir); explicit
 # FS_THEME_NAME / FS_CURSOR_NAME; auto-pick from FS_THEME_SRC and assets
-# fallback; multiple-theme skip; non-GNOME skip; relative seam fail-closed rc1
-# in both modes; gsettings-missing fail-closed; real-mode apply + bookmarks
+# fallback; multiple-theme skip; non-GNOME skip (P6.5 capability gate) and
+# gsettings-missing now a gate skip (rc0) instead of fail-closed; relative
+# seam fail-closed rc1 in both modes; real-mode apply + bookmarks
 # whole-line dedupe (first-seen, order kept, trailing-space variant treated as
 # distinct, mode preserved, backup registered); exact idempotent re-run (no
 # set, no write, no registry entry); absent bookmarks file skip (no mkdir);
@@ -222,7 +223,7 @@ echo "--- cell: non-GNOME skip"
 ) >"$FX_OUT" 2>"$FX_ERR"
 FX_BLOCK_RC=$?
 fx_block_rc "non-GNOME rc" 0
-fx_out "no GNOME session"
+fx_out "skipped (not GNOME) (not a GNOME session"
 [[ $(grep -c '^# would run:' "$FX_OUT") == 0 ]] && fx_ok || fx_bad "non-GNOME skip plans nothing"
 [[ ! -s "$LOG" ]] && fx_ok || fx_bad "non-GNOME skip never invokes gsettings"
 
@@ -395,7 +396,7 @@ fx_block_rc "newline-only rc" 0
 cmp -s "$FX_TMP/bm_nlonly_copy" "$FX_TMP/bm_nlonly" && fx_ok || fx_bad "newline-only bookmarks file untouched"
 fx_out "already deduplicated; no write"
 
-# --- 10. gsettings missing: fail closed ---
+# --- 10. gsettings missing: capability gate skips ---
 echo "--- cell: gsettings missing"
 : >"$LOG"
 rm -rf "$FX_TMP/h_notools"
@@ -409,8 +410,9 @@ rm -rf "$FX_TMP/h_notools"
     run
 ) >"$FX_OUT" 2>"$FX_ERR"
 FX_BLOCK_RC=$?
-fx_block_rc "gsettings missing rc" 1
-fx_err "gnome-theme: gsettings not found"
+fx_block_rc "gsettings missing skip rc" 0
+fx_out "gnome-theme: skipped (not GNOME) (gsettings not found)"
+[[ ! -s "$LOG" ]] && fx_ok || fx_bad "gsettings-missing skip never probes or writes"
 
 # --- 11. invalid theme name (newline) fails closed ---
 echo "--- cell: invalid theme name"

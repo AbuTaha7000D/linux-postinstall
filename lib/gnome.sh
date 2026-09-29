@@ -34,6 +34,17 @@
 #
 # gnome_gsettings_available                rc0 iff `gsettings` is on PATH (no IO).
 # gnome_extensions_available               rc0 iff `gnome-extensions` is on PATH.
+# gnome_require_capable <context>          capability gate (P6.5): rc0 ONLY when
+#         this machine is a safe place to touch GNOME settings, otherwise
+#         io_info "<context>: skipped (not GNOME) (<reason>)" and rc1 --
+#         callers return 0 (graceful skip, never a module failure). Order of
+#         checks (first hit wins): FS_GNOME_FORCE=1 => capable, silent
+#         (operator override); any of SSH_CONNECTION/SSH_CLIENT/SSH_TTY set
+#         => "SSH session"; XDG_CURRENT_DESKTOP set but not matching *GNOME*
+#         => "not a GNOME session (XDG_CURRENT_DESKTOP=...)"; unset AND
+#         neither DISPLAY nor WAYLAND_DISPLAY set => "no graphical session";
+#         gsettings missing from PATH => "gsettings not found". Pure env
+#         check, no probing, so it is safe in dry-run.
 # gnome_gsettings_get <schema> <key>
 #         print the current value (real mode only). Refuses under
 #         FS_DRY_RUN (no probing) and when gsettings is absent.
@@ -93,6 +104,30 @@ gnome_gsettings_available() {
 
 gnome_extensions_available() {
     command -v gnome-extensions >/dev/null 2>&1
+}
+
+gnome_require_capable() {
+    local ctx="${1:-gnome}" reason="" desktop=""
+    if [[ "${FS_GNOME_FORCE:-0}" == 1 ]]; then
+        return 0
+    fi
+    if [[ -n "${SSH_CONNECTION:-}" || -n "${SSH_CLIENT:-}" || -n "${SSH_TTY:-}" ]]; then
+        reason="SSH session"
+    else
+        desktop="${XDG_CURRENT_DESKTOP:-}"
+        if [[ -n "$desktop" && "$desktop" != *GNOME* ]]; then
+            reason="not a GNOME session (XDG_CURRENT_DESKTOP='$desktop')"
+        elif [[ -z "$desktop" && -z "${DISPLAY:-}" && -z "${WAYLAND_DISPLAY:-}" ]]; then
+            reason="no graphical session"
+        elif ! gnome_gsettings_available; then
+            reason="gsettings not found"
+        fi
+    fi
+    if [[ -n "$reason" ]]; then
+        io_info "$ctx: skipped (not GNOME) ($reason)"
+        return 1
+    fi
+    return 0
 }
 
 _gnome_ok_id() {

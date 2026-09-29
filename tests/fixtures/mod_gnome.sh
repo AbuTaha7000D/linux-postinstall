@@ -7,12 +7,13 @@
 # `get`/`set` to $FAKE_LOG; FS_WALLPAPER_ASSETS_DIR points at a scratch
 # asset dir (or an empty one for the skip path); everything lives under
 # FX_TMP. Covers: dry-run purity (exact `# would run:` plan, ZERO probes or
-# writes, no state dir); non-GNOME desktop skip; gsettings-missing fail-
-# closed; real-mode dock favorites MERGE (existing user app preserved,
-# curated appended, dedupe); custom keybindings with first-free customN
-# allocation (user custom0/custom2 untouched) + array merge preserving
-# existing paths; command-signature idempotency (second run writes nothing,
-# registered notices); user-has-command collision (skips, never clobbers);
+# writes, no state dir); non-GNOME desktop skip (P6.5 capability gate), and
+# gsettings-missing now a gate skip (rc0) instead of fail-closed; real-mode
+# dock favorites MERGE (existing user app preserved, curated appended,
+# dedupe); custom keybindings with first-free customN allocation (user
+# custom0/custom2 untouched) + array merge preserving existing paths;
+# command-signature idempotency (second run writes nothing, registered
+# notices); user-has-command collision (skips, never clobbers);
 # malformed shortcuts.list fail-closed rc1; wallpaper apply + skip paths.
 # Usage: bash tests/fixtures/mod_gnome.sh  (exit 0 on success)
 
@@ -105,7 +106,7 @@ fx_block_rc "dry no-asset rc" 0
 fx_out 'no wallpaper image in'
 [[ ! -s "$LOG" ]] && fx_ok || fx_bad "no-asset dry-run never probes or writes"
 
-# --- 3. dry-run, non-GNOME desktop: graceful skip, no plan ---
+# --- 3. dry-run, non-GNOME desktop: graceful skip via the capability gate ---
 echo "--- cell: non-GNOME skip"
 rm -rf "$FX_TMP/h_dry3"
 (   set -euo pipefail
@@ -123,7 +124,7 @@ rm -rf "$FX_TMP/h_dry3"
 FX_BLOCK_RC=$?
 fx_block_rc "non-GNOME skip rc" 0
 [[ $(grep -c '^# would run:' "$FX_OUT") == 0 ]] && fx_ok || fx_bad "non-GNOME dry-run renders no plan"
-fx_out "no GNOME session"
+fx_out "skipped (not GNOME) (not a GNOME session"
 
 # --- 4. real mode: favorites merge + first-free + array merge + wallpaper ---
 echo "--- cell: real fresh merge"
@@ -203,7 +204,7 @@ FX_BLOCK_RC=$?
 fx_block_rc "malformed list rc" 1
 fx_err "malformed shortcuts.list line: nopipes"
 
-# --- 8. gsettings missing on a GNOME desktop fails closed ---
+# --- 8. gsettings missing on a GNOME desktop: capability gate skips ---
 echo "--- cell: gsettings missing"
 : >"$LOG"
 ln -sf "${DK_DIRNAME:-/usr/bin/dirname}" "$FX_TMP/notools/dirname"
@@ -219,8 +220,9 @@ rm -rf "$FX_TMP/h_notools"
     run
 ) >"$FX_OUT" 2>"$FX_ERR"
 FX_BLOCK_RC=$?
-fx_block_rc "gsettings missing rc" 1
-fx_err "gnome-base: gsettings not found"
+fx_block_rc "gsettings missing skip rc" 0
+fx_out "gnome-base: skipped (not GNOME) (gsettings not found)"
+[[ ! -s "$LOG" ]] && fx_ok || fx_bad "gsettings-missing skip never probes or writes"
 
 # --- 9. comment-only shortcuts.list: no-op, both modes, no merge render ---
 echo "--- cell: empty shortcuts.list"
