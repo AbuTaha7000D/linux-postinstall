@@ -1,0 +1,15 @@
+# Curated desktop flatpaks (P7.1). Curation order is pinned by the fixture's
+# exact-batch assert; first-seen dedupe applies. All ids are canonical
+# Flathub application ids.
+# Thunderbird - email and calendar client
+org.mozilla.Thunderbird
+# LibreOffice - office suite
+org.libreoffice.LibreOffice
+# qBittorrent - BitTorrent client
+org.qbittorrent.qBittorrent
+# Discord - chat and voice client
+com.discordapp.Discord
+# GIMP - image editor
+org.gimp.GIMP
+# VLC - media player
+org.videolan.VLC
