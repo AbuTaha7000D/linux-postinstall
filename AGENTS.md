@@ -365,7 +365,11 @@ is a "module"; modules are grouped into profiles; everything runs through the co
   uncovered in the `lib/summary.sh` header rather than pinned with contrived cells.
   **Mutations: 41 applied and all 41 caught on uid 1000 (26 code mutations + 15
   test-strength mutations), plus 2 negative controls that escape by construction**
-  **Next: P9 phase report.**
+  **P9 is COMPLETE.** All five P9 tasks (P9.1 check, P9.2 verify, P9.3 export, P9.4 update,
+  P9.5 summary) are DONE and committed; the full CLI surface
+  (`install|list|check|verify|export|update|help|version`) is functional and tested. P9.1
+  shipped owner-approved WITHOUT a Senior Review (a known process gap, recorded in its ledger
+  row); P9.2–P9.5 each reached Senior Review PASS. **Next: P10 needs owner approval.**
 - Version: `FS_VERSION="0.1.0-dev"` (see `lib/bootstrap.sh`).
 
 ## 2. Repository structure
