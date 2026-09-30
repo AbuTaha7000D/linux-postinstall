@@ -81,6 +81,97 @@ _cli_install_sources() {
     done
 }
 
+_cli_export_sources() {
+    local root="$1" name
+    for name in run pkg planner lists state modules depgraph profiles fs gnome export; do
+        . "$root/lib/$name.sh"
+    done
+}
+
+_cli_manifest_tree_check() {
+    local dir="${1:-}"
+    if [[ -z "$dir" ]]; then
+        io_error "--manifest requires a directory"
+        return 1
+    fi
+    if [[ ! -e "$dir" ]]; then
+        io_error "manifest directory not found: $dir"
+        return 1
+    fi
+    if [[ -L "$dir" ]]; then
+        io_error "manifest path is a symlink, refusing to read through it: $dir"
+        return 1
+    fi
+    if [[ ! -d "$dir" ]]; then
+        io_error "manifest path is not a directory: $dir"
+        return 1
+    fi
+    if [[ ! -f "$dir/export.meta" ]]; then
+        io_error "not an export tree (no export.meta): $dir"
+        return 1
+    fi
+    return 0
+}
+
+_cli_manifest_check() {
+    local dir="${1:-}" name="${2:-}"
+    _cli_manifest_tree_check "$dir" || return 1
+    if [[ ! -f "$dir/$name.conf" ]]; then
+        io_error "no profile '$name' in the export tree: $dir (expected $name.conf)"
+        return 1
+    fi
+    return 0
+}
+
+_cli_manifest_profile() {
+    local dir="${1:-}" line="" val=""
+    _cli_manifest_tree_check "$dir" || return 1
+    if [[ ! -r "$dir/export.meta" ]]; then
+        io_error "cannot read the export metadata: $dir/export.meta"
+        return 1
+    fi
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        if [[ "$line" == profile=* ]]; then
+            val="${line#profile=}"
+            if [[ -z "$val" ]]; then
+                io_error "export metadata has an empty profile: $dir/export.meta"
+                return 1
+            fi
+            printf '%s\n' "$val"
+            return 0
+        fi
+    done <"$dir/export.meta"
+    io_error "export metadata records no profile: $dir/export.meta (pass --profile)"
+    return 1
+}
+
+_cli_export_impl() {
+    local root="$1" mdir pdir name family outdir rc=0
+    [[ -n "$root" ]] || _fs_die "export requires the repository root"
+    _fs_check_layout "$root"
+    mdir="${FS_MODULES_DIR:-$root/modules}"
+    pdir="${FS_PROFILES_DIR:-$root/profiles}"
+    name="${FS_PROFILE:-full}"
+    family="${FS_DISTRO_FAMILY:-}"
+    if [[ -z "$family" ]]; then
+        . "$root/lib/distro.sh"
+        distro_detect || return 1
+        family="${FS_DISTRO_FAMILY:-}"
+    fi
+    if [[ ${#FS_CMD_ARGS[@]} -eq 0 ]]; then
+        io_error "export requires an output directory: setup export <dir> [--profile P]"
+        return 1
+    fi
+    if [[ ${#FS_CMD_ARGS[@]} -gt 1 ]]; then
+        io_error "export takes exactly one output directory; got ${#FS_CMD_ARGS[@]}"
+        return 1
+    fi
+    outdir="${FS_CMD_ARGS[0]}"
+    _cli_export_sources "$root"
+    export_run "$root" "$outdir" "$family" "$name" "$mdir" "$pdir" || rc=1
+    return "$rc"
+}
+
 _cli_write_defaults() {
     local sel="$1" tmp="" rc=0
     shift
@@ -119,6 +210,14 @@ _cli_install_impl() {
         rpm | deb | arch) ;;
         *) io_error "unsupported family: $family"; return 1 ;;
     esac
+    if [[ -n "${FS_MANIFEST:-}" ]]; then
+        if (( ${FS_PROFILE_SET:-0} != 1 )); then
+            name="$(_cli_manifest_profile "$FS_MANIFEST")" || return 1
+        fi
+        _cli_manifest_check "$FS_MANIFEST" "$name" || return 1
+        pdir="$FS_MANIFEST"
+        io_info "install: re-importing the exported tree $FS_MANIFEST (profile '$name')"
+    fi
     _cli_install_sources "$root"
     local -a dirs=() defaults=() cli_ids=() final=() hruns=()
     local id="" dir="" closure="" entries="" sel="" htxt="" hid=""
@@ -345,7 +444,10 @@ main() {
         verify)
             _cli_verify_impl "$root"
             ;;
-        export|update)
+        export)
+            _cli_export_impl "$root" || rc=1
+            ;;
+        update)
             io_error "command '$FS_CMD' not implemented yet (planned in a later phase)"
             rc=1
             ;;

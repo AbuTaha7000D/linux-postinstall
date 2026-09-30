@@ -8,10 +8,17 @@
 # --force seeds FS_GNOME_FORCE (module-scoped opt-in consumed only by the
 # GNOME capability gate gnome_require_capable: run every GNOME module even
 # when the session looks non-GNOME / SSH / headless / gsettings-less).
-# FS_YES / FS_DRY_RUN / FS_VERBOSE / FS_DEBUG / FS_GNOME_BROWSE /
+#     FS_YES / FS_DRY_RUN / FS_VERBOSE / FS_DEBUG / FS_GNOME_BROWSE /
 # FS_GNOME_FORCE each also honor a pre-set environment value (test seam);
-# FS_PROFILE and FS_LIST are unconditionally reset by cli_parse (seam-less
-# by design).
+# FS_PROFILE, FS_MANIFEST and FS_LIST are unconditionally reset by cli_parse
+# (seam-less by design). FS_PROFILE_SET records whether --profile was given
+# EXPLICITLY, which FS_PROFILE alone cannot express: the bootstrap defaults an
+# unset profile to "full", and a manifest re-import needs to tell "the user
+# asked for full" from "nobody said anything".
+# --manifest seeds FS_MANIFEST (P9.3: consume an exported tree instead of the
+# live profile). It is a PATH, not a boolean, so cli_parse deliberately does
+# not validate it here -- an unset, unreadable or non-conforming directory is
+# the consumer's (bootstrap's) error to report, in the command that uses it.
 
 _CLI_ENV_VERBOSE="${FS_VERBOSE:-0}"
 _CLI_ENV_DEBUG="${FS_DEBUG:-0}"
@@ -38,6 +45,8 @@ cli_parse() {
     FS_GNOME_BROWSE="$_CLI_ENV_BROWSE"
     FS_GNOME_FORCE="$_CLI_ENV_FORCE"
     FS_PROFILE=""
+    FS_PROFILE_SET=0
+    FS_MANIFEST=""
     FS_CMD=""
     FS_CMD_ARGS=()
 
@@ -98,6 +107,17 @@ cli_parse() {
                     fi
                     i=$(( i + 1 ))
                     FS_PROFILE="${args[$i]}"
+                    FS_PROFILE_SET=1
+                    i=$(( i + 1 ))
+                    continue
+                    ;;
+                --manifest)
+                    if (( i + 1 >= $# )); then
+                        io_error "flag '--manifest' requires a directory"
+                        return 1
+                    fi
+                    i=$(( i + 1 ))
+                    FS_MANIFEST="${args[$i]}"
                     i=$(( i + 1 ))
                     continue
                     ;;
@@ -144,7 +164,7 @@ Commands:
   list      List available modules and profiles
   check     Check prerequisites and system state
   verify    Verify applied configuration
-  export    Export applied state to a manifest
+  export    Write a re-importable snapshot of a profile to <dir>
   update    Update this tool
   help      Show this help text
   version   Print the version
@@ -157,6 +177,7 @@ Global flags:
   --browse     Opt-in: gnome-extensions may open browse URLs (at most 2)
   --force      Opt-in: run GNOME modules even when not a GNOME session
   --profile P  Select profile P
+  --manifest D Replay an exported tree instead of the live profile (install)
   --list       Alias for the 'list' command
   -h, --help   Show this help text
 HELP

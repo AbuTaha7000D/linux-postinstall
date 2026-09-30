@@ -571,7 +571,7 @@ smoke_entry() {
     t_rc 1 "unknown command rc" "$ROOT/setup" bogus
     t_err "unknown command"
     local cmd rc
-    for cmd in export update; do
+    for cmd in update; do
         "$ROOT/setup" "$cmd" >"$OUT" 2>"$ERR"
         rc=$?
         if (( rc == 1 )); then
@@ -628,7 +628,67 @@ smoke_verify() {
         FS_DISTRO_FAMILY=rpm "$ROOT/setup" verify 'bad id!'
     t_err "invalid module id: bad id!"
 }
+smoke_export() {
+    local tree="$TMP/xtree"
+    rm -rf -- "$tree"
+    mkdir -p "$TMP/xhome"
+    t_rc 1 "export with no outdir rc" env HOME="$TMP/xhome" FS_HOME="$TMP/xh" \
+        FS_PKG_BACKEND=mock FS_DISTRO_FAMILY=rpm "$ROOT/setup" export
+    t_err "export requires an output directory"
+    t_rc 0 "export minimal rc" env HOME="$TMP/xhome" FS_HOME="$TMP/xh" \
+        FS_PKG_BACKEND=mock FS_DISTRO_FAMILY=rpm \
+        "$ROOT/setup" export "$tree" --profile minimal
+    t_out "export: 2 module(s) for profile 'minimal'"
+    t_block_rc "export wrote export.meta" 0
+    (
+        set +e
+        grep -qx 'profile=minimal' "$tree/export.meta"
+    ) >"$OUT" 2>"$ERR"
+    t_block_rc "export.meta records the profile" 0
+    t_block_rc "export wrote the profile conf" 0
+    (
+        set +e
+        [[ -f "$tree/minimal.conf" ]]
+    ) >"$OUT" 2>"$ERR"
+    t_block_rc "minimal.conf exists" 0
+    t_block_rc "export wrote a manifest per module" 0
+    (
+        set +e
+        [[ -f "$tree/manifests/core.list" && -f "$tree/manifests/flatpak.flatpaks.list" ]]
+    ) >"$OUT" 2>"$ERR"
+    t_block_rc "manifests exist" 0
+    t_rc 1 "export refuses a non-empty foreign dir rc" env HOME="$TMP/xhome" FS_HOME="$TMP/xh" \
+        FS_PKG_BACKEND=mock FS_DISTRO_FAMILY=rpm \
+        "$ROOT/setup" export "$TMP" --profile minimal
+    t_err "refusing to write into a non-empty directory"
+    t_rc 0 "export dry-run rc" env HOME="$TMP/xhome" FS_HOME="$TMP/xh" \
+        FS_PKG_BACKEND=mock FS_DISTRO_FAMILY=rpm \
+        "$ROOT/setup" export --dry-run "$TMP/never" --profile minimal
+    t_out "export (dry run)"
+    t_out "nothing was written"
+    t_block_rc "a dry run created nothing" 0
+    (
+        set +e
+        [[ ! -e "$TMP/never" ]]
+    ) >"$OUT" 2>"$ERR"
+    t_block_rc "no tree from a dry run" 0
+    t_rc 0 "re-import rc" env HOME="$TMP/xhome" FS_HOME="$TMP/xh" \
+        FS_PKG_BACKEND=mock FS_DISTRO_FAMILY=rpm \
+        "$ROOT/setup" install --dry-run --yes --manifest "$tree"
+    t_out "re-importing the exported tree"
+    t_out "profile: minimal"
+    t_out "^# would run: mock install"
+    t_rc 1 "re-import of a bad tree rc" env HOME="$TMP/xhome" FS_HOME="$TMP/xh" \
+        FS_PKG_BACKEND=mock FS_DISTRO_FAMILY=rpm \
+        "$ROOT/setup" install --dry-run --yes --manifest "$TMP"
+    t_err "not an export tree"
+    t_rc 1 "re-import of a missing tree rc" env HOME="$TMP/xhome" FS_HOME="$TMP/xh" \
+        FS_PKG_BACKEND=mock FS_DISTRO_FAMILY=rpm \
+        "$ROOT/setup" install --dry-run --yes --manifest "$TMP/nosuchtree"
+    t_err "manifest directory not found"
+}
 smoke_entry
 smoke_verify
+smoke_export
 printf 'summary: %s passed, %s failed\n' "$pass" "$fail"
 (( fail == 0 ))

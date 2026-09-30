@@ -335,6 +335,12 @@ module_validate() {
     if [[ -f "$dir/packages.list" || -f "$dir/packages.$family.list" || -f "$dir/flatpaks.list" ]]; then
         return 0
     fi
+    if [[ -n "${FS_MANIFEST:-}" ]]; then
+        local mdir="$FS_MANIFEST/manifests"
+        if [[ -f "$mdir/$MODULE_ID.list" || -f "$mdir/$MODULE_ID.flatpaks.list" ]]; then
+            return 0
+        fi
+    fi
     io_error "$MODULE_ID has no package list usable on family '$family' (need packages.list, packages.$family.list, or flatpaks.list)"
     return 1
 }
