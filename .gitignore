@@ -56,3 +56,5 @@ tests/.scratch/
 
 # Internal execution plan (development only, never committed)
 ROADMAP.md
+# Vendored bats (downloaded by tests/install-bats.sh, never committed)
+tests/bats/

@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+# tests/run - CI entry point (P10.1). Runs the Bats suite and the fixture
+# suite, emits a single TAP stream, and exits non-zero if anything failed.
+#
+# Usage: bash tests/run   (always emits TAP; exits non-zero on any failure)
+#
+# The Bats tests (tests/*.bats) produce TAP natively. The fixtures
+# (tests/fixtures/*.sh) are plain-bash suites with their own assert helpers;
+# each is wrapped as one TAP test here. The combined stream is renumbered into
+# a single valid TAP document so a CI parser sees one plan and one result set.
+
+set -uo pipefail
+
+_this="${BASH_SOURCE[0]}"
+if [[ -z "$_this" ]]; then
+    printf '%s\n' "cannot resolve tests/run" >&2
+    exit 1
+fi
+_this="$(readlink -f -- "$_this" 2>/dev/null || printf '%s' "$_this")"
+ROOT="$(cd "$(dirname "$_this")/.." && pwd)"
+if [[ ! -x "$ROOT/setup" ]]; then
+    printf '%s\n' "repo root not found (expected $ROOT/setup)" >&2
+    exit 1
+fi
+
+# shellcheck source=lib_tap.bash
+. "$ROOT/tests/lib_tap.bash"
+
+BATS="$ROOT/tests/bats/bin/bats"
+if [[ ! -x "$BATS" ]]; then
+    printf 'vendored bats not found; running tests/install-bats.sh\n' >&2
+    bash "$ROOT/tests/install-bats.sh" >&2
+fi
+if [[ ! -x "$BATS" ]]; then
+    printf '%s\n' "vendored bats not found at $BATS" >&2
+    exit 1
+fi
+
+# --- run the Bats suite, capturing its TAP output ---
+bats_out="$("$BATS" --formatter tap "$ROOT"/tests/*.bats 2>&1)"
+bats_rc=$?
+
+# --- run the fixture suite, capturing each result ---
+fixture_names=()
+fixture_rcs=()
+fixture_outs=()
+shopt -s nullglob
+for f in "$ROOT"/tests/fixtures/*.sh; do
+    [[ "$(basename "$f")" == "lib.sh" ]] && continue
+    out="$(bash "$f" 2>&1)"
+    rc=$?
+    fixture_names+=("$(basename "$f" .sh)")
+    fixture_rcs+=("$rc")
+    fixture_outs+=("$out")
+done
+shopt -u nullglob
+
+# --- count tests for the plan ---
+bats_count="$(printf '%s\n' "$bats_out" | grep -cE '^(ok|not ok) ')"
+fixture_count=${#fixture_names[@]}
+total=$((bats_count + fixture_count))
+
+printf '1..%d\n' "$total"
+
+# --- Bats test lines, renumbered (strip bats's own plan, keep diagnostics) ---
+printf '%s\n' "$bats_out" | tap_renumber
+
+# --- fixture lines ---
+n=$bats_count
+for i in "${!fixture_names[@]}"; do
+    n=$((n + 1))
+    name="${fixture_names[$i]}"
+    rc="${fixture_rcs[$i]}"
+    out="${fixture_outs[$i]}"
+    if [[ $rc -eq 0 ]] && ! printf '%s' "$out" | grep -q '^FAIL '; then
+        printf 'ok %d - %s\n' "$n" "$name"
+    else
+        printf 'not ok %d - %s\n' "$n" "$name"
+        printf '%s\n' "$out" | grep '^FAIL ' | sed 's/^/# /'
+    fi
+done
+
+# --- exit code: non-zero if bats failed or any fixture failed ---
+if [[ $bats_rc -ne 0 ]]; then
+    exit 1
+fi
+for i in "${!fixture_names[@]}"; do
+    rc="${fixture_rcs[$i]}"
+    out="${fixture_outs[$i]}"
+    if [[ $rc -ne 0 ]] || printf '%s' "$out" | grep -q '^FAIL '; then
+        exit 1
+    fi
+done
+exit 0
