@@ -90,12 +90,11 @@ is a "module"; modules are grouped into profiles; everything runs through the co
   defaults after P8 (`/etc/locale.conf` md5 `164aba1ef1298affaa58761647f2ceba`, NM `Home` with
   empty `ipv4.dns` and `ipv4.ignore-auto-dns:no`).
   **P9.1 (`check`) is DONE and committed** (code `21f919a`, ledger `87a8e08`). **P9.2
-  (`verify`, `lib/verify.sh`) is implemented and Senior Review has returned
-  `REVISE`; all 3 blocking + 8 non-blocking findings are fixed and the delta is
-  awaiting re-review.** P9.2 is read-only: it installs nothing, marks nothing,
-  backs nothing up and never sudoes. The three `verify()` hooks added in this
-  round close the ROADMAP's "fonts" and "managed files" categories, which no
-  shipped module covered.
+  (`verify`, `lib/verify.sh`) is DONE and committed** (code `902b528`; Senior Review
+  `ses_f1078edc3ffeNv3zb1H8sweZQ6` = PASS after three rounds: 3 blocking → 1 blocking → 0).
+  P9.2 is read-only: it installs nothing, marks nothing, backs nothing up and never
+  sudoes. The three `verify()` hooks added in this round close the ROADMAP's "fonts"
+  and "managed files" categories, which no shipped module covered.
   **Known verification gap (P9.2) — NOT met, do not claim it:** the `[REAL]`/live-host
   half is **DEFERRED**. This host has no `podman`/`docker` and `unshare -Ur` fails
   (`write failed /proc/self/uid_map: Operation not permitted`), so no containerized
@@ -104,10 +103,11 @@ is a "module"; modules are grouped into profiles; everything runs through the co
   against the real `pkg`/flatpak seams, and a live-host READ-ONLY smoke was run
   (it did surface real drift) — but that is supplemental, not the criterion. A
   second, sharper limit: a fully green fixture proves the audit and its oracle
-  agree, NOT that the audit agrees with the system — which is exactly how three
+  agree, NOT that the audit agrees with the system — which is exactly how four
   false-PASS defects survived a 215-assert suite. The oracle is now derived from
-  the hooks' own body-builders for that reason.
-  **Next: close P9.2 (re-review → commit), then P9.3 needs owner approval.**
+  the hooks' own body-builders, and the comparison relation is the writer's
+  (see §12) — the two fixes are independent and both were needed.
+  **Next: P9.3 needs owner approval.**
 - Version: `FS_VERSION="0.1.0-dev"` (see `lib/bootstrap.sh`).
 
 ## 2. Repository structure
