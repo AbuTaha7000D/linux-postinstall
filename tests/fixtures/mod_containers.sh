@@ -145,7 +145,7 @@ FX_BLOCK_RC=$?
 fx_block_rc "containers real rc" 0
 fx_out 'module: containers (none)'
 fx_out '^== run complete ==$'
-fx_out '1 ok'
+fx_out '^  - 1 modules ok · 0 skipped · 0 failed ·'
 if grep -qxF "mock install $STACK" "$LOG"; then
     fx_ok
 else
@@ -170,7 +170,7 @@ if [[ "$(wc -l <"$STUBLOG")" == 0 ]]; then fx_ok; else fx_bad "containers real r
 FX_BLOCK_RC=$?
 fx_block_rc "containers rerun rc" 0
 fx_out 'already completed: containers'
-fx_out '1 skipped'
+fx_out '^  - 0 modules ok · 1 skipped · 0 failed ·'
 if [[ "$(grep -c '^mock install ' "$LOG")" == 1 ]]; then fx_ok; else fx_bad "containers rerun installed again"; fi
 
 # `setup list` row (hermetic, matches modules_list.sh convention)

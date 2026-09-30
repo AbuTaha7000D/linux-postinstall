@@ -158,7 +158,7 @@ org.gnome.settings-daemon.plugins.media-keys/custom-keybindings|@as []
 EOD
 idem_run s_base1 "gnome-base run1" gnome-base "$FX_TMP/keys"
 fx_out '^== run complete ==$'
-fx_out '1 ok'
+fx_out '^  - 1 modules ok · 0 skipped · 0 failed ·'
 grep -Fqx "set org.gnome.shell favorite-apps ['org.gnome.App1.desktop', 'org.gnome.Nautilus.desktop', 'firefox.desktop']" "$LOG" && fx_ok || fx_bad "R1: dock favorites merged exactly once"
 grep -c '^set .*custom[0-9]/ command ' "$LOG" | grep -qx '4' && fx_ok || fx_bad "R1: four curated shortcuts registered (no dup)"
 grep -c 'firefox.desktop' "$LOG" | grep -qx '1' && fx_ok || fx_bad "R1: no duplicate dock entries"
@@ -266,7 +266,7 @@ idem_ext() {
 }
 idem_ext s_ext1 "gnome-extensions run1"
 fx_out '^== run complete ==$'
-fx_out '1 ok'
+fx_out '^  - 1 modules ok · 0 skipped · 0 failed ·'
 grep -Fqx 'enable dash-to-dock@micxgx.gmail.com' "$LOG" && fx_ok || fx_bad "E-R1: dash-to-dock enabled first"
 grep -Fqx 'enable user-theme@gnome-shell-extensions.gcampax.github.com' "$LOG" && fx_ok || fx_bad "E-R1: user-theme enabled once"
 printf 'dash-to-dock@micxgx.gmail.com\nuser-theme@gnome-shell-extensions.gcampax.github.com\n' >"$FX_TMP/ext.enabled-expected"
@@ -314,7 +314,7 @@ fx_block_rc "shared run1 rc" 0
 FX_BLOCK_RC=$?
 fx_block_rc "shared run2 rc" 0
 fx_out 'already completed: gnome-base'
-fx_out '1 skipped'
+fx_out '^  - 0 modules ok · 1 skipped · 0 failed ·'
 [[ $(grep -c '^set ' "$LOG") == 0 ]] && fx_ok || fx_bad "shared re-run: zero writes"
 
 fx_summary

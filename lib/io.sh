@@ -30,6 +30,25 @@ _io_fd_tty() {
     [[ -t "$1" ]]
 }
 
+# The ONE relation for "does a real, writable, non-empty audit trail exist at
+# this path", combining the `-f` AND `-w` rule lib/run.sh:56 has always used
+# with the non-emptiness a POINTER additionally needs. It is shared deliberately:
+# P9.5 first shipped a guard in lib/bootstrap.sh and a pointer in
+# lib/summary.sh as two SEPARATE tests of this one property, and they
+# disagreed -- the guard accepted a non-empty file this run cannot append to
+# (io_init then skips its write and only warns, always returning 0), so the
+# summary could name a log holding no part of the run. That is the P9.2 B4
+# defect shape: the auditor's comparison relation must BE the writer's.
+#
+# It is a P9.5 predicate, not run.sh's: run.sh legitimately accepts an EMPTY
+# file (it is about to append to it) and additionally RAISES FS_LOG_INFRA,
+# which this deliberately does not. Callers must therefore invoke it AFTER
+# the run has written something -- _fs_open_run_log calls it after io_init.
+_io_log_usable() {
+    local path="${1:-}"
+    [[ -n "$path" && -f "$path" && -w "$path" && -s "$path" ]]
+}
+
 _io_ansi() {
     local name="$1"
     case "$name" in

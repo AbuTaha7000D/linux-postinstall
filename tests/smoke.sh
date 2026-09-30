@@ -594,7 +594,7 @@ smoke_entry() {
         FS_PKG_BACKEND=mock FS_DISTRO_FAMILY=rpm "$ROOT/setup" install --dry-run --yes
     t_out "profile: full"
     t_out "^== run complete ==$"
-    t_out "0 ok"
+    t_out "^  - 0 modules ok · 0 skipped · 0 failed ·"
     (
         cd -- "$TMP" || exit 1
         out="$("$ROOT/setup" version 2>&1)"

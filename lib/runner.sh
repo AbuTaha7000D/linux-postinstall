@@ -3,8 +3,10 @@
 # Depends, in source order, on: lib/io.sh, lib/run.sh (dry rendering +
 # audit), lib/planner.sh and the pkg layer (plan_install dispatch), then
 # lib/state.sh (module registry), lib/lists.sh, lib/modules.sh,
-# lib/depgraph.sh, lib/profiles.sh (resolver). runner_run calls state_init
-# itself only in real mode, when the registry must be read or written.
+# lib/depgraph.sh, lib/profiles.sh (resolver), and lib/summary.sh (P9.5
+# reporter, which owns the printed counts AND the exit code). runner_run
+# calls state_init itself only in real mode, when the registry must be read
+# or written.
 # Dry-run (FS_DRY_RUN=1) touches nothing: no state_init, no registry
 # reads/writes, no pkg probes; the skip state is not consulted, so a
 # resumed run renders as a full run. Bash >= 4.3 safe (no namerefs;
@@ -142,11 +144,24 @@
 #                            On hook success the module is marked done in
 #                            the registry (state_module_mark, real mode
 #                            only; dry-run counts ok but writes nothing).
-#                         6. SUMMARY -- io_summary "run complete" with
-#                            "N ok", "N failed", "N skipped" counts. rc0
-#                            iff every selected module ended done (hook
-#                            success or already-completed); rc1 if any
-#                            module failed (or the run was stopped).
+#                         6. SUMMARY (P9.5) -- every module outcome is
+#                            RECORDED with lib/summary.sh
+#                            (summary_module_ok/_skip/_fail) as it happens,
+#                            and the end of the run hands the whole record to
+#                            ONE reporter for both the printed line and the
+#                            exit code (summary_report + summary_rc). The
+#                            runner therefore keeps NO counter of its own: the
+#                            "N ok / M skipped / K failed" it prints and the
+#                            rc it returns are both derived from the same
+#                            records, so they cannot disagree. rc0 iff no
+#                            module failed; rc1 if any did. The abort paths
+#                            above (prereq, batch, destructive stop) return
+#                            rc1 WITHOUT a summary and never reach the
+#                            reporter -- a reviewed P4.6/P7.5/P8.3 contract,
+#                            and the reason is in lib/summary.sh: a run that
+#                            never reached the module loop has no outcomes to
+#                            report, and "0 ok . 0 failed" would read as
+#                            success.
 #                            State-mark failures abort rc1 fail-closed: the
 #                            registry is authoritative, so a module that
 #                            cannot be recorded stops the run without a
@@ -204,6 +219,7 @@ runner_run() {
         return 1
     fi
     io_info "profile: $name"
+    summary_reset
     local resolved=""
     resolved="$(profile_resolve "$modules_dir" "$profiles_dir" "$name" "$@")" || return 1
     local -a ids=()
@@ -312,13 +328,12 @@ runner_run() {
     if (( FS_DRY_RUN != 1 && ${#ids[@]} > 0 )); then
         state_init || return 1
     fi
-    local -i ok=0 failed=0 skipped=0
     local rc=0
     for sid in ${ids[@]+"${ids[@]}"}; do
         dir="$modules_dir/$sid"
         if (( FS_DRY_RUN != 1 )) && state_module_check "$sid"; then
             io_info "already completed: $sid"
-            skipped+=1
+            summary_module_skip "$sid"
             continue
         fi
         if module_has_hooks "$dir"; then
@@ -336,18 +351,15 @@ runner_run() {
                     io_error "stopping run (destructive module $sid)"
                     return 1
                 fi
-                failed+=1
+                summary_module_fail "$sid" "hook exited $rc"
                 continue
             fi
         fi
         if (( FS_DRY_RUN != 1 )); then
             state_module_mark "$sid" || return 1
         fi
-        ok+=1
+        summary_module_ok "$sid"
     done
-    io_summary "run complete" "$ok ok" "$failed failed" "$skipped skipped"
-    if (( failed > 0 )); then
-        return 1
-    fi
-    return 0
+    summary_report
+    summary_rc
 }

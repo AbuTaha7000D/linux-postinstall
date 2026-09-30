@@ -242,7 +242,7 @@ fx_out 'module: b (none)'
 fx_out 'module: c (none)'
 fx_out '^# would run: sudo dnf5 install -y a1 b1 c1$'
 fx_out '^== run complete ==$'
-fx_out '3 ok'
+fx_out '^  - 3 modules ok · 0 skipped · 0 failed ·'
 fx_err_not 'no package backend selected'
 if [[ -e "$FX_TMP/hbare/.local/state/fedora-setup" ]]; then fx_bad "bare dry run created state dir"; else fx_ok; fi
 
@@ -258,6 +258,6 @@ FX_BLOCK_RC=$?
 fx_block_rc "empty profile rc" 0
 fx_out 'profile: minimal'
 fx_out '^== run complete ==$'
-fx_out '0 ok'
+fx_out '^  - 0 modules ok · 0 skipped · 0 failed ·'
 
 fx_summary

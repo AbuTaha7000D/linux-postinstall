@@ -179,7 +179,7 @@ fx_block_rc "media real deb routing rc" 0
 fx_out 'profile: selection'
 fx_out 'module: media (none)'
 fx_out '^== run complete ==$'
-fx_out '1 ok'
+fx_out '^  - 1 modules ok · 0 skipped · 0 failed ·'
 if grep -qxF 'mock install obs-studio' "$LOG"; then fx_ok; else fx_bad "media system batch missing obs-studio"; cat "$LOG"; fi
 if grep -qxF 'flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo' "$REALLOG"; then
     fx_ok
@@ -225,7 +225,7 @@ if [[ -f "$FX_TMP/hreal/.local/state/fedora-setup/modules/media" ]]; then fx_ok;
 FX_BLOCK_RC=$?
 fx_block_rc "media real rpm rc" 0
 fx_out '^== run complete ==$'
-fx_out '1 ok'
+fx_out '^  - 1 modules ok · 0 skipped · 0 failed ·'
 fx_empty "media rpm run never invoked the family backend" "$LOG"
 if grep -qxF 'flatpak install --user --noninteractive --assumeyes org.kde.kdenlive io.mpv.Mpv org.audacityteam.Audacity' "$REALLOG"; then
     fx_ok

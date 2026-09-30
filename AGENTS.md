@@ -41,13 +41,16 @@ is a "module"; modules are grouped into profiles; everything runs through the co
   path** (`vscode` on Arch warns and is a no-op; use `FS_VSCODE_FLATPAK=1`), and the Microsoft
   key is **fetched, never vendored**, so a first install needs network.
   **Known verification gap (P7.5):** the task's `[REAL]` Fedora-container run is **DEFERRED** —
-  this host has no `podman`/`docker` and `unshare -Ur` fails (`write failed /proc/self/uid_map`).
-  Everything else is covered by `tests/fixtures/mod_vscode.sh` and the runner fixture against
-  `FS_PKG_BACKEND=mock`/`rpm`; the live vendor endpoints (key, `repodata/repomd.xml.asc`
-  signature, rpm/deb metadata, Flathub app id) were verified directly and the pin is committed in
-  `config/vscode-gpg.fingerprint`. Do not claim a real Fedora run happened. On this host the full
-  fixture battery also needs the pre-existing rpm shim on `PATH` (`/tmp/opencode/ubin`) because
-  `tests/fixtures/planner.sh` shells out to a real `rpm` for its rpm-family cells.
+  at the time it was recorded this host had no `podman`/`docker` and `unshare -Ur` failed
+  (`write failed /proc/self/uid_map`). HOST STATE CHANGES: re-measured 2026-09-30, `podman` 5.8.7
+  IS installed and `unshare -Ur` succeeds, so the container route is no longer blocked by the
+  host; the gap is now a scope decision, not a capability one. Everything else is covered by
+  `tests/fixtures/mod_vscode.sh` and the runner fixture against `FS_PKG_BACKEND=mock`/`rpm`; the
+  live vendor endpoints (key, `repodata/repomd.xml.asc` signature, rpm/deb metadata, Flathub app
+  id) were verified directly and the pin is committed in `config/vscode-gpg.fingerprint`. Do not
+  claim a real Fedora run happened. The full fixture battery needs no rpm shim: the real `rpm`
+  6.0.2 on `PATH` is sufficient for `tests/fixtures/planner.sh`'s rpm-family cells (the earlier
+  `/tmp/opencode/ubin` shim no longer exists).
   P7.6 (`chrome`) is implemented and Senior Review has **PASSED** — round 1 returned **REVISE**
   with one blocking finding (a failed install was reported as success and the module latched as
   done — §12, postcondition rule) plus 14 non-blocking findings; all were fixed and round 2 in the
@@ -58,9 +61,10 @@ is a "module"; modules are grouped into profiles; everything runs through the co
   (`FS_CHROME_FLATPAK=1`), ships **no** list file, and warns + no-ops on Arch.
   **Known verification gap (P7.6) — NOT met, do not claim it:** the `[REAL]` half of the
   criterion (a real mutating package install plus an installed `.desktop`) is **DEFERRED** because
-  this host has no `podman`/`docker` and `unshare -Ur` fails with
+  at the time it was recorded this host had no `podman`/`docker` and `unshare -Ur` failed with
   `write failed /proc/self/uid_map: Operation not permitted`, and a real install is out of bounds
-  under §9. The real *network* path **was** exercised end to end read-only (live index resolved →
+  under §9. HOST STATE CHANGES: re-measured 2026-09-30, `podman` 5.8.7 is installed and
+  `unshare -Ur` succeeds; the deferral is now a scope decision, not a host capability. The real *network* path **was** exercised end to end read-only (live index resolved →
   142,114,088-byte bundle downloaded → digest matched → `pkg_install_local` reached with nothing
   installed), and `tests/fixtures/mod_chrome.sh` (236 asserts) covers everything else hermetically.
   See §12 for the trust-boundary wording — the digest is **not** signature verification.
@@ -97,10 +101,11 @@ is a "module"; modules are grouped into profiles; everything runs through the co
   sudoes. The three `verify()` hooks added in this round close the ROADMAP's "fonts"
   and "managed files" categories, which no shipped module covered.
   **Known verification gap (P9.2) — NOT met, do not claim it:** the `[REAL]`/live-host
-  half is **DEFERRED**. This host has no `podman`/`docker` and `unshare -Ur` fails
-  (`write failed /proc/self/uid_map: Operation not permitted`), so no containerized
-  Bash-4.3 floor run and no real-distro audit were performed — the floor is a static
-  audit only. Everything else is covered hermetically by `tests/fixtures/verify.sh`
+  half is **DEFERRED**. At the time it was recorded this host had no `podman`/`docker` and
+  `unshare -Ur` failed (`write failed /proc/self/uid_map: Operation not permitted`), so no
+  containerized Bash-4.3 floor run and no real-distro audit were performed — the floor is a
+  static audit only. HOST STATE CHANGES: re-measured 2026-09-30, `podman` 5.8.7 is installed and
+  `unshare -Ur` succeeds; the deferral is now a scope decision, not a host capability. Everything else is covered hermetically by `tests/fixtures/verify.sh`
   against the real `pkg`/flatpak seams, and a live-host READ-ONLY smoke was run
   (it did surface real drift) — but that is supplemental, not the criterion. A
   second, sharper limit: a fully green fixture proves the audit and its oracle
@@ -134,8 +139,10 @@ is a "module"; modules are grouped into profiles; everything runs through the co
   unconditionally by `cli_parse`, so an inherited environment value can never redirect a run into
   an untrusted tree. Format: `docs/export-format.md`.
   **Known verification gap (P9.3) — NOT met, do not claim it:** the `[REAL]`/live-host half is
-  **DEFERRED** (no `podman`/`docker` here; `unshare -Ur` fails with `write failed
-  /proc/self/uid_map: Operation not permitted`). The tree was exercised hermetically against the
+  **DEFERRED** (at the time it was recorded: no `podman`/`docker` here; `unshare -Ur` failed with
+  `write failed /proc/self/uid_map: Operation not permitted`). HOST STATE CHANGES: re-measured
+  2026-09-30, `podman` 5.8.7 is installed and `unshare -Ur` succeeds; the deferral is now a
+  scope decision, not a host capability. The tree was exercised hermetically against the
   mock backend and read-only on this host, but **nothing proves an export matches a real system's
   installed state**, and a byte-identical re-export is a determinism result, not a correctness one.
   **P9.4 (`update`, `lib/update.sh`) is IMPLEMENTED; Senior Review round 1 PASSED and rounds 2
@@ -189,7 +196,176 @@ is a "module"; modules are grouped into profiles; everything runs through the co
   them, because the cells did not exist. That is the argument for auditing a destructive guard's
   coverage directly, not for mutation cells specifically, and it is a reminder that the "no data
   loss" claim is only as good as the ignore rules a future change introduces.
-  **Next: the P9 phase report — P9.5 (summary reporter) remains.**
+  **P9.5 (`summary`, `lib/summary.sh`) is IMPLEMENTED; Senior Review rounds 1 and 2 returned
+  REVISE (round 1 `ses_f0da80f2bffe3LQHeaOHcclrVh`, round 2
+  `ses_f0d77553cffe7rkQNR0qr1vvKL`; the round-3 fixes below are in the tree, uncommitted, and
+  awaiting re-review).** The end-of-run summary is a reporter that owns BOTH
+  the printed line and the process exit code, and the runner keeps no counter of its own: it
+  records each module outcome as it happens (`summary_module_ok/_skip/_fail`) and hands the
+  record to `summary_report` + `summary_rc`. Every number printed is `${#SUMMARY_*_IDS[@]}`
+  taken at render time from the same three arrays the per-failure rows are printed from, so
+  the "N ok · M skipped · K failed" in the line and the rc cannot disagree by construction.
+  The rendered line is the ROADMAP's `N modules ok · M skipped · K failed · artifacts in
+  <log>`, followed by one `FAIL <id>: hook exited <rc>` row per failed module and — only when
+  something failed — `retry: re-run the same command; completed modules are skipped` (a claim
+  the fixture proves true against the state registry, not just renders).
+  `lib/bootstrap.sh` gained `_fs_open_run_log`, called on the real install path right after
+  `state_init`: it opens this run's log via `state_log` + `io_init` and then **checks the
+  postcondition**, because `io_init` only warns and always returns 0.
+  **Round 1, blocking finding 1 (B1): the guard and the pointer were two tests of one
+  property, and they disagreed.** The guard accepted any existing file while the reporter
+  named a path; given a pre-existing log this run cannot append to, `io_init` skips its write
+  and only warns, the file is still there and still non-empty, so an existence test passed and
+  the run refused nothing while the summary named a log holding none of it. Fixed by giving
+  `lib/io.sh` ONE predicate, `_io_log_usable` (`-f` AND `-w` AND `-s`), called by both
+  `lib/bootstrap.sh` and `lib/summary.sh` — the P9.2 B4 rule applied to a log file. The
+  `tests/fixtures/summary.sh` 6c cell pins the predicate on the shapes that hold regardless of
+  uid (directory, FIFO, empty file, dangling symlink, absent path, symlink to a real file).
+  **Round 1, blocking finding 2 (B2): a root-only cell printed a note and returned 0, so a
+  root CI reported full coverage while the `-w` leg of the postcondition was untested.** The
+  suite now counts such cells and prints `summary: N passed, M failed, K skipped
+  (root-only limitation)`. **Honest limit: this host is uid 1000 with no passwordless sudo,
+  so the branch that PRINTS the skip count is itself not exercised here** — only its format is
+  pinned. Do not describe the unwritable-log refusal as root-covered.
+  Other round-1 findings fixed: the artifacts pointer now uses the shared predicate and reads
+  `${FS_DRY_RUN:-0}` safely when sourced alone; three unused record helpers were deleted; the
+  "each run opens its own log" cell now runs TWO runs in ONE state root **and in a fresh
+  root of its own** (the first version read its "1 before" from a log an earlier cell left
+  behind, so a runner that shared one file could not fail it); the anti-counter regex covers
+  `((x++))` and `let`; the dry-run + exported-`FS_LOG_FILE` combination is pinned (a dry run
+  WITH a usable log DOES name it — the two orderings are easy to conflate); `lib/cli.sh` now
+  states the asymmetry (a real install re-points the seam at its own state log); the two abort
+  paths that had no cell — the SYSTEM package batch and `state_module_mark` — each got one
+  (the batch is failed with `FS_MOCK_LOG` pointing at a directory, which holds as root;
+  7d-ii keeps `<state>/modules` a real directory, pre-marks one module so a `skipped`
+  record exists at the abort, and puts a DIRECTORY at the second module's mark path so
+  `_state_write` is what refuses — an earlier version made `modules` itself a file and
+  never reached the call it named); the
+  runner-side `hook exited ` patterns are pinned to the exact status with `$`; and all 46
+  previously unanchored count assertions are now `^  - `-anchored, so a line reading
+  `0 modules ok` cannot satisfy an expectation of `10 modules ok`.
+  The failure-row detail is now pinned on BOTH rows with DISTINCT statuses (`7` and `12`) and
+  `grep -qx`; the earlier cell checked only the first row, and `agree_rc` never compared row
+  text at all, so a reporter rendering a constant status passed 89 green asserts.
+  55 assertions across 16 fixture files plus `tests/smoke.sh` were converted from the old
+  per-count lines (`- 3 ok` / `- 0 failed` / `- 0 skipped`) to the single combined line — each
+  conversion is strictly stronger, since one assertion now pins all three counts on ONE line.
+  Totals: smoke 169, 42 fixture suites / 3567 asserts, all green, and
+  `tests/fixtures/summary.sh` 105. Byte-identical across 3 runs of the full battery,
+  `sha256` first 16 = `7f920400d84c38bd`, after normalizing exactly three things:
+  `/tmp/fedora-setup-pkg.<rand>` → `/tmp/FX`, `run-<ts>-<pid>.log` → `run-TS-PID.log`, and
+  `[HH:MM:SS]` → `[TS]`. The AGGREGATION is part of the digest, so it is quoted in full
+  (see §7). That digest is only comparable like-for-like.
+  **Mutations: 25 applied and all 25 caught on uid 1000 in round 1, plus 2 negative controls
+  that escape by construction** (a prefix row match instead of the pinned one, and a cell moved after the
+  suite's summary block — the second of which is why placement is called out below).
+  Every mutation was checked non-vacuous twice over: `cmp` proves the file changed, and a
+  **result identical to the baseline is treated as a broken harness, not a finding** — that
+  rule caught a mutation runner whose `python3 - args` form read its program from stdin, so
+  every "edit" was a silent no-op and an escaped result was the untouched suite re-reported.
+  Three mutations escaped during development and each one is why a cell now exists (the
+  artifacts `-f` test, the log postcondition, `summary_reset`); see §12.
+  **Senior Review round 2 (`ses_f0d77553cffe7rkQNR0qr1vvKL`) returned REVISE with ONE
+  blocking finding, and it was the same defect class as the cell it criticised: the new
+  `state_module_mark` cell never reached `state_module_mark`.** It put a regular file at
+  `<state>/modules`, so `state_init` refused FIRST (`_state_dir_content_ok`) and the run died
+  at `lib/bootstrap.sh`'s `state_init || return 1` — the module loop was never entered and the
+  reporter held no records, so "the reporter is not reached on this abort path" was asserted by
+  a cell that could not have observed it either way. The production code was verified correct
+  out of band; the EVIDENCE was the defect, and the evidence is the deliverable. Rebuilt: 7d-ii
+  keeps `<state>/modules` a real directory, pre-marks one module so a `skipped` record really
+  exists at the abort, and puts a DIRECTORY at the second module's mark path so `_state_write`
+  is the thing that refuses — uid-independent, so unlike 7b it also covers a root CI. It now
+  asserts the precondition (`already completed: asnap`) as well as the absence of a summary,
+  and two mutations prove it is load-bearing: removing the `_state_write` directory guard, and
+  making the abort path `summary_report; return 1` (a reporter leaking half a run's records).
+  **A cell can be non-vacuous about the CODE and still vacuous about the FUNCTION it names**,
+  which is why the honest label matters: cell 7a was renamed in place and its comment now says
+  it is a `state_init` cell, because it also fails before `state_log` (it makes `<state>/logs`
+  a file, which `state_init` validates). The consequence is stated rather than glossed: **on a
+  root CI the `_fs_open_run_log` postcondition has NO coverage**, because 7b is root-skipped and
+  7a is not that cell. (Stated more precisely in round 4: the SATISFIED postcondition is
+  exercised by every real-install cell, so what is root-uncovered is only the REFUSAL branch.) Also fixed: `mod_vscode.sh` now sources `lib/summary.sh` alongside
+  `lib/runner.sh` (nothing calls `runner_run` there yet, and the first cell that does would
+  otherwise die at `summary_reset: command not found` under `set -euo pipefail`); the
+  root-run format cell no longer hardcodes a suite total that is not this tree's.
+  **Mutations: 27 applied and all 27 caught on uid 1000 (16 code mutations + 11
+  test-strength mutations), plus 2 negative controls that escape by construction** (a prefix row match instead of the pinned one, and a cell moved after the
+  suite's summary block — the second of which is why placement is called out below).
+  **Senior Review round 3 (`ses_f0d577073ffedI6Lf3h0Xo5WvZ`) returned REVISE with TWO
+  blocking findings, both of them gaps in what the fixture pinned rather than defects in the
+  reporter** (the production code was re-verified correct again, out of band). **B-1: the
+  `artifacts` clause was unpinned for a CLEAN real install.** Every real install cell in the
+  fixture had a failure in it, and the only cell pairing a usable log with rc 0 was a DRY run
+  with an exported `FS_LOG_FILE` — so a reporter that cleared `FS_LOG_FILE` when nothing
+  failed (a mutation the reviewer wrote) left 596 asserts green across six suites, and the user
+  would read `artifacts: none (no run log was opened)` from a run that had opened a real,
+  writable, non-empty log: a false statement about the exact relation the `_io_log_usable`
+  rule exists for, and a contradiction of the ROADMAP's unconditional line format. Fixed by a
+  clean real install cell (`fatgood`, rc 0) that pins the clause AND checks the named path IS
+  this run's state-root log and holds the hooks' lines and the summary line.
+  **B-2: the first half of 7b was labelled with a function it never reached, and was a
+  duplicate of 7a.** It made `<state>/logs` a regular file, which `state_init` refuses before
+  `state_log` is called — so `state_log`'s own `log path not usable` branch has NO cell
+  anywhere in the repo, and a coverage audit over-counted. The half was **deleted** (7a already
+  pins that construction) and the uncovered branch is now **recorded as uncovered**, with the
+  reason it is not reachable through `./setup` (a fresh `run-<ts>-<pid>.log` name per run).
+  Round-3 non-blocking fixes: the FAIL rows are now asserted **in record order** (matching
+  each row independently was order-insensitive, and a reporter printing them reversed stayed
+  green); a literal `\u00b7` in one assertion — which bash never expands and which grep warns
+  about — was replaced with `"$BULLET"`; the root-run format cell no longer compares a printf
+  against its own expansion, and pins the reporting line's FORMAT against the suite's own
+  source with bracket-escaped patterns so a pin cannot match its own text (a mutation of that
+  line escaped twice before that was fixed — a self-matching pin is a tautology in a trench
+  coat); the anti-counter regex is broadened to `(( ++x ))`/`((x += 1))`/`let "x+=1"` and is now
+  labelled **best-effort, not a proof** (measured: it catches `((x++))`, `(( ++x ))`,
+  `((x += 1))`, `((x = x + 1))`, and `let "x+=1"`, but NOT bare `x+=1` or `x += 1` outside
+  `(( ))` -- an unused parallel counter is behaviourally harmless, so this is documentation
+  only); and §7 now quotes the exact digest AGGREGATION
+  command, not just the normalization, after the reviewer showed the documented digest was not
+  re-derivable.
+  **Two more coverage limits are now stated instead of implied:** the `-w` **leg** of
+  `_io_log_usable` is uncovered on BOTH uids (as root `-w` is always true; as uid 1000 every
+  shape 6c pins is decided by `-f`/`-s`, and on the install path the path is freshly minted
+  and created writable), and on a root CI the `_fs_open_run_log` postcondition's **refusal**
+  branch has no coverage, because 7b is root-skipped and 7a is a `state_init` cell. The
+  satisfied branch is covered by every real-install cell.
+  **Senior Review round 4 (`ses_f0d1452faffe2W0vQ7eftsE1ct`) returned REVISE with ONE
+  blocking finding: 2 of the 5 abort paths the task contract names were entirely unpinned.**
+  The resolve-error path (`lib/runner.sh:224`) and the risk-gate refusal (`lib/runner.sh:283-285`)
+  could both print a summary, and a mutation that made either do so was invisible to the whole
+  3557-assert battery. The reviewer verified this by mutation, not by reading: adding
+  `summary_report` to either `return 1` left 0 suites failing. The leak is not cosmetic — with
+  the risk-gate mutation a user sees `0 modules ok . 0 skipped . 0 failed` printed immediately
+  after the run said it would NOT touch the system, which is exactly the "true statement about
+  an empty set" lie `lib/summary.sh`'s header says the reporter must not be reached to prevent.
+  Fixed by adding `fx_out_not 'run complete'` to both existing cells
+  (`tests/fixtures/runner.sh` unknown-profile cell, `tests/fixtures/risk_gate.sh` dep-edge
+  refusal cell) and extending the `lib/summary.sh` header to enumerate all five abort paths.
+  Both mutations are now caught with count deltas (133→132 and 57→56).
+  Round-4 non-blocking fixes: every `hook exited 1` pin is now `$`-terminated so a status of 10
+  cannot satisfy an expectation of 1 (mutation M36 caught, 100→94); the remaining prefix-tolerant
+  count pins are terminated; the stale host facts in §1 are corrected (podman 5.8.7 IS installed,
+  `unshare -Ur` succeeds, `/tmp/opencode/ubin` no longer exists and the battery is green with the
+  real `rpm` 6.0.2); and the root-coverage wording now states that the SATISFIED postcondition is
+  exercised by every real-install cell, so only the REFUSAL branch is root-uncovered.
+  **Mutations: 36 applied and all 36 caught on uid 1000 (21 code mutations + 15
+  test-strength mutations), plus 2 negative controls that escape by construction**
+  **Senior Review round 5 (`ses_f0ca485fcffeJETHyftCchOnvO`) returned PASS, 0 blocking.**
+  The reviewer ran ~47 of its own mutations (34 caught, 11 escaped -- 4 by-construction
+  negative controls, 7 real non-blocking escapes) and independently reproduced every
+  number above, including the round-4 B1 deltas (133→132 and 57→56) and the digest.
+  Post-PASS non-blocking fixes: `fx_out_not 'run complete'` added to the family-gate and
+  both arg-validation cells (closing the module_validate and `shift 4` abort paths the
+  reviewer found unpinned); `summary_reset`'s clearing of `SUMMARY_SKIP_IDS` and
+  `SUMMARY_FAIL_DETAIL` pinned (the detail one needed a ROW assertion -- a stale detail
+  leaves the count right and only corrupts which module is named); the anti-counter regex
+  wording in §1 corrected to match what it actually catches; three further defensive
+  `return 1` sites (`if [[ -z ]]`, `profile_load`, `module_flatpak_alt`) recorded as
+  uncovered in the `lib/summary.sh` header rather than pinned with contrived cells.
+  **Mutations: 41 applied and all 41 caught on uid 1000 (26 code mutations + 15
+  test-strength mutations), plus 2 negative controls that escape by construction**
+  **Next: P9 phase report.**
 - Version: `FS_VERSION="0.1.0-dev"` (see `lib/bootstrap.sh`).
 
 ## 2. Repository structure
@@ -197,8 +373,8 @@ is a "module"; modules are grouped into profiles; everything runs through the co
 | Path | Responsibility |
 |---|---|
 | `setup` | Executable launcher. Resolves its own path from `$0` (no CWD assumption), `set -euo pipefail`, `readlink -f` canonicalization, then `exec`s `lib/bootstrap.sh "$@"`. |
-| `lib/bootstrap.sh` | Entry: Bash≥4.3 check, tool/layout checks, sources `io.sh` + `cli.sh`, parses args, dispatches: `help`/`version`/`check`/`list`/`install`/`verify`/`export`/`update` rc0 (install = P4.7 real wiring; verify = P9.2; export = P9.3; update = P9.4); unknown → rc1. Also refuses `--pull` on any command other than `update`, and `_cli_update_sources`/`_cli_update_impl`. Also `_cli_manifest_tree_check`/`_cli_manifest_profile`/`_cli_manifest_check`, the `--manifest` re-import gate. |
-| `lib/io.sh` | Leveled logging (error/warn/info/debug), TTY-only color, timestamps, progress/summary, audit-log init. `io_*` never abort the caller under `set -e`/`set -u`. `FS_NO_COLOR` is normalized to `0` at source time, so **every color gate must compare numerically** (`(( FS_NO_COLOR == 0 ))`) — a `-z` test is false for the string `"0"` and silently kills color (P8.3, §12). `io_alert` is the one stdout/un-timestamped emitter: it annotates a rendered plan, not the narration (P8.3, §12). |
+| `lib/bootstrap.sh` | Entry: Bash≥4.3 check, tool/layout checks, sources `io.sh` + `cli.sh`, parses args, dispatches: `help`/`version`/`check`/`list`/`install`/`verify`/`export`/`update` rc0 (install = P4.7 real wiring; verify = P9.2; export = P9.3; update = P9.4); unknown → rc1. Also refuses `--pull` on any command other than `update`, and `_cli_update_sources`/`_cli_update_impl`. Also `_cli_manifest_tree_check`/`_cli_manifest_profile`/`_cli_manifest_check`, the `--manifest` re-import gate, and `_fs_open_run_log` (P9.5: opens this run's audit log on the real install path and **refuses** when the postcondition shows it was not written). |
+| `lib/io.sh` | Leveled logging (error/warn/info/debug), TTY-only color, timestamps, progress/summary, audit-log init. `io_*` never abort the caller under `set -e`/`set -u`. `FS_NO_COLOR` is normalized to `0` at source time, so **every color gate must compare numerically** (`(( FS_NO_COLOR == 0 ))`) — a `-z` test is false for the string `"0"` and silently kills color (P8.3, §12). `io_alert` is the one stdout/un-timestamped emitter: it annotates a rendered plan, not the narration (P8.3, §12). P9.5 adds `_io_log_usable` — the ONE `-f && -w && -s` relation for "this run has a real, writable, non-empty audit trail", shared by the `install` guard and the summary's artifacts pointer (§12); `run.sh` keeps its own `-f && -w` check because it must accept a file it is about to write and additionally raises `FS_LOG_INFRA`. |
 | `lib/cli.sh` | Flags `--yes/--dry-run/--verbose/--debug/--profile V/--list/--force/--browse/--manifest D/--pull`, `-h/--help`, `--` end-of-options; commands `install|list|check|verify|export|update|help|version`; unknown → rc1. `FS_MANIFEST` (P9.3) names a re-import tree; `FS_PROFILE_SET` records whether `--profile` was given explicitly. |
 | `lib/distro.sh` | Reads `/etc/os-release` (or `FS_DISTRO_FILE`, or 1st arg — read-only input). Capability matrix: family/id/pkgmgr/localpkg/flatpak-default/gnome. Test seam `FS_DISTRO_PKGMGR_OVERRIDE`. |
 | `lib/state.sh` | State root `$FS_HOME` (test) > `$XDG_STATE_HOME` > `$HOME`, joined with `/fedora-setup`. Run logs, module registry, backup registry. Symlink/confinement-guarded. P9.2 adds `state_root_path` — a pure reader that resolves the root WITHOUT creating it, so a read-only command can report "no state dir yet" instead of manufacturing one. |
@@ -206,14 +382,15 @@ is a "module"; modules are grouped into profiles; everything runs through the co
 | `lib/sudo.sh` | `sudo_detect`, `sudo_refresh`, `sudo_exec`. Never touches `/etc/sudoers`. Dry-run keeps probe OFF and executes nothing. |
 | `lib/run.sh` | `run_cmd`/`run_sudo` with label, `--stop`, `[DESTROY]` forced stop, dry-run `# would run:` lines, `FS_LOG_FILE` audit trail + `FS_LOG_INFRA` halt. |
 | `lib/gnome.sh` | P6.1: gsettings layer — availability checks; `gnome_gsettings_get`/`gnome_gsettings_set` (idempotent probe-then-write; real `gsettings get` renders string scalars single-quoted, so the compare also matches a bare target), strv parse/build/merge + custom-keybinding merge-add primitives; P6.5 capability gate `gnome_require_capable` (`FS_GNOME_FORCE` bypass > SSH-headless > non-GNOME XDG > gsettings-missing); P6.3 `gnome_shell_version`/`gnome_extensions_list`. |
+| `lib/summary.sh` | P9.5: the end-of-run summary reporter — `summary_reset`, `summary_module_ok/_skip/_fail`, `summary_line`/`summary_report`, `summary_rc`. The ONLY place module outcomes are counted and where the install exit code is decided; the runner records outcomes and asks this for both. The three `SUMMARY_*_IDS` arrays are the only state, so the printed counts and the rc are one derivation (§12). Abort paths never reach it. |
 | `lib/status.sh` | P9.1: the shared PASS/WARN/FAIL table + exit-code rule (`STATUS_PASS/WARN/FAIL`, `STATUS_WORST`, `STATUS_ROWS`, `status_reset`/`status_row`/`status_verdict`/`status_rc`/`status_report`). One implementation of the rule, consumed by both `check` (P9.1) and `verify` (P9.2) so the two tables cannot drift. `STATUS_ROWS` is an **array**, not a counter — count it with `${#STATUS_ROWS[@]}`. |
 | `lib/verify.sh` | P9.2: `verify_run <root>` — the read-only audit. Generic layer (system packages via P3.9 `pkg_verify_packages`, flatpaks via the flatpak backend, the P7.5 alt id deduped against the module's own list) plus per-module `verify()` hooks in a subshell that mirrors the runner (exports `FS_MODULE_FAMILY`, `module_load` before sourcing). Rows are `<id>:packages` / `<id>:flatpaks` / `<id>:hook`. Selection: explicit ids → `--profile` closure → P4.6 registry → all modules. Never installs, never marks, never backs up, never sudoes, and does not create a state root. |
 | `lib/export.sh` | P9.3: `export_run <root> <outdir> <family> <name> <mdir> <pdir>` — the snapshot writer. Allowlist by construction: manifest lists, the resolved profile conf, an allowlisted gsettings key set, enabled extensions, installed font markers, and the managed blocks only. Writes `export.meta` + `<profile>.conf` + `manifests/` + `state/` + `files/`, every file always present so the tree shape is host-independent. No timestamp anywhere (byte-identical re-exports); refuses a symlinked outdir and skips symlinked managed files. Never reads the state root. Format: `docs/export-format.md`. |
 | `lib/update.sh` | P9.4: `update_run <root>` — version/identity reporting and the EXPLICIT self-update. Four states reported distinctly (up-to-date / behind / ahead / diverged); only "behind" may fast-forward, and every merge is `--ff-only`, so this tool can never create a merge commit or rewrite local history. Cleanliness (including **untracked** files) is checked BEFORE the fetch, so a refusal never half-happens. `update` reports; only `update --pull` moves the tree. Every git call carries `-C "$root"`. Depends on `lib/run.sh` (`run_cmd --stop`) + `lib/io.sh`. |
-| `lib/runner.sh` | P4.6: `runner_run <modules_dir> <profiles_dir> <name> <family> [module...]` — resolve/plan/prereq/batch/hooks+state/summary stages; deps-first execution, destructive-stop policy, dry-run state-free, hook subshell sandbox. BATCH (P5.7): one batch per namespace — system pkg ids once via the active family backend, flatpak ids once via `( FS_PKG_BACKEND=flatpak; export FS_PKG_BACKEND; plan_install ... )` subshell (self-restoring), system first. PREREQ (P7.5): per module in resolved order, `prerepo.sh` (if present) is sourced in a subshell and `prerepo()` runs ONCE, always (never state-skipped) and BEFORE both batches; `state_init` stays after the batches. Any prerepo failure stops the run (rc1, no batch/hooks/summary) whatever the risk — including a `prerepo.sh` that never defines `prerepo()`. Both hook subshells get `FS_MODULE_FAMILY` **exported** and call `module_load <dir> strict` BEFORE sourcing the hook file, so a hook always sees its own metadata instead of the last module the PLAN stage loaded. RISK GATE (P8.3): refuses rc1 before any prerepo/batch/hook on a high/destructive module that is in the resolved set but NOT in the curated set (the passed module args, or the profile FILE's own ids via `profile_load`) — one `MODULE_DEPENDS` line must never put a destructive module on a system nobody named; a module the profile *does* name stays on the reviewed P4.7 drop-with-alert rc0 path (§12). |
+| `lib/runner.sh` | P4.6: `runner_run <modules_dir> <profiles_dir> <name> <family> [module...]` — resolve/plan/prereq/batch/hooks+state/summary stages; deps-first execution, destructive-stop policy, dry-run state-free, hook subshell sandbox. BATCH (P5.7): one batch per namespace — system pkg ids once via the active family backend, flatpak ids once via `( FS_PKG_BACKEND=flatpak; export FS_PKG_BACKEND; plan_install ... )` subshell (self-restoring), system first. PREREQ (P7.5): per module in resolved order, `prerepo.sh` (if present) is sourced in a subshell and `prerepo()` runs ONCE, always (never state-skipped) and BEFORE both batches; `state_init` stays after the batches. Any prerepo failure stops the run (rc1, no batch/hooks/summary) whatever the risk — including a `prerepo.sh` that never defines `prerepo()`. Both hook subshells get `FS_MODULE_FAMILY` **exported** and call `module_load <dir> strict` BEFORE sourcing the hook file, so a hook always sees its own metadata instead of the last module the PLAN stage loaded. SUMMARY (P9.5): the runner holds **no** counter and renders nothing — it records each outcome with `lib/summary.sh` as it happens and then calls `summary_report` + `summary_rc`, so the printed counts and the exit code are one derivation rather than two facts that happen to agree. The abort paths still return rc1 with no summary, which is why the reporter is never reached from them. RISK GATE (P8.3): refuses rc1 before any prerepo/batch/hook on a high/destructive module that is in the resolved set but NOT in the curated set (the passed module args, or the profile FILE's own ids via `profile_load`) — one `MODULE_DEPENDS` line must never put a destructive module on a system nobody named; a module the profile *does* name stays on the reviewed P4.7 drop-with-alert rc0 path (§12). |
 | `lib/modules.sh` | Module contract: metadata loading/validation, `module_has_hooks`/`module_has_prerepo`, `list_packages`/`list_flatpaks` for a family, deps, and the P7.5 flatpak-alternative pair `MODULE_FLATPAK_ALT_ID` + `MODULE_FLATPAK_ALT_SEAM` resolved by `module_flatpak_alt` (truthy seam `1|true|yes|on`, case-insensitive). Metadata is parsed TEXTUALLY, never executed; every optional key is reset at load time so a module can never inherit another module's value, and the alt pair is all-or-nothing (id without seam, or a seam that is not an env-var name, fails validation). |
 | `lib/ui.sh` | P4.7: `ui_multiselect`/`ui_confirm` selection + confirm layer (no external TUI tool — no ncurses; Bash + coreutils execs only). TTY raw-key re-render vs deterministic line-mode; high-risk rows never digit/`a`-toggleable (opt-in prompt is their only checklist route); EOF/`q` abort rc1 fail-closed; atomic sel-file write via `mv -fT`; `ui_confirm` returns 0 under `--yes`; color helpers must keep `return 0` (set -e safety). |
-| `tests/smoke.sh` | Plain-bash smoke suite for P2.1–P2.8 + `setup install` dry-run (P4.7) + GNOME capability/`--force` cells (P6.5) + `setup check` (P9.1) + `setup verify` (P9.2); 138 asserts (P10 adds bats/CI later). |
+| `tests/smoke.sh` | Plain-bash smoke suite for P2.1–P2.8 + `setup install` dry-run (P4.7) + GNOME capability/`--force` cells (P6.5) + `setup check` (P9.1) + `setup verify` (P9.2) + the P9.5 summary line; 169 asserts (P10 adds bats/CI later). |
 | `modules/` | Module tree: `core`/`flatpak`/`git`/`fonts`/`terminal` (P5.1–P5.6) + `gnome-base`/`gnome-extensions`/`gnome-theme` (P6.2–P6.4) + `vscode` (P7.5) + `chrome` (P7.6) + `dns` (P8.1) + `locale` (P8.2), each `module.sh` + list/config data files, optional `hooks.sh` (`run()`/`verify()`) and optional `prerepo.sh` (`prerepo()`, P7.5). `vscode` is the first prerepo user: it adds the Microsoft repository and imports/dearmors the pinned key before the batch, and has NO `hooks.sh`. `chrome` is the first **hooks-only** module: no list file at all, because its bundle version floats and is resolved at run time. `dns`/`locale` are hooks-only **destructive** modules (`MODULE_DEFAULT=off`, in NO profile), mutating NetworkManager / the systemd locale and both reversible via a state-note record. |
 | `config/` | Static repo data: `nerdfonts.sha256` (P5.7 pinned release digests), `extensions.compat` (P6.3 GNOME extension-version report windows), `vscode-gpg.fingerprint` (P7.5 pinned Microsoft repo signing-key fingerprint + provenance). |
 | `assets/`, `docs/` | Stubs (tracked `.gitkeep` only). Content arrives in later phases. |
@@ -320,6 +497,23 @@ session so findings trace back.
 - Fixtures over real systems: run against `FS_HOME`/`FS_DISTRO_FILE` dummy paths and the `mock`
   backend; never let tests touch `/etc`, `$HOME` of the real user, or real privileges (dry-run is
   load-bearing). After any lib change, also confirm the suite is byte-identical across 2–3 runs.
+  If a digest is quoted, **state the normalization AND the aggregation exactly** — the P9.5
+  figures use this command, and its `sha256` is the one quoted in §1:
+  `norm() { sed -E 's#/tmp/fedora-setup-pkg\.[A-Za-z0-9]+#/tmp/FX#g; s#run-[0-9]{8}T[0-9]{6}-[0-9]+\.log#run-TS-PID.log#g; s#\[[0-9]{2}:[0-9]{2}:[0-9]{2}\]#[TS]#g'; }`
+  then, once per run, `{ bash tests/smoke.sh; for f in tests/fixtures/*.sh; do [[ "$(basename "$f")" == "lib.sh" ]] && continue; bash "$f"; done; } 2>&1 | norm | sha256sum`
+  — i.e. `tests/fixtures/*.sh` in sorted order with `lib.sh` (the shared helper) skipped, and
+  **stderr merged into stdout** (`2>&1`, which is what makes FAIL lines part of the digest). A
+  digest quoted without both is not re-derivable: normalizing the same bytes but aggregating
+  them differently yields a different first-16 (P9.4 and P9.5 both record this). A digest is
+  comparable like-for-like only.
+- A mutation is only evidence if it is **non-vacuous**, and `cmp` on the edited file proves less
+  than it looks (P9.5). Two independent checks are required: the file must differ from the
+  baseline, AND the fixture's assert COUNT must differ from the baseline's. `cmp` alone passed a
+  harness whose `python3 - args` form read its program from **stdin** — so every "edit" was a
+  silent no-op, every "ESCAPED" result was the untouched suite re-reported, and the mutation
+  count matched the baseline exactly. Conversely, a result identical to the baseline is a broken
+  harness, not a finding; and a mutation that hits only a comment is worse than none. Keep the
+  `cmp`, add the count comparison, and prefer `python3 script.py <args>` over `python3 -`.
 - Record evidence verbatim in the ledger row after PASS (commands, counts, rc, reviewer verdict + session id).
 
 ## 8. Git / commit rules
@@ -681,6 +875,75 @@ delivered; **stop and wait for explicit owner approval** before the next phase.
   mutation that deletes a postcondition check must be caught by a cell whose fake is
   **contract-coupled** to the state (here: `merge` exits 0, HEAD stays put), not by asserting the
   error message alone.
+- **A summary's counts and its exit code must be ONE derivation, and the reporter must own both
+  (P9.5).** The old `install` summary was assembled inline by `lib/runner.sh` from three local
+  counters, printed by `io_summary`, and turned into an exit code by a separate
+  `if (( failed > 0 ))` — three expressions of one fact with nothing tying them together, which is
+  the P9.2 B4 shape one level up. The rule is stronger than "keep them in sync": the runner must
+  keep **no counter at all** and the reporter must derive every printed number from the *same
+  records* the per-failure rows are printed from (`${#SUMMARY_*_IDS[@]}` at render time), so a
+  line saying "0 failed" and an rc of 1 are not expressible. Corollary for tests: asserting the
+  count and asserting the row list separately is weaker than asserting one line that carries all
+  three counts, because only the latter fails when the count is derived from the wrong array —
+  and the *combination* 0 ok / 2 skipped / 2 failed is the shape no single-outcome run can reach.
+- **An artifacts pointer and the guard that enforces it must be ONE relation, not two tests of
+  one property (P9.5).** `artifacts in <log>` is printed only when `lib/io.sh`'s
+  `_io_log_usable` accepts the path, and `lib/bootstrap.sh` refuses an install without the SAME
+  predicate — one implementation of "this run has a real, writable, non-empty audit trail",
+  because the P9.2 B4 defect shape is not limited to module auditors: the first revision tested
+  *existence* in the guard and *existence* in the pointer, and they disagreed. Given a
+  pre-existing file this run cannot append to, `io_init` skips its write and only warns, the
+  file is still there and still non-empty, so the guard passed and the summary named a log
+  containing none of the run. With no usable log the clause names which of the two honest
+  reasons applies (a dry run writes nothing / no run log was opened). Two corollaries, both
+  measured: (a) a seam whose rc cannot be trusted (`io_init` warns and always returns 0) makes
+  the FILE's own state the postcondition, and a run that cannot write its audit trail must
+  refuse **before** mutating — the P7.6 `pkg_add_repo` rule and the P9.4 fast-forward rule,
+  applied to the log; (b) check usability **before** the dry-run branch. A dry run that also has
+  an exported `FS_LOG_FILE` (a documented audit seam) DOES print `artifacts in`, because that
+  file exists, is writable and really holds the lines this run emitted — "a dry run writes
+  nothing" is the fallback, not the rule, and conflating the two orderings makes one of them
+  look like a bug. Do NOT fold `run.sh`'s own check into this predicate: run.sh legitimately
+  accepts an EMPTY file (it is about to append to it) and additionally raises `FS_LOG_INFRA`,
+  so this is a P9.5 notion about a run that has already written something.
+- **A row is pinned by its EXACT text, and BOTH rows, not one (P9.5).** `FAIL <id>: hook
+  exited <rc>` is a re-substitution of recorded data, and a reporter that rendered a constant
+  status — or module A's status on module B's row — satisfied a suite that matched only the
+  first row, under 89 green asserts. Match with `grep -qx` on **each** row, with **distinct**
+  statuses (`7` and `12`) so neither row can satisfy the other's expectation, and pin the
+  status with `$`: a trailing-space `hook exited ` pattern is satisfied by `hook exited 12`.
+  The converse is worth proving rather than asserting — with the same recorded status changed to
+  `70`, the pinned cell FAILS and the prefix cell PASSES. Note also that a cell comparing only
+  the summary LINE and the rc never compared row text at all, so "the line and the rc agree" is
+  not "the line is right".
+- **A cell placed after the suite's summary block cannot fail the suite (P9.5).** A new cell
+  was written, verified green, and provably useless: it sat below the final `summary:` print and
+  the final exit-status decision, so its `fx_bad` incremented a counter nothing read. A mutation
+  of that cell (dropping the skipped count from the root-run line) printed a `FAIL` line while
+  the suite still reported `0 failed` and exited 0 — which is why an ESCAPED result is only
+  believable if its counts match the baseline exactly. Rule: new cells go **above** the summary
+  block, and the last thing a suite prints must be its verdict.
+- **A root-only cell must be VISIBLE in the suite's result (P9.5).** "Prints a note and
+  continues" reads as full coverage on a root CI while the branch is untested. Count skipped
+  cells and print `summary: N passed, M failed, K skipped (root-only limitation)`. Say plainly
+  which branch is unexercised on which host: on uid 1000 with no passwordless sudo, the branch
+  that PRINTS the skip count never runs, so only its format is pinned — do not describe the
+  unwritable-log refusal as root-covered, and qualify every "all mutations caught" claim with
+  the uid it was measured on.
+- **A variable that looks like an untrusted redirect may be a documented seam — check before
+  "hardening" it (P9.5).** `FS_LOG_FILE` is shaped exactly like `FS_PULL`/`FS_MANIFEST` (a path
+  inherited from the environment that redirects output), so `cli_parse` was changed to clear it.
+  That broke `tests/fixtures/check.sh` cell 23, which pins that `setup check` appends its table
+  to an exported `FS_LOG_FILE`: the variable is a deliberate audit seam for *every* command, and a
+  dry run honouring it is consistent rather than a violation. Reverted, with the reporter keying
+  off "configured AND exists" instead of "set by this run". Do not re-apply it.
+- **A module-level run count is process-global state, so any per-run reset must be pinned by a
+  cell that runs the runner TWICE in one process (P9.5).** One install per process is the only
+  production path, which is exactly why a removed `summary_reset` was invisible: every fixture
+  drove a fresh process, and the reporter's "after reset" cell called `summary_reset` itself
+  rather than observing the runner's. The fixture now calls the real `runner_run` twice in one
+  shell and asserts the second summary. Corollary, and the general form: when you delete a reset
+  call, ask which single process would have observed the leak.
 - **Refusing high-risk selections when stdin is not a TTY was written, measured, and REJECTED**
   (P8.3). It broke `tests/fixtures/install.sh` (4 FAILs) because those reviewed cells drive the
   high-risk opt-in + confirmation **entirely by piped stdin** — refusing every piped high-risk

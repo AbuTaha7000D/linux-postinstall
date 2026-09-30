@@ -25,6 +25,29 @@
 # live profile). It is a PATH, not a boolean, so cli_parse deliberately does
 # not validate it here -- an unset, unreadable or non-conforming directory is
 # the consumer's (bootstrap's) error to report, in the command that uses it.
+# FS_LOG_FILE is deliberately NOT reset here, and P9.5 measured why the obvious
+# hardening is wrong. It looks exactly like FS_PULL and FS_MANIFEST -- a path
+# that redirects output -- so cli_parse was changed to clear it, on the
+# reasoning that an inherited value lets a run append to a file the user never
+# chose. That is a real effect, but it is the DOCUMENTED contract, not a hole:
+# tests/fixtures/check.sh cell 23 asserts that `setup check` appends its table
+# to an exported FS_LOG_FILE, so the variable is a deliberate audit seam, and a
+# dry run honouring it is consistent rather than a violation (a dry run writes
+# nothing to the SYSTEM; the user asked for this file). The rule this
+# establishes: do not assume every redirecting variable is untrusted, and check
+# whether a fixture already pins its meaning before treating it like the two
+# that are.
+#
+# The asymmetry, stated rather than hidden: every command honours the exported
+# path EXCEPT a real `install`, which calls io_init with this run's own
+# state-root log (_fs_open_run_log) and therefore RE-POINTS the variable. The
+# exported file keeps the lines emitted before that point and the summary names
+# the state log, which is the one that holds the batches and hooks. That is
+# deliberate -- the summary's artifacts clause must name a file that contains
+# the run -- but it means "the seam applies to every command" is true for
+# `check`, `verify`, `list` and dry runs, and only for the pre-install lines of
+# a real `install`. Do not "fix" this by skipping io_init for install; the
+# summary would then point at a log the hooks never reached.
 
 _CLI_ENV_VERBOSE="${FS_VERBOSE:-0}"
 _CLI_ENV_DEBUG="${FS_DEBUG:-0}"

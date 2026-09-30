@@ -141,7 +141,7 @@ EOD
 rm -rf "$FX_TMP/h_real"
 gnome_run h_real "real fresh" 0 "$FX_TMP/keys"
 fx_out '^== run complete ==$'
-fx_out '1 ok'
+fx_out '^  - 1 modules ok · 0 skipped · 0 failed ·'
 grep -Fqx "set org.gnome.shell favorite-apps ['org.gnome.App1.desktop', 'org.gnome.Nautilus.desktop', 'firefox.desktop']" "$LOG" && fx_ok || fx_bad "dock favorites merged (existing preserved, curated appended)"
 grep -Fqx "set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:$CK/custom1/ name 'Resources'" "$LOG" && fx_ok || fx_bad "resources binding allocated to first-free custom1"
 grep -Fqx "set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:$CK/custom3/ command 'gnome-control-center'" "$LOG" && fx_ok || fx_bad "settings binding allocated to custom3"

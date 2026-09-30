@@ -108,7 +108,7 @@ fx_block_rc "fonts real rc" 0
 fx_out 'profile: selection'
 fx_out 'module: fonts (low)'
 fx_out '^== run complete ==$'
-fx_out '1 ok'
+fx_out '^  - 1 modules ok · 0 skipped · 0 failed ·'
 fx_out 'installed nerd font: FiraCode Nerd Font (v3.3.0)'
 fx_out 'installed nerd font: JetBrainsMono Nerd Font (v3.3.0)'
 fx_out 'sha256 verified: FiraCode'
@@ -223,7 +223,8 @@ FX_BLOCK_RC=$?
 fx_block_rc "fonts map-mismatch rc" 1
 fx_err 'sha256 mismatch for FiraCode.zip (repo-pinned)'
 fx_err 'module failed: fonts'
-fx_out '0 ok'
+fx_out '^  - 0 modules ok · 0 skipped · 1 failed ·'
+fx_out '^  - FAIL fonts: hook exited 1$'
 if [[ -e "$FX_TMP/fonts_mapbad/.fedora-setup-nerd-FiraCode-v3.3.0" ]]; then fx_bad "map-mismatch wrote marker"; else fx_ok; fi
 if [[ ! -d "$FX_TMP/fonts_mapbad" ]]; then fx_bad "map-mismatch dir missing for residue check"; elif ls -A "$FX_TMP/fonts_mapbad" | grep -q '^\.'; then fx_bad "map-mismatch left temp residue"; else fx_ok; fi
 

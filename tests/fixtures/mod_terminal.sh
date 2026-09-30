@@ -135,7 +135,7 @@ term_run t_dry "terminal dry-run" 1
 fx_out 'profile: selection'
 fx_out 'module: terminal (low)'
 fx_out '^== run complete ==$'
-fx_out '1 ok'
+fx_out '^  - 1 modules ok · 0 skipped · 0 failed ·'
 fx_out "^# would run: merge fedora-setup aliases block into $A_ALIASES\$"
 fx_out "^# would run: install oh-my-posh v23.9.0 (amd64) release binary (https://github.com/JanDeDobbeleer/oh-my-posh/releases/download/v23.9.0/posh-linux-amd64) into $A_BIN\$"
 fx_out "^# would run: install oh-my-posh theme (https://raw.githubusercontent.com/JanDeDobbeleer/oh-my-posh/v23.9.0/themes/jandedobbeleer.omp.json) into $A_THEME\$"
@@ -170,7 +170,7 @@ export FS_TERM_ALIASES="$B_ALIASES" FS_BASHRC="$B_BASHRC"
 export FS_OMP_BIN="$B_BIN" FS_OMP_THEME="$B_THEME" FS_OMP_SRC_DIR="$B_SRC"
 export FS_ATUIN_BIN="$B_ATUIN_BIN" FS_ATUIN_SRC_DIR="$B_ATUIN_SRC"
 term_run t_real "terminal real happy" 0
-fx_out '1 ok'
+fx_out '^  - 1 modules ok · 0 skipped · 0 failed ·'
 if [[ -f "$FX_TMP/t_real/.local/state/fedora-setup/modules/terminal" ]]; then fx_ok; else fx_bad "terminal not marked done"; fi
 if [[ -x "$B_BIN" ]]; then fx_ok; else fx_bad "omp binary not executable"; fi
 if cmp -s "$B_BIN" "$B_SRC/posh-linux-amd64"; then fx_ok; else fx_bad "omp binary content mismatch"; fi
@@ -232,7 +232,7 @@ export FS_TERM_ALIASES="$C_ALIASES" FS_BASHRC="$C_BASHRC"
 export FS_OMP_BIN="$C_BIN" FS_OMP_THEME="$C_THEME" FS_OMP_SRC_DIR="$C_SRC"
 export FS_ATUIN_BIN="$C_ATUIN_BIN" FS_ATUIN_SRC_DIR="$C_SRC"
 term_run t_skip "terminal no-op skip" 0
-fx_out '1 ok'
+fx_out '^  - 1 modules ok · 0 skipped · 0 failed ·'
 fx_out 'oh-my-posh already installed'
 fx_out 'atuin already installed'
 if cmp -s "$C_BASHRC" "$FX_TMP/C.bashrc.snap" && cmp -s "$C_ALIASES" "$FX_TMP/C.aliases.snap"; then fx_ok; else fx_bad "skip cell rewrote managed blocks"; fi
@@ -259,7 +259,7 @@ export FS_TERM_ALIASES="$D_ALIASES" FS_BASHRC="$D_BASHRC"
 export FS_OMP_BIN="$D_BIN" FS_OMP_THEME="$D_THEME" FS_OMP_SRC_DIR="$D_SRC"
 export FS_ATUIN_BIN="$D_ATUIN_BIN" FS_ATUIN_SRC_DIR="$D_ATUIN_SRC"
 term_run t_reinst "terminal wrong-version reinstall" 0
-fx_out '1 ok'
+fx_out '^  - 1 modules ok · 0 skipped · 0 failed ·'
 fx_err 'replacing oh-my-posh'
 if cmp -s "$D_BIN" "$D_SRC/posh-linux-amd64"; then fx_ok; else fx_bad "wrong-version bin not replaced"; fi
 if cmp -s "$D_THEME" "$D_SRC/jandedobbeleer.omp.json"; then fx_ok; else fx_bad "theme not installed on reinstall"; fi
@@ -284,8 +284,7 @@ term_run t_mismatch "terminal sha mismatch" 0 "" 1
 fx_block_rc "terminal sha mismatch rc" 1
 fx_err 'sha256 mismatch for oh-my-posh binary'
 fx_err 'module failed: terminal'
-fx_out '0 ok'
-fx_out '1 failed'
+fx_out '^  - 0 modules ok · 0 skipped · 1 failed ·'
 if [[ -e "$E_BIN" ]]; then fx_bad "mismatch installed binary"; else fx_ok; fi
 if [[ -e "$E_THEME" ]]; then fx_bad "mismatch installed theme"; else fx_ok; fi
 if [[ -e "$E_ATUIN_BIN" ]]; then fx_bad "mismatch installed atuin (must abort before atuin step)"; else fx_ok; fi
@@ -366,7 +365,7 @@ IDEF_ATUIN="$I/.local/bin/atuin"
 export FS_OMP_SRC_DIR="$I_SRC"
 export FS_ATUIN_SRC_DIR="$I_ASRC"
 term_run t_idefault "terminal default paths" 0 "$I" 0
-fx_out '1 ok'
+fx_out '^  - 1 modules ok · 0 skipped · 0 failed ·'
 if [[ -x "$IDEF_BIN" ]]; then fx_ok; else fx_bad "default-path binary missing"; fi
 if cmp -s "$IDEF_BIN" "$I_SRC/posh-linux-amd64"; then fx_ok; else fx_bad "default-path binary content"; fi
 if [[ -f "$IDEF_THEME" ]]; then fx_ok; else fx_bad "default-path theme missing"; fi
@@ -464,8 +463,7 @@ export FS_ATUIN_BIN="$N_ATUIN_BIN" FS_ATUIN_SRC_DIR="$N_ASRC"
 term_run t_amismatch "terminal atuin sha mismatch" 0 "" 1
 fx_err 'sha256 mismatch for atuin archive'
 fx_err 'module failed: terminal'
-fx_out '0 ok'
-fx_out '1 failed'
+fx_out '^  - 0 modules ok · 0 skipped · 1 failed ·'
 if cmp -s "$N_BIN" "$N_SRC/posh-linux-amd64"; then fx_ok; else fx_bad "omp should be installed before atuin failure"; fi
 if [[ -e "$N_ATUIN_BIN" ]]; then fx_bad "atuin mismatch installed binary"; else fx_ok; fi
 if [[ -e "$N_BASHRC" ]]; then fx_bad "atuin mismatch merged bashrc block"; else fx_ok; fi
@@ -492,7 +490,7 @@ export FS_TERM_ALIASES="$O_ALIASES" FS_BASHRC="$O_BASHRC"
 export FS_OMP_BIN="$O_BIN" FS_OMP_THEME="$O_THEME" FS_OMP_SRC_DIR="$O_SRC"
 export FS_ATUIN_BIN="$O_ATUIN_BIN" FS_ATUIN_ARCH="riscv"
 term_run t_atuinarch "terminal atuin unsupported arch" 0
-fx_out '1 ok'
+fx_out '^  - 1 modules ok · 0 skipped · 0 failed ·'
 fx_err 'atuin has no release for this host arch; skipping'
 if cmp -s "$O_BIN" "$O_SRC/posh-linux-amd64"; then fx_ok; else fx_bad "omp not installed when atuin skipped"; fi
 if [[ -e "$O_ATUIN_BIN" ]]; then fx_bad "unsupported atuin arch installed binary"; else fx_ok; fi
@@ -528,7 +526,7 @@ export FS_TERM_ALIASES="$Q_ALIASES" FS_BASHRC="$Q_BASHRC"
 export FS_OMP_BIN="$Q_BIN" FS_OMP_THEME="$Q_THEME"
 export FS_ATUIN_BIN="$Q_ATUIN_BIN" FS_ATUIN_ARCH="aarch64"
 term_run t_aarch "terminal aarch64 dry" 1
-fx_out '1 ok'
+fx_out '^  - 1 modules ok · 0 skipped · 0 failed ·'
 fx_out "^# would run: install atuin v18.23.0 (aarch64) release binary (https://github.com/atuinsh/atuin/releases/download/v18.23.0/atuin-aarch64-unknown-linux-gnu.tar.gz) into $Q_ATUIN_BIN\$"
 if [[ -e "$Q_ATUIN_BIN" || -e "$Q_BASHRC" || -e "$Q_ALIASES" ]]; then fx_bad "aarch64 dry wrote files"; else fx_ok; fi
 unset FS_TERM_ALIASES FS_BASHRC FS_OMP_BIN FS_OMP_THEME FS_ATUIN_BIN FS_ATUIN_ARCH
@@ -549,7 +547,7 @@ export FS_TERM_ALIASES="$R_ALIASES" FS_BASHRC="$R_BASHRC"
 export FS_OMP_BIN="$R_BIN" FS_OMP_THEME="$R_THEME" FS_OMP_SRC_DIR="$R_SRC"
 export FS_ATUIN_BIN="$R_ATUIN_BIN" FS_ATUIN_SRC_DIR="$R_ASRC" FS_ATUIN_ARCH="aarch64"
 term_run t_aarchreal "terminal aarch64 real" 0
-fx_out '1 ok'
+fx_out '^  - 1 modules ok · 0 skipped · 0 failed ·'
 if [[ -x "$R_ATUIN_BIN" ]]; then fx_ok; else fx_bad "aarch64 atuin binary not executable"; fi
 if [[ "$("$R_ATUIN_BIN" --version)" == "atuin 18.23.0 "* ]]; then fx_ok; else fx_bad "aarch64 atuin binary version"; fi
 R_ATUING="[ -x '$R_ATUIN_BIN' ] && eval \"\$('$R_ATUIN_BIN' init bash)\""
@@ -569,7 +567,7 @@ export FS_TERM_ALIASES="$S_ALIASES" FS_BASHRC="$S_BASHRC"
 export FS_OMP_BIN="$S_BIN" FS_OMP_THEME="$S_THEME"
 export FS_ATUIN_BIN="$S_ATUIN_BIN" FS_ATUIN_ARCH="riscv"
 term_run t_aduinskp "terminal atuin dry skip" 1 "" 0
-fx_out '1 ok'
+fx_out '^  - 1 modules ok · 0 skipped · 0 failed ·'
 fx_out '^# would run: skip atuin (no release for this host arch)$'
 if [[ -e "$S_ATUIN_BIN" ]]; then fx_bad "dry skip wrote atuin binary"; else fx_ok; fi
 unset FS_TERM_ALIASES FS_BASHRC FS_OMP_BIN FS_OMP_THEME FS_ATUIN_BIN FS_ATUIN_ARCH
@@ -608,7 +606,7 @@ export FS_TERM_ALIASES="$T_ALIASES" FS_BASHRC="$T_BASHRC"
 export FS_OMP_BIN="$T_BIN" FS_OMP_THEME="$T_THEME" FS_OMP_SRC_DIR="$T_SRC"
 export FS_ATUIN_BIN="$T_ATUIN_BIN" FS_ATUIN_SRC_DIR="$T_ASRC"
 term_run t_awrong "terminal atuin wrong-version reinstall" 0
-fx_out '1 ok'
+fx_out '^  - 1 modules ok · 0 skipped · 0 failed ·'
 fx_out 'oh-my-posh already installed'
 fx_err 'replacing atuin'
 if [[ "$("$T_ATUIN_BIN" --version)" == "atuin 18.23.0 "* ]]; then fx_ok; else fx_bad "wrong-version atuin not replaced"; fi
@@ -648,7 +646,7 @@ export FS_TERM_ALIASES="$U_ALIASES" FS_BASHRC="$U_BASHRC"
 export FS_OMP_BIN="$U_BIN" FS_OMP_THEME="$U_THEME" FS_OMP_SRC_DIR="$U_SRC"
 export FS_ATUIN_BIN="$U_ATUIN_BIN" FS_ATUIN_SRC_DIR="$U_ASRC"
 term_run u_fresh "terminal fresh atuin matching block" 0
-fx_out '1 ok'
+fx_out '^  - 1 modules ok · 0 skipped · 0 failed ·'
 fx_out 'oh-my-posh already installed'
 if [[ "$("$U_ATUIN_BIN" --version)" == "atuin 18.23.0 "* ]]; then fx_ok; else fx_bad "fresh atuin not installed"; fi
 if cmp -s "$U_BASHRC" "$FX_TMP/U.bashrc.snap"; then fx_ok; else fx_bad "fresh atuin rewrote matching block"; fi

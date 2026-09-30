@@ -180,7 +180,7 @@ printf 'badprep\n' >"$P/badprep.conf"
 printf 'noprep\n' >"$P/noprep.conf"
 printf 'dryprep\n' >"$P/dryprep.conf"
 
-SRC="source \"\$ROOT/lib/io.sh\"; source \"\$ROOT/lib/run.sh\"; source \"\$ROOT/lib/pkg.sh\"; source \"\$ROOT/lib/planner.sh\"; source \"\$ROOT/lib/state.sh\"; source \"\$ROOT/lib/lists.sh\"; source \"\$ROOT/lib/modules.sh\"; source \"\$ROOT/lib/depgraph.sh\"; source \"\$ROOT/lib/profiles.sh\"; source \"\$ROOT/lib/runner.sh\""
+SRC="source \"\$ROOT/lib/io.sh\"; source \"\$ROOT/lib/run.sh\"; source \"\$ROOT/lib/pkg.sh\"; source \"\$ROOT/lib/planner.sh\"; source \"\$ROOT/lib/state.sh\"; source \"\$ROOT/lib/lists.sh\"; source \"\$ROOT/lib/modules.sh\"; source \"\$ROOT/lib/depgraph.sh\"; source \"\$ROOT/lib/profiles.sh\"; source \"\$ROOT/lib/summary.sh\"; source \"\$ROOT/lib/runner.sh\""
 
 STATE_DIR() { printf '%s/.local/state/fedora-setup/modules' "$1"; }
 
@@ -225,9 +225,7 @@ else
 fi
 if ! grep -qxF 'org.sample.C' "$FAKEST"; then fx_bad "flatpak installed state not recorded"; fi
 fx_out '^== run complete ==$'
-fx_out '^  - 3 ok$'
-fx_out '^  - 0 failed$'
-fx_out '^  - 0 skipped$'
+fx_out '^  - 3 modules ok · 0 skipped · 0 failed · '
 fx_out 'module: a (none)'
 fx_out 'module: c (none)'
 for id in a b c; do
@@ -291,8 +289,7 @@ fx_block_rc "dry run rc0" 0
 fx_out '^# would run: mock install a1 a2 b1 c1$'
 fx_out '^# would run: flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo$'
 fx_out '^# would run: flatpak install --user --noninteractive --assumeyes org.sample.C$'
-fx_out '^  - 3 ok$'
-fx_out_not '^  - 3 skipped$'
+fx_out '^  - 3 modules ok · 0 skipped · 0 failed · '
 fx_empty "dry run wrote no hook side effects" "$HOOK_LOG"
 if [[ "$(wc -c <"$MOCK_LOG")" == "0" ]]; then fx_ok; else fx_bad "dry run recorded no mock ops"; fi
 if [[ "$(wc -c <"$INSTALLED")" == "0" ]]; then fx_ok; else fx_bad "dry run mutated installed set"; fi
@@ -349,8 +346,8 @@ fx_err 'module failed: b'
 fx_err_not 'stopping run'
 if [[ "$(cat "$HOOK_LOG")" == "A
 C" ]]; then fx_ok; else fx_bad "hooks before and after failure ran"; fi
-fx_out '^  - 2 ok$'
-fx_out '^  - 1 failed$'
+fx_out '^  - 2 modules ok · 0 skipped · 1 failed · '
+fx_out '^  - FAIL b: hook exited 1$'
 if [[ -f "$(STATE_DIR "$FX_TMP/m3")/a" && -f "$(STATE_DIR "$FX_TMP/m3")/c" && ! -e "$(STATE_DIR "$FX_TMP/m3")/b" ]]; then
     fx_ok
 else
@@ -376,8 +373,7 @@ FX_BLOCK_RC=$?
 fx_block_rc "resume rc0" 0
 fx_out 'already completed: a'
 fx_out 'already completed: c'
-fx_out '^  - 1 ok$'
-fx_out '^  - 2 skipped$'
+fx_out '^  - 1 modules ok · 2 skipped · 0 failed · '
 if [[ -f "$(STATE_DIR "$FX_TMP/m3")/b" ]]; then fx_ok; else fx_bad "resume marked b"; fi
 RCMI=$(grep -c '^mock install ' "$MOCK_LOG")
 if [[ "$RCMI" == "1" ]]; then fx_ok; else fx_bad "resume added a batch (total $RCMI)"; fi
@@ -438,6 +434,9 @@ fx_block_rc "family gate rc1" 1
 fx_err "has no package list usable on family 'rpm'"
 if [[ "$(wc -c <"$MOCK_LOG")" == "0" ]]; then fx_ok; else fx_bad "family gate ran a batch"; fi
 if [[ ! -e "$FX_TMP/m5/.local/state" ]]; then fx_ok; else fx_bad "family gate created state"; fi
+# module_validate failure is an ABORT path: it must not reach the reporter.
+# Without this, adding `summary_report` to that `return 1` left the battery green.
+fx_out_not 'run complete'
 
 # --- empty profile: nothing, no batch, no state, rc0 ---------------------
 
@@ -455,9 +454,7 @@ FX_BLOCK_RC=$?
 fx_block_rc "empty profile rc0" 0
 if [[ "$(wc -c <"$MOCK_LOG")" == "0" ]]; then fx_ok; else fx_bad "empty profile ran a batch"; fi
 if [[ ! -e "$FX_TMP/m6/.local/state" ]]; then fx_ok; else fx_bad "empty profile created state"; fi
-fx_out '^  - 0 ok$'
-fx_out '^  - 0 failed$'
-fx_out '^  - 0 skipped$'
+fx_out '^  - 0 modules ok · 0 skipped · 0 failed · '
 
 # --- CLI module ids run through the resolver ----------------------------
 
@@ -491,7 +488,7 @@ if grep -qxF 'flatpak install --user --noninteractive --assumeyes org.sample.C' 
 else
     fx_bad "CLI flatpak batch missing"
 fi
-fx_out '^  - 3 ok$'
+fx_out '^  - 3 modules ok · 0 skipped · 0 failed · '
 fx_out 'profile: minimal'
 
 # --- hookless module: configuration-only, marked done -------------------
@@ -509,7 +506,7 @@ INSTALLED="$FX_TMP/i8"
 FX_BLOCK_RC=$?
 fx_block_rc "hookless module rc0" 0
 if grep -qxF 'mock install cfgx' "$MOCK_LOG"; then fx_ok; else fx_bad "hookless batch content"; fi
-fx_out '^  - 1 ok$'
+fx_out '^  - 1 modules ok · 0 skipped · 0 failed · '
 if [[ -f "$(STATE_DIR "$FX_TMP/m8")/cfg" ]]; then fx_ok; else fx_bad "hookless module marked"; fi
 
 # --- hooks.sh runs in a subshell: no global leakage ---------------------
@@ -531,7 +528,7 @@ INSTALLED="$FX_TMP/i9"
 ) >"$FX_OUT" 2>"$FX_ERR"
 FX_BLOCK_RC=$?
 fx_block_rc "hook sandbox rc0" 0
-fx_out '^  - 1 ok$'
+fx_out '^  - 1 modules ok · 0 skipped · 0 failed · '
 
 # --- bare module: zero packages, no batch call at all --------------------
 
@@ -548,7 +545,7 @@ INSTALLED="$FX_TMP/i10"
 FX_BLOCK_RC=$?
 fx_block_rc "bare module rc0" 0
 fx_empty "bare module made no mock calls" "$MOCK_LOG"
-fx_out '^  - 1 ok$'
+fx_out '^  - 1 modules ok · 0 skipped · 0 failed · '
 
 # --- hooks.sh with no run(): module fails, not marked, run continues ------
 
@@ -566,8 +563,9 @@ FX_BLOCK_RC=$?
 fx_block_rc "no run() hook rc1" 1
 fx_err 'module failed: norun'
 fx_err ': run: command not found'
-fx_out '^  - 0 ok$'
-fx_out '^  - 1 failed$'
+fx_out '^  - 0 modules ok · 0 skipped · 1 failed · '
+fx_out '^  - FAIL norun: hook exited 127$'
+fx_out '^  - retry: re-run the same command; completed modules are skipped$'
 if [[ ! -e "$(STATE_DIR "$FX_TMP/m11")/norun" ]]; then fx_ok; else fx_bad "no-run module was marked"; fi
 
 # --- misuse and resolve-through errors -----------------------------------
@@ -581,6 +579,8 @@ if [[ ! -e "$(STATE_DIR "$FX_TMP/m11")/norun" ]]; then fx_ok; else fx_bad "no-ru
 FX_BLOCK_RC=$?
 fx_block_rc "no arguments rc1" 1
 fx_err "runner_run requires a modules dir, a profiles dir, a name, and a family"
+# arg-validation failure is an ABORT path: it must not reach the reporter.
+fx_out_not 'run complete'
 
 (
     set -euo pipefail
@@ -591,6 +591,8 @@ fx_err "runner_run requires a modules dir, a profiles dir, a name, and a family"
 FX_BLOCK_RC=$?
 fx_block_rc "missing family rc1" 1
 fx_err "runner_run requires a modules dir, a profiles dir, a name, and a family"
+# arg-validation failure is an ABORT path: it must not reach the reporter.
+fx_out_not 'run complete'
 
 (
     set -euo pipefail
@@ -601,6 +603,11 @@ fx_err "runner_run requires a modules dir, a profiles dir, a name, and a family"
 FX_BLOCK_RC=$?
 fx_block_rc "unknown profile rc1" 1
 fx_err 'list file missing or not a regular file'
+# A resolve failure is an ABORT path: it must not reach the reporter. Without
+# this, changing lib/runner.sh:224 to `|| { summary_report; return 1; }` printed
+# "0 modules ok . 0 failed" after the run had already refused, and the whole
+# 3557-assert battery stayed green.
+fx_out_not 'run complete'
 
 # --- prerepo stage: order, family export, isolation ---------------------
 
@@ -620,7 +627,7 @@ FAKEST="$FX_TMP/fs12"
 ) >"$FX_OUT" 2>"$FX_ERR"
 FX_BLOCK_RC=$?
 fx_block_rc "prerepo stage order rc0" 0
-fx_out '^  - 2 ok$'
+fx_out '^  - 2 modules ok · 0 skipped · 0 failed · '
 if grep -qxF 'prerepo id=prep family=rpm phase=prebatch child=rpm' "$ORDER"; then fx_ok; else fx_bad "prerepo did not run before both batches with its own metadata and FS_MODULE_FAMILY exported"; fi
 if grep -qxF 'run id=prep family=rpm phase=postbatch child=rpm' "$ORDER"; then fx_ok; else fx_bad "run hook did not run after the batches with its own metadata and FS_MODULE_FAMILY exported"; fi
 if grep -q '^prerepo .*phase=postbatch\|^run .*phase=prebatch' "$ORDER"; then fx_bad "a hook ran in the wrong order relative to the batches"; else fx_ok; fi

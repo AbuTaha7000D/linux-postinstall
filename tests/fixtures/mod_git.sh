@@ -59,7 +59,7 @@ git_run h_real "git real fresh"
 fx_out 'profile: selection'
 fx_out 'module: git (low)'
 fx_out '^== run complete ==$'
-fx_out '1 ok'
+fx_out '^  - 1 modules ok · 0 skipped · 0 failed ·'
 if [[ -f "$GITCFG" ]]; then
     fx_ok
 else
@@ -198,7 +198,7 @@ fi
 cp "$GITCFG" "$FX_TMP/g/.gitconfig.prev"
 git_run h_merge "git second run idempotent"
 fx_out 'already completed: git'
-fx_out '1 skipped'
+fx_out '^  - 0 modules ok · 1 skipped · 0 failed ·'
 if cmp -s "$GITCFG" "$FX_TMP/g/.gitconfig.prev" 2>/dev/null; then
     fx_ok
 else

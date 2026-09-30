@@ -124,7 +124,7 @@ fx_block_rc "flatpak real-mode routing rc" 0
 fx_out 'profile: selection'
 fx_out 'module: flatpak (none)'
 fx_out '^== run complete ==$'
-fx_out '1 ok'
+fx_out '^  - 1 modules ok · 0 skipped · 0 failed ·'
 fx_empty "flatpak-only run never invoked the family backend" "$LOG"
 if grep -qxF 'flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo' "$REALLOG"; then
     fx_ok

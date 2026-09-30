@@ -76,7 +76,7 @@ _cli_verify_impl() {
 
 _cli_install_sources() {
     local root="$1" name
-    for name in run pkg planner lists state modules depgraph profiles runner ui; do
+    for name in run pkg planner lists state modules depgraph profiles summary runner ui; do
         . "$root/lib/$name.sh"
     done
 }
@@ -215,6 +215,39 @@ _cli_write_defaults() {
     return 0
 }
 
+# P9.5: open this run's audit log BEFORE anything mutates, so the summary's
+# "artifacts in <log>" names a file that holds the whole run. Fails CLOSED:
+# io_init only warns when it cannot write (it always returns 0), so its rc
+# proves nothing and the postcondition is checked instead -- the same rule P7.6
+# applied to pkg_add_repo and P9.4 to the fast-forward.
+#
+# The postcondition is io.sh's `_io_log_usable` (file exists AND is writable)
+# plus non-emptiness, NOT "the file exists". The first revision tested only
+# existence, which io_init's own skip rule made insufficient: given a log path
+# that is a pre-existing regular file this run cannot append to, io_init writes
+# nothing (it skips on `-e && ! -w`) and only warns, the file is still there and
+# still non-empty, so an existence test passed and the summary went on to name
+# a log containing no part of the run -- while stderr said the log was unusable.
+# Sharing one predicate with the summary is what makes the guard and the pointer
+# the same relation instead of two tests of it. A mutating install with no
+# audit trail is what section 12 exists to prevent. Called only on the real
+# path: a dry run writes nothing, including no log.
+_fs_open_run_log() {
+    local log=""
+    log="$(state_log)" || {
+        io_error "cannot create the run log under the state root"
+        return 1
+    }
+    io_init "$log"
+    if ! _io_log_usable "$log"; then
+        io_error "run log is unusable: $log"
+        io_error "refusing to install without an audit trail"
+        FS_LOG_FILE=""
+        return 1
+    fi
+    return 0
+}
+
 _cli_install_impl() {
     local root="$1"
     local mdir="${FS_MODULES_DIR:-$root/modules}"
@@ -283,6 +316,7 @@ _cli_install_impl() {
         sel="$scratch/selection.sel"
     else
         state_init || return 1
+        _fs_open_run_log || return 1
         scratch="$(mktemp -d "${TMPDIR:-/tmp}/fs-install.XXXXXX")" || {
             io_error "cannot create install scratch"
             return 1

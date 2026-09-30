@@ -77,7 +77,7 @@ fx_block_rc "core real-mode mock rc" 0
 fx_out 'profile: selection'
 fx_out 'module: core (none)'
 fx_out '^== run complete ==$'
-fx_out '1 ok'
+fx_out '^  - 1 modules ok · 0 skipped · 0 failed ·'
 if grep -qxF 'mock install gnupg2 fastfetch git curl wget vim fzf bat btop htop tmux unzip e2fsprogs flatpak' "$LOG"; then fx_ok; else fx_bad "core real batch"; cat "$LOG"; fi
 for pkg in gnupg2 fastfetch git curl wget vim fzf bat btop htop tmux unzip e2fsprogs flatpak; do
     if grep -qxF "$pkg" "$INST"; then fx_ok; else fx_bad "mock installed missing $pkg"; fi

@@ -145,7 +145,7 @@ FX_BLOCK_RC=$?
 fx_block_rc "dev real deb rc" 0
 fx_out 'module: dev (none)'
 fx_out '^== run complete ==$'
-fx_out '1 ok'
+fx_out '^  - 1 modules ok · 0 skipped · 0 failed ·'
 if grep -qxF "mock install python3-pip nodejs cmake clang jupyter-notebook" "$LOG"; then
     fx_ok
 else
@@ -169,7 +169,7 @@ if [[ -f "$FX_TMP/hreal/.local/state/fedora-setup/modules/dev" ]]; then fx_ok; e
 FX_BLOCK_RC=$?
 fx_block_rc "dev rerun rc" 0
 fx_out 'already completed: dev'
-fx_out '1 skipped'
+fx_out '^  - 0 modules ok · 1 skipped · 0 failed ·'
 if [[ "$(grep -c '^mock install ' "$LOG")" == 1 ]]; then fx_ok; else fx_bad "dev rerun installed again"; fi
 
 # real-mode arch: the divergent pip name reaches the transaction verbatim
@@ -189,7 +189,7 @@ FX_BLOCK_RC=$?
 fx_block_rc "dev real arch rc" 0
 fx_out 'module: dev (none)'
 fx_out '^== run complete ==$'
-fx_out '1 ok'
+fx_out '^  - 1 modules ok · 0 skipped · 0 failed ·'
 if grep -qxF "mock install $ARCHSET" "$LOG"; then
     fx_ok
 else

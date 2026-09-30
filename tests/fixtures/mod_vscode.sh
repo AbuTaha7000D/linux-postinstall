@@ -163,7 +163,7 @@ printf 'MODULE_ID=zz\nMODULE_RISK=none\nMODULE_DEFAULT=off\n' >"$FX_TMP/M2/zz/mo
 printf 'zzp' >"$FX_TMP/M2/zz/packages.list"
 printf 'vscode\nzz\n' >"$FX_TMP/P2/pair.conf"
 
-VSRC='source "$ROOT/lib/io.sh"; source "$ROOT/lib/run.sh"; source "$ROOT/lib/sudo.sh"; source "$ROOT/lib/pkg.sh"; source "$ROOT/lib/planner.sh"; source "$ROOT/lib/state.sh"; source "$ROOT/lib/lists.sh"; source "$ROOT/lib/modules.sh"; source "$ROOT/lib/depgraph.sh"; source "$ROOT/lib/profiles.sh"; source "$ROOT/lib/runner.sh"'
+VSRC='source "$ROOT/lib/io.sh"; source "$ROOT/lib/run.sh"; source "$ROOT/lib/sudo.sh"; source "$ROOT/lib/pkg.sh"; source "$ROOT/lib/planner.sh"; source "$ROOT/lib/state.sh"; source "$ROOT/lib/lists.sh"; source "$ROOT/lib/modules.sh"; source "$ROOT/lib/depgraph.sh"; source "$ROOT/lib/profiles.sh"; source "$ROOT/lib/runner.sh"; source "$ROOT/lib/summary.sh"'
 
 # --- 1. metadata + decision pins ------------------------------------------
 (
@@ -393,7 +393,7 @@ FX_BLOCK_RC=$?
 fx_block_rc "vscode dry arch rc" 0
 fx_err 'no official Arch package'
 fx_out_not '^# would run:'
-fx_out '1 ok'
+fx_out '^  - 1 modules ok · 0 skipped · 0 failed ·'
 fx_empty "vscode dry arch executed nothing" "$OPS"
 
 # --- 5. the flatpak swap ---------------------------------------------------

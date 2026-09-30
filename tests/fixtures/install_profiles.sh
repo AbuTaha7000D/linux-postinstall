@@ -97,7 +97,7 @@ fx_out 'profile: minimal'
 fx_out 'module: core (none)'
 fx_out 'module: flatpak (none)'
 fx_out '^== run complete ==$'
-fx_out '2 ok'
+fx_out '^  - 2 modules ok · 0 skipped · 0 failed ·'
 fx_out "^# would run: mock install $MIN_BATCH\$"
 fx_out '^# would run: flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo$'
 fx_out "^# would run: flatpak install --user --noninteractive --assumeyes $FLATPAKS\$"
@@ -114,7 +114,7 @@ printf 'com.mattjakeman.ExtensionManager\n' >"$FAKEINST"
 prof_run t_min_real minimal 0
 fx_out 'profile: minimal'
 fx_out '^== run complete ==$'
-fx_out '2 ok'
+fx_out '^  - 2 modules ok · 0 skipped · 0 failed ·'
 if grep -qxF 'mock install gnupg2 fastfetch curl wget vim fzf bat btop tmux unzip flatpak' "$LOG"; then fx_ok; else fx_bad "minimal real system batch in log"; fi
 if grep -qxF 'flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo' "$FAKE_LOG"; then
     fx_ok
@@ -132,7 +132,7 @@ done
 prof_run t_min_real minimal 0
 fx_out 'already completed: core'
 fx_out 'already completed: flatpak'
-fx_out '2 skipped'
+fx_out '^  - 0 modules ok · 2 skipped · 0 failed ·'
 if [[ -f "$FX_TMP/t_min_real/.local/state/fedora-setup/modules/core" ]]; then fx_ok; else fx_bad "resume lost completion mark"; fi
 
 # === negative control: a package-ONLY selection (core) never invokes the
@@ -175,7 +175,7 @@ fx_out 'module: fonts (low)'
 fx_out 'module: git (low)'
 fx_out 'module: terminal (low)'
 fx_out '^== run complete ==$'
-fx_out '5 ok'
+fx_out '^  - 5 modules ok · 0 skipped · 0 failed ·'
 fx_out "^# would run: mock install $MIN_BATCH $FONT_PKGS\$"
 if grep -q '^# would run: mock install ' "$FX_OUT"; then
     n="$(grep -c '^# would run: mock install ' "$FX_OUT")"
@@ -255,7 +255,7 @@ desktop_run
 fx_block_rc "desktop real rc" 0
 fx_out 'profile: desktop'
 fx_out '^== run complete ==$'
-fx_out '5 ok'
+fx_out '^  - 5 modules ok · 0 skipped · 0 failed ·'
 if grep -qxF 'mock install gnupg2 fastfetch git wget vim fzf bat btop htop tmux unzip e2fsprogs flatpak google-noto-sans-fonts fira-code-fonts jetbrains-mono-fonts' "$LOG"; then fx_ok; else fx_bad "desktop real system batch in log"; fi
 if grep -qxF 'flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo' "$FAKE_LOG"; then
     fx_ok
@@ -289,7 +289,7 @@ cp "$BASHRC" "$FX_TMP/desk.bashrc.snap"
 cp "$GITCONF" "$FX_TMP/desk.gitconfig.snap"
 desktop_run
 fx_block_rc "desktop resume rc" 0
-fx_out '5 skipped'
+fx_out '^  - 0 modules ok · 5 skipped · 0 failed ·'
 fx_out '^== run complete ==$'
 if cmp -s "$BASHRC" "$FX_TMP/desk.bashrc.snap" && cmp -s "$GITCONF" "$FX_TMP/desk.gitconfig.snap"; then fx_ok; else fx_bad "desktop resume rewrote managed files"; fi
 if ! grep -q '^flatpak install ' "$FAKE_LOG"; then fx_ok; else fx_bad "desktop resume re-ran flatpak batch"; fi
@@ -310,8 +310,7 @@ rm -f "$FX_TMP/t_desktop_real/.local/state/fedora-setup/modules/fonts" \
 desktop_run
 fx_block_rc "desktop hook re-run rc" 0
 fx_out '^== run complete ==$'
-fx_out '3 ok'
-fx_out '2 skipped'
+fx_out '^  - 3 modules ok · 2 skipped · 0 failed ·'
 fx_out 'already completed: core'
 fx_out 'already completed: flatpak'
 fx_out 'sha256 verified: FiraCode'

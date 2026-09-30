@@ -360,7 +360,7 @@ Cafe:wlp0s20f4:activated
 lo:lo:activated
 '
 fx_out "dns: Home now uses 8.8.8.8,8.8.4.4 (ignore-auto-dns=yes)"
-fx_out "1 ok"
+fx_out "^  - 1 modules ok · 0 skipped · 0 failed ·"
 grep -q 'connection modify Home ' "$OPS" && fx_ok || fx_bad "did not modify the default-route connection"
 if grep -q 'connection modify Cafe' "$OPS"; then fx_bad "touched the non-default connection"; else fx_ok; fi
 [[ "$(cat "$FX_TMP/h_route/.local/state/fedora-setup/notes/dns")" == "Home|no|" ]] && fx_ok \
@@ -516,7 +516,7 @@ nm_reset
 rm -rf "$FX_TMP/h_noup"
 dns_run h_noup "reactivate fails" 0 0 'FS_DNS_CONNECTION=Home' 'FS_FAKE_NM_UP_RC=1'
 fx_err "could not reactivate Home; run: nmcli connection up Home"
-fx_out "1 ok"
+fx_out "^  - 1 modules ok · 0 skipped · 0 failed ·"
 [[ -f "$FX_TMP/h_noup/.local/state/fedora-setup/modules/dns" ]] && fx_ok || fx_bad "module not marked done"
 
 printf -- '--- cell: a revert that breaks resolution keeps the record\n'

@@ -113,6 +113,13 @@ RUN_G=0
 run_gate 1 "dep edge pulling locale is refused" '' --dry-run --yes --profile minimal
 fx_err 'high-risk module[(]s[)] pulled in transitively by a dependency: locale'
 fx_out_not '^# would run: sudo localectl'
+# A risk-gate refusal is an ABORT path: it must not reach the reporter. Without
+# this, adding `summary_report;` before that `return 1` printed a clean-looking
+# "0 modules ok . 0 skipped . 0 failed" line straight after the run said it
+# would NOT touch the system -- the exact "true statement about an empty set"
+# lie lib/summary.sh's header says it exists to prevent, and it was invisible to
+# every suite.
+fx_out_not 'run complete'
 if grep -q 'localectl' "$FX_TMP/m.log" 2>/dev/null; then
     fx_bad "localectl reached the mock batch despite the gate"
 else
