@@ -107,18 +107,37 @@ is a "module"; modules are grouped into profiles; everything runs through the co
   false-PASS defects survived a 215-assert suite. The oracle is now derived from
   the hooks' own body-builders, and the comparison relation is the writer's
   (see §12) — the two fixes are independent and both were needed.
-  **P9.3 (`export`, `lib/export.sh`) is implemented and awaiting Senior Review.** It writes a
-  re-importable, allowlist-by-construction snapshot and `install --manifest <dir>` replays it
-  through the ordinary runner, so the plan is the exported one rather than the live one. Two real
-  defects were found while building it, both pinned by `tests/fixtures/export.sh`: a malformed
-  `--manifest` aborted **silently** at rc1 (the profile lookup ran before tree validation and its
-  "no metadata" path returned 1 with no message), and a module ABSENT from `manifests/` silently
-  fell back to its **live** list — the absent/absent-seam confusion that made a re-import quietly
-  consult the tree it was supposed to replace. `lib/lists.sh` now keeps the three states apart and
-  refuses a symlinked list file. **No `[REAL]` claim is made for P9.3 either**: the tree was
-  exercised read-only on this host and hermetically against the mock backend, but nothing here
-  proves an export matches a real system's installed state.
-  **Next: Senior Review for P9.3, then the ledger commit.**
+  **P9.3 (`export`, `lib/export.sh`) is DONE and committed** (code `69ae219`; Senior Review
+  `ses_f0eb1e4beffespAPKxmBn5HCwJ` = **PASS**, 0 blocking, after four rounds: 5 blocking → 1 → 1 →
+  0). It writes a re-importable, allowlist-by-construction snapshot and `install --manifest <dir>`
+  replays it through the ordinary runner, so the plan is the exported one rather than the live
+  one. The first three review rounds each found a defect of the SAME shape — *the artifact looked
+  right while a different artifact governed behaviour* — and all three are now rules in §12: a
+  malformed `--manifest` aborted **silently** at rc1 (the profile lookup ran before tree validation);
+  a module ABSENT from `manifests/` silently fell back to its **live** list (three states are now
+  explicit, and a symlinked list is refused); and, twice, the `export.meta` completion marker was
+  written in the wrong ORDER — first of all (a failed export left a tree a re-import accepted),
+  then after the manifest loop (a refresh failing on module 2 left the OLD marker beside NEW
+  manifests, so a re-import replayed the previous profile over the new ids and **nothing reported
+  an error anywhere**). The marker is now dropped after the outdir preflight and before the first
+  writing stage, and re-added last, so the window in which a partial tree is still recognizable is
+  empty. It is deliberately NOT dropped during argument/profile validation, which writes nothing.
+  `_export_block` **shares `lib/fs.sh`'s own `_fs_validate_markers`/`_fs_locate`/`_fs_locate_ok`**
+  instead of carrying a private parser, because `fs_managed_block` owns the meaning of "the
+  managed block" — a private parser concatenated the bodies of a DUPLICATED block into one the
+  writer refuses to manage. After the shared validator passes, `_fs_locate_ok` can only fail on
+  that duplicate case, so a separate "unterminated" check is **unreachable**; it was found that way
+  (a mutation removing it produced 0 FAILs) and deleted, because a guard that never fires reads as
+  protection while providing none. Absence (no marker) and truncation (marker with no END) are kept
+  distinct. `FS_MANIFEST`/`FS_PROFILE_SET` are **not** env seams: set only by their flags, reset
+  unconditionally by `cli_parse`, so an inherited environment value can never redirect a run into
+  an untrusted tree. Format: `docs/export-format.md`.
+  **Known verification gap (P9.3) — NOT met, do not claim it:** the `[REAL]`/live-host half is
+  **DEFERRED** (no `podman`/`docker` here; `unshare -Ur` fails with `write failed
+  /proc/self/uid_map: Operation not permitted`). The tree was exercised hermetically against the
+  mock backend and read-only on this host, but **nothing proves an export matches a real system's
+  installed state**, and a byte-identical re-export is a determinism result, not a correctness one.
+  **Next: the P9 phase report — P9.4 (`update`) and P9.5 (summary reporter) remain.**
 - Version: `FS_VERSION="0.1.0-dev"` (see `lib/bootstrap.sh`).
 
 ## 2. Repository structure
@@ -382,6 +401,43 @@ delivered; **stop and wait for explicit owner approval** before the next phase.
   `_cli_manifest_tree_check` names the exact defect, and only a tree that passed it is asked for its
   profile. This is the same class as the P8.3 "condition that silently never fires" findings —
   plausible-looking code whose failure path was never observed.
+- **A completion marker must be invalidated for the whole window in which the tree is being
+  rewritten, not merely re-added at the end (P9.3).** `export.meta` is the *only* thing that
+  distinguishes a good export tree from a half-written one, so it has to satisfy two symmetric
+  conditions: written LAST, and dropped FIRST. Writing it first means a failed export leaves a
+  directory a re-import accepts and silently half-populates. Writing it last alone is not enough
+  either, because re-export over an existing tree is allowed: the previous run's marker is still
+  sitting there, so a refresh that fails part way leaves the OLD marker describing the OLD profile
+  next to the NEW manifests, and a re-import replays the previous profile with nothing reporting an
+  error anywhere. Worse, the first write is not the profile conf but the **manifest loop** — one
+  module at a time, any of which can fail — so a drop placed "next to the other setup" is still a
+  hole. The drop goes after the output-path preflight and before the loop. Corollary: a fixture that
+  injects its failure in a LATE stage cannot detect a drop placed too early; inject it at three
+  different points (a late stage, inside the loop, and the last stage) or the ordering rule is only
+  half-pinned. Deliberately NOT dropped during argument and profile validation: that writes
+  nothing, and a run rejected for a bad `--profile` must leave a previous good tree valid.
+- **A reader must call the writer's own locator, not re-derive the relation (P9.3).** An exporter
+  that answers "which lines are the managed block" with its own `awk` is the P9.2 ordered-relation
+  defect wearing different clothes: `fs_managed_block` owns that meaning, and a private parser is a
+  second implementation that will diverge. The concrete cost found here: the writer demands exactly
+  one BEGIN and one END, so it **refuses** a file with two same-name blocks, while a private parser
+  concatenated both bodies into one "block" the tool would not manage. `lib/export.sh` now calls
+  `_fs_validate_markers`/`_fs_locate`/`_fs_locate_ok` and extracts `_FS_B+1 … _FS_E-1`. Two
+  corollaries: (a) **after a shared validator passes, a second check in the reader is often
+  unreachable** — a mutation deleting my "unterminated" branch produced 0 FAILs, because
+  `_fs_validate_markers` already ends with an open-state check and emits the message itself; dead
+  guards were deleted, not kept as defence-in-depth; (b) refusal wording then comes from the shared
+  library, so a fixture asserting it must say so, or the next reader will "fix" the apparent
+  mismatch by re-adding the dead branch. Also keep **absence distinct from truncation** (no marker
+  at all = silently no block; marker with no END = warn and skip) — conflating them makes every
+  unconfigured dotfile warn and then contradict itself.
+- **The ROADMAP criterion "the re-import dry-runs identically" is satisfied by the wrong code
+  (P9.3).** Any implementation that quietly re-reads the live tree passes it. The equivalence cell
+  and an authority cell (mutate the live list after the export, assert the profile install changes
+  and the manifest install does not) are therefore ONE criterion — either alone is satisfiable by
+  the wrong code, and a fixture carrying only the first certifies nothing. Same for the B2 shape in
+  `lib/modules.sh`: a manifest-only module cannot be built from the shipped tree (every shipped
+  module ships a list for its own family), so that cell uses a synthetic module.
 - Module hooks are two separate, single-purpose files (P7.5): `hooks.sh`/`run()` runs AFTER the
   batches, `prerepo.sh`/`prerepo()` runs BEFORE them so a module can configure the repository its
   own `packages.*.list` entries resolve from. `prerepo()` is always-run and idempotent (never
