@@ -28,9 +28,10 @@ is a "module"; modules are grouped into profiles; everything runs through the co
   and the `gnome-base` verify wallpaper compare does the same). The `gnome-*` modules are
   **NOT wired into any profile** (open owner decision from the P6 closure; run them explicitly
   via `./setup install --yes <id>`).
-  P7 is in progress. P7.1–P7.4 are **DONE and committed** (the `apps`, `media`, `dev` and
-  `containers` modules). Do not expect `update` to work — it is still `not implemented yet`
-  (rc1, later phases). `setup verify` IS implemented as of P9.2 (`lib/verify.sh`),
+  P7.1–P7.4 are **DONE and committed** (the `apps`, `media`, `dev` and
+  `containers` modules). `setup update` IS implemented as of P9.4 (`lib/update.sh`, Senior
+  Review pending) — it REPORTS by default and moves the tree only under `update --pull`.
+  `setup verify` IS implemented as of P9.2 (`lib/verify.sh`),
   and `lib/depgraph.sh` is the P4.4 dependency-graph
   stage, not P7 work.
   P7.5 (`vscode`) is **DONE and committed** (code `b5e50ce`, ledger `a9418a7`; final review
@@ -137,7 +138,58 @@ is a "module"; modules are grouped into profiles; everything runs through the co
   /proc/self/uid_map: Operation not permitted`). The tree was exercised hermetically against the
   mock backend and read-only on this host, but **nothing proves an export matches a real system's
   installed state**, and a byte-identical re-export is a determinism result, not a correctness one.
-  **Next: the P9 phase report — P9.4 (`update`) and P9.5 (summary reporter) remain.**
+  **P9.4 (`update`, `lib/update.sh`) is IMPLEMENTED; Senior Review round 1 PASSED and rounds 2
+  and 3 returned REVISE** (review `ses_f0e3e7018ffe4jCCzJ8PPkjGY6`; no ledger row yet, nothing
+  committed). Each review round found **one blocking finding, and every one was a real,
+  measured data-loss defect in the pre-merge collision guard** — the guard that exists precisely
+  because of them:
+  - **R2.** git refuses to fast-forward over an untracked-but-NOT-ignored file, but silently
+    REPLACES an untracked-and-**ignored** one, and `status --porcelain` reports nothing for it
+    — so the cleanliness gate was blind to exactly the case `.gitignore` creates (this repo
+    ignores `downloads/`, `assets/*`, `.state/`). `--ff-only` does not help (the fast-forward is
+    legitimate) and the HEAD==upstream postcondition is satisfied (HEAD did move), so the tool
+    reported `updated to <sha>`, rc 0, with the user's file destroyed.
+  - **R3.** Two of that guard's three predicates failed OPEN, both reproduced end to end
+    through `./setup update --pull` at rc 0: `[[ -e ]]` is **false for a dangling symlink**
+    (a symlink into an unmounted drive — exactly what lives under `assets/wallpaper/`), and
+    `ls-files --error-unmatch -- "$path"` treats the path as a **glob pathspec**, so an
+    incoming `pkg1?2.deb` is answered by a tracked `pkg1x2.deb` and the guard concludes there
+    is nothing to lose.
+  The shipped rule is: refuse when the fast-forward would ADD a path that **exists on disk (a
+  `-e` OR a `-L`) and is untracked**, the untracked test asked with `--literal-pathspecs`. It is
+  deliberately NOT expressed with `status --ignored` (it would refuse on this repo's own
+  artifacts forever) nor `check-ignore` on incoming paths (it would refuse an incoming file at
+  an ignored path when nothing local is in the way) — both rejections were re-measured by the
+  reviewer, not assumed. See §12.
+  141 asserts in `tests/fixtures/update.sh` against REAL git repositories (one bare origin,
+  seeded, then cloned per cell), 8 new smoke cells (169 total, was 161), 42 suites green, and
+  the full battery byte-identical across 3 runs of `bash tests/smoke.sh` followed by every
+  `tests/fixtures/*.sh` in sorted order, with the run timestamp and the fixture temp-dir name
+  normalized — `sha256` of the concatenation, first 16 hex chars, `01ee89c36cdc769f`. That hash
+  is only comparable like-for-like: it changes whenever any assert count changes, and a reviewer
+  aggregating the battery differently will get a different digest for identical content (the
+  reviewer's own aggregation of the same tree yields `6da7ab6d8cf2eaaa` for identical content).
+  `--diff-filter` carries `C` as well as `AMR`; the copy case is covered by inspection only, since
+  the copy constructible under `diff.renames=copies` classifies as an add. One limit is left
+  standing and documented in the header: an upstream path containing a literal newline is not
+  inspected, because the incoming list is read through `$(...)`, which cannot carry NUL. **22 mutations, all 22 caught**, each applied to a throwaway copy of the
+  repo and each `cmp`-checked non-vacuous first: 16 from the implementer's set, then the
+  reviewer's independent sets, which found mutations the implementer's had missed — the
+  `git`-recording shim (a dry run must invoke git **zero** times, and a report *does* fetch),
+  the direct-call bogus-`FS_PULL` cell (the pull gate must fail **closed**), and both R3 holes
+  (`-L` removed → 6 FAILs; `--literal-pathspecs` removed → 5). Losing the tracked-file test is
+  the **false-refusal** direction and is now caught by four *state* oracles rather than by the
+  liar cell's message (5 FAILs).
+  **Known verification gap (P9.4) — NOT met, do not claim it:** the task is tagged `[MOCK]`,
+  and that is what was delivered: no cell fast-forwards the user's actual checkout, and no
+  `[REAL]` criterion was attempted. A fast-forward was exercised end to end against real git
+  objects in throwaway clones, which is a mechanics result, not a result about someone's working
+  tree. Note the R2/R3 defects were found by **reviewer measurement of git's own behaviour in a
+  scratch repository, against scenarios the suite did not cover at all** — no mutation exposed
+  them, because the cells did not exist. That is the argument for auditing a destructive guard's
+  coverage directly, not for mutation cells specifically, and it is a reminder that the "no data
+  loss" claim is only as good as the ignore rules a future change introduces.
+  **Next: the P9 phase report — P9.5 (summary reporter) remains.**
 - Version: `FS_VERSION="0.1.0-dev"` (see `lib/bootstrap.sh`).
 
 ## 2. Repository structure
@@ -145,9 +197,9 @@ is a "module"; modules are grouped into profiles; everything runs through the co
 | Path | Responsibility |
 |---|---|
 | `setup` | Executable launcher. Resolves its own path from `$0` (no CWD assumption), `set -euo pipefail`, `readlink -f` canonicalization, then `exec`s `lib/bootstrap.sh "$@"`. |
-| `lib/bootstrap.sh` | Entry: Bash≥4.3 check, tool/layout checks, sources `io.sh` + `cli.sh`, parses args, dispatches: `help`/`version`/`check`/`list`/`install`/`verify`/`export` rc0 (install = P4.7 real wiring; verify = P9.2; export = P9.3); `update` rc1 "not implemented yet"; unknown → rc1. Also `_cli_manifest_tree_check`/`_cli_manifest_profile`/`_cli_manifest_check`, the `--manifest` re-import gate. |
+| `lib/bootstrap.sh` | Entry: Bash≥4.3 check, tool/layout checks, sources `io.sh` + `cli.sh`, parses args, dispatches: `help`/`version`/`check`/`list`/`install`/`verify`/`export`/`update` rc0 (install = P4.7 real wiring; verify = P9.2; export = P9.3; update = P9.4); unknown → rc1. Also refuses `--pull` on any command other than `update`, and `_cli_update_sources`/`_cli_update_impl`. Also `_cli_manifest_tree_check`/`_cli_manifest_profile`/`_cli_manifest_check`, the `--manifest` re-import gate. |
 | `lib/io.sh` | Leveled logging (error/warn/info/debug), TTY-only color, timestamps, progress/summary, audit-log init. `io_*` never abort the caller under `set -e`/`set -u`. `FS_NO_COLOR` is normalized to `0` at source time, so **every color gate must compare numerically** (`(( FS_NO_COLOR == 0 ))`) — a `-z` test is false for the string `"0"` and silently kills color (P8.3, §12). `io_alert` is the one stdout/un-timestamped emitter: it annotates a rendered plan, not the narration (P8.3, §12). |
-| `lib/cli.sh` | Flags `--yes/--dry-run/--verbose/--debug/--profile V/--list/--force/--browse/--manifest D`, `-h/--help`, `--` end-of-options; commands `install|list|check|verify|export|update|help|version`; unknown → rc1. `FS_MANIFEST` (P9.3) names a re-import tree; `FS_PROFILE_SET` records whether `--profile` was given explicitly. |
+| `lib/cli.sh` | Flags `--yes/--dry-run/--verbose/--debug/--profile V/--list/--force/--browse/--manifest D/--pull`, `-h/--help`, `--` end-of-options; commands `install|list|check|verify|export|update|help|version`; unknown → rc1. `FS_MANIFEST` (P9.3) names a re-import tree; `FS_PROFILE_SET` records whether `--profile` was given explicitly. |
 | `lib/distro.sh` | Reads `/etc/os-release` (or `FS_DISTRO_FILE`, or 1st arg — read-only input). Capability matrix: family/id/pkgmgr/localpkg/flatpak-default/gnome. Test seam `FS_DISTRO_PKGMGR_OVERRIDE`. |
 | `lib/state.sh` | State root `$FS_HOME` (test) > `$XDG_STATE_HOME` > `$HOME`, joined with `/fedora-setup`. Run logs, module registry, backup registry. Symlink/confinement-guarded. P9.2 adds `state_root_path` — a pure reader that resolves the root WITHOUT creating it, so a read-only command can report "no state dir yet" instead of manufacturing one. |
 | `lib/fs.sh` | `fs_backup`, `fs_install`, `fs_managed_block`/`fs_managed_block_remove`. Atomic temp+rename; managed-block marker covenant (see §12). |
@@ -157,6 +209,7 @@ is a "module"; modules are grouped into profiles; everything runs through the co
 | `lib/status.sh` | P9.1: the shared PASS/WARN/FAIL table + exit-code rule (`STATUS_PASS/WARN/FAIL`, `STATUS_WORST`, `STATUS_ROWS`, `status_reset`/`status_row`/`status_verdict`/`status_rc`/`status_report`). One implementation of the rule, consumed by both `check` (P9.1) and `verify` (P9.2) so the two tables cannot drift. `STATUS_ROWS` is an **array**, not a counter — count it with `${#STATUS_ROWS[@]}`. |
 | `lib/verify.sh` | P9.2: `verify_run <root>` — the read-only audit. Generic layer (system packages via P3.9 `pkg_verify_packages`, flatpaks via the flatpak backend, the P7.5 alt id deduped against the module's own list) plus per-module `verify()` hooks in a subshell that mirrors the runner (exports `FS_MODULE_FAMILY`, `module_load` before sourcing). Rows are `<id>:packages` / `<id>:flatpaks` / `<id>:hook`. Selection: explicit ids → `--profile` closure → P4.6 registry → all modules. Never installs, never marks, never backs up, never sudoes, and does not create a state root. |
 | `lib/export.sh` | P9.3: `export_run <root> <outdir> <family> <name> <mdir> <pdir>` — the snapshot writer. Allowlist by construction: manifest lists, the resolved profile conf, an allowlisted gsettings key set, enabled extensions, installed font markers, and the managed blocks only. Writes `export.meta` + `<profile>.conf` + `manifests/` + `state/` + `files/`, every file always present so the tree shape is host-independent. No timestamp anywhere (byte-identical re-exports); refuses a symlinked outdir and skips symlinked managed files. Never reads the state root. Format: `docs/export-format.md`. |
+| `lib/update.sh` | P9.4: `update_run <root>` — version/identity reporting and the EXPLICIT self-update. Four states reported distinctly (up-to-date / behind / ahead / diverged); only "behind" may fast-forward, and every merge is `--ff-only`, so this tool can never create a merge commit or rewrite local history. Cleanliness (including **untracked** files) is checked BEFORE the fetch, so a refusal never half-happens. `update` reports; only `update --pull` moves the tree. Every git call carries `-C "$root"`. Depends on `lib/run.sh` (`run_cmd --stop`) + `lib/io.sh`. |
 | `lib/runner.sh` | P4.6: `runner_run <modules_dir> <profiles_dir> <name> <family> [module...]` — resolve/plan/prereq/batch/hooks+state/summary stages; deps-first execution, destructive-stop policy, dry-run state-free, hook subshell sandbox. BATCH (P5.7): one batch per namespace — system pkg ids once via the active family backend, flatpak ids once via `( FS_PKG_BACKEND=flatpak; export FS_PKG_BACKEND; plan_install ... )` subshell (self-restoring), system first. PREREQ (P7.5): per module in resolved order, `prerepo.sh` (if present) is sourced in a subshell and `prerepo()` runs ONCE, always (never state-skipped) and BEFORE both batches; `state_init` stays after the batches. Any prerepo failure stops the run (rc1, no batch/hooks/summary) whatever the risk — including a `prerepo.sh` that never defines `prerepo()`. Both hook subshells get `FS_MODULE_FAMILY` **exported** and call `module_load <dir> strict` BEFORE sourcing the hook file, so a hook always sees its own metadata instead of the last module the PLAN stage loaded. RISK GATE (P8.3): refuses rc1 before any prerepo/batch/hook on a high/destructive module that is in the resolved set but NOT in the curated set (the passed module args, or the profile FILE's own ids via `profile_load`) — one `MODULE_DEPENDS` line must never put a destructive module on a system nobody named; a module the profile *does* name stays on the reviewed P4.7 drop-with-alert rc0 path (§12). |
 | `lib/modules.sh` | Module contract: metadata loading/validation, `module_has_hooks`/`module_has_prerepo`, `list_packages`/`list_flatpaks` for a family, deps, and the P7.5 flatpak-alternative pair `MODULE_FLATPAK_ALT_ID` + `MODULE_FLATPAK_ALT_SEAM` resolved by `module_flatpak_alt` (truthy seam `1|true|yes|on`, case-insensitive). Metadata is parsed TEXTUALLY, never executed; every optional key is reset at load time so a module can never inherit another module's value, and the alt pair is all-or-nothing (id without seam, or a seam that is not an env-var name, fails validation). |
 | `lib/ui.sh` | P4.7: `ui_multiselect`/`ui_confirm` selection + confirm layer (no external TUI tool — no ncurses; Bash + coreutils execs only). TTY raw-key re-render vs deterministic line-mode; high-risk rows never digit/`a`-toggleable (opt-in prompt is their only checklist route); EOF/`q` abort rc1 fail-closed; atomic sel-file write via `mv -fT`; `ui_confirm` returns 0 under `--yes`; color helpers must keep `return 0` (set -e safety). |
@@ -207,6 +260,7 @@ sync with code.
 - P8.2 seams: `FS_LOCALE` (target locale, default `en_US.UTF-8`; this is the deliberate
   non-prompt alternative to the task's "language choice prompted" clause), `FS_LOCALE_CONF` (file
   to back up, default `/etc/locale.conf`), `FS_LOCALE_REVERT=1`.
+- P9.4: **`FS_PULL` is deliberately NOT an env seam** — `cli_parse` resets it unconditionally, like `FS_MANIFEST`, because an inherited `FS_PULL=1` would reintroduce exactly the silent auto-pull P9.4 removes. There is no repo-root seam either: `update` resolves the root from `$0` (`lib/bootstrap.sh` `_fs_script_path`), and the fixture clones the tool into real git repositories rather than redirecting a path.
 - P9.3 variables: `FS_MANIFEST` (the tree a re-import reads its ids from; unset = the live tree)
   and `FS_PROFILE_SET` (records whether `--profile` was given explicitly, so a re-import can take
   the profile from `export.meta` only when the user did not name one). These are **not** env
@@ -560,12 +614,73 @@ delivered; **stop and wait for explicit owner approval** before the next phase.
   resolve error. Deliberately NOT extended to the curated case: a high-risk module a profile
   genuinely names is dropped from the checklist with a loud `io_alert` and the run continues rc0,
   which is the reviewed P4.7 contract `install.sh` still pins. Both halves are asserted.
+- **A path handed to git is a PATHSPEC, so every per-path query needs
+  `--literal-pathspecs` (P9.4, and it cost two rounds of review).** `--` ends option
+  parsing; it does **not** end pathspec magic. `git ls-files --error-unmatch -- 'pkg1?2.deb'`
+  is therefore answered by a tracked `pkg1x2.deb` and answers about a *different file*. In
+  the collision guard that meant "this path is tracked, nothing to lose" — so git replaced the
+  user's file, and the run reported `updated to <sha>`, rc 0. Two more measured details of the
+  same family: `--literal-pathspecs` is a **git global option and must precede the
+  subcommand** (after it, git rejects it with rc 129, so a fix that merely moves it one
+  position fails closed rather than open — but the `rc 129` must still be treated as failure,
+  not as "not tracked"); and `git check-ignore` accepts **neither** `:(literal)` nor
+  `--literal-pathspecs` ("pathspec magic not supported by this command"), so the only correct
+  way to ask about one literal path there is `--no-index`. `check-ignore` is also a pathspec
+  command, so a glob argument silently answers about a tracked sibling — which is how the
+  fixture's own precondition lied and had to be rewritten. Corollary: audit *every* call that
+  receives a path, not just the one under review; `lib/update.sh` passes a path to git in
+  exactly one place, and that is now the only one that needs the flag.
+- **`[[ -e ]]` is not "exists on disk" (P9.4).** It follows symlinks, so it is FALSE for a
+  **dangling** one — a symlink into an unmounted drive, or into a file not created yet, which
+  is what users hold under `assets/wallpaper/` and `downloads/`. Any "would this clobber
+  something?" predicate needs `[[ -e || -L ]]`. This is the same shape as the P8.3
+  "condition that silently never fires": the test looks right and is right for regular files,
+  which is why the mutation that removed `-L` was the only thing that exposed it.
 - **`io_alert` goes to stdout and carries no timestamp** (P8.3) — the one deliberate departure
   from the timestamped `io_*` convention. It annotates a *rendered plan* (the dry-run `!!` warning
   for a high/destructive module), so it must interleave with the plan lines in order, and a
   timestamp would only blur that alignment. Bold+red on a TTY; byte-identical `!! <msg>` when
   piped, so no fixture assertion has to know about ANSI. Audit-logged via `_io_logline` under the
   same prefix.
+- **A command that can mutate the tool's own checkout needs an EXPLICIT act, and the
+  mutating half must be `--ff-only` (P9.4).** The deleted prototype auto-pulled itself silently;
+  `lib/update.sh` inverts that — `update` reports, only `update --pull` moves the tree — and every
+  merge is `git merge --ff-only "$up"`, so this tool can never be the thing that creates a merge
+  commit or rewrites local history. Divergence is reported as its own state and refused under
+  `--pull` with advice, never "resolved". Two consequences worth preserving: `FS_PULL` is NOT an
+  env seam (`cli_parse` resets it unconditionally, like `FS_MANIFEST` — an inherited `FS_PULL=1`
+  would reintroduce the exact silent auto-pull being removed), and the check order is load-bearing:
+  cleanliness (including **untracked** files) is tested BEFORE the fetch, so a refusal never
+  half-happens. Corollary for fixtures: an untracked file is a real reason to refuse, because git
+  refuses to overwrite one — treating untracked as clean would turn an update into an unpredictable
+  mid-way failure.
+- **A tool that mutates a working tree must carry its own `-C`, and cleanliness/identity must come
+  from the WRITER's notion of the tree, not the caller's (P9.4).** `update` resolves the root from
+  `$0` and passes `git -C "$root"` on every call, because `./setup update` run from inside a
+  different checkout must inspect THIS tool's repository. The cell that pins it invokes the launcher
+  from an unrelated git repository with a dirty file: if any path ran git in the caller's cwd, that
+  cell reports the other repository's state. Corollary for tests: a fixture cell that wants to prove
+  "this run did not move anything" must compare **git refs**, not file presence — a file created by
+  an earlier `publish()` is already in every later clone, so its presence proves nothing. Use
+  `rev-parse HEAD` and `rev-parse '@{u}'`; a fetch moves only the latter, a merge only the former.
+- **A dry run that cannot reach a seam must say so, and must not render a command it will not
+  run (P9.4, extending P7.6).** A dry run may not probe, and comparing against a remote *requires* a
+  fetch, so `update --dry-run` cannot know the remote state at all. It renders the fetch, renders
+  the merge when `--pull` was given, and states plainly that the comparison was NOT performed. It
+  must NOT guess from the last-fetched ref: a stale `@{u}` would let it print "already current"
+  about a machine three commits behind. The rendered merge carries a literal
+  `RESOLVED-AT-RUN-TIME` marker rather than a plausible-looking `@{u}`, because the real merge
+  targets the resolved sha and a line that merely LOOKS runnable invites someone to paste it and get
+  different behaviour (P7.6's `chrome` rule, same shape).
+- **The postcondition rule applies to a merge exactly as it does to a package install (P9.4).**
+  `run_cmd --stop` gives a propagating rc, but rc is not the postcondition: after a fast-forward HEAD
+  must EQUAL the upstream sha that was compared against. A `git` that exits 0 without moving HEAD (a
+  no-op wrapper, a git that decided there was nothing to do) would otherwise be a failed update
+  reported as a success, leaving the tool claiming a version it is not running. The fixture pins
+  this with a fake `git` that succeeds at everything and does nothing on `merge`. Corollary: a
+  mutation that deletes a postcondition check must be caught by a cell whose fake is
+  **contract-coupled** to the state (here: `merge` exits 0, HEAD stays put), not by asserting the
+  error message alone.
 - **Refusing high-risk selections when stdin is not a TTY was written, measured, and REJECTED**
   (P8.3). It broke `tests/fixtures/install.sh` (4 FAILs) because those reviewed cells drive the
   high-risk opt-in + confirmation **entirely by piped stdin** — refusing every piped high-risk

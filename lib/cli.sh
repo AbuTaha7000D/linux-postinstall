@@ -10,11 +10,17 @@
 # when the session looks non-GNOME / SSH / headless / gsettings-less).
 #     FS_YES / FS_DRY_RUN / FS_VERBOSE / FS_DEBUG / FS_GNOME_BROWSE /
 # FS_GNOME_FORCE each also honor a pre-set environment value (test seam);
-# FS_PROFILE, FS_MANIFEST and FS_LIST are unconditionally reset by cli_parse
-# (seam-less by design). FS_PROFILE_SET records whether --profile was given
+# FS_PROFILE, FS_MANIFEST, FS_PULL and FS_LIST are unconditionally reset by
+# cli_parse (seam-less by design). FS_PROFILE_SET records whether --profile was given
 # EXPLICITLY, which FS_PROFILE alone cannot express: the bootstrap defaults an
 # unset profile to "full", and a manifest re-import needs to tell "the user
 # asked for full" from "nobody said anything".
+# --pull seeds FS_PULL (P9.4: `update` only reports by default; this flag is
+# the explicit opt-in that moves the working tree). Like FS_MANIFEST it is
+# unconditionally reset by cli_parse (seam-less by design): an inherited
+# FS_PULL=1 in the environment would reintroduce exactly the silent auto-pull
+# lib/update.sh exists to remove. A caller that passes --pull to any command
+# other than update is refused by the bootstrap.
 # --manifest seeds FS_MANIFEST (P9.3: consume an exported tree instead of the
 # live profile). It is a PATH, not a boolean, so cli_parse deliberately does
 # not validate it here -- an unset, unreadable or non-conforming directory is
@@ -47,6 +53,7 @@ cli_parse() {
     FS_PROFILE=""
     FS_PROFILE_SET=0
     FS_MANIFEST=""
+    FS_PULL=0
     FS_CMD=""
     FS_CMD_ARGS=()
 
@@ -91,6 +98,11 @@ cli_parse() {
                     ;;
                 --force)
                     FS_GNOME_FORCE=1
+                    i=$(( i + 1 ))
+                    continue
+                    ;;
+                --pull)
+                    FS_PULL=1
                     i=$(( i + 1 ))
                     continue
                     ;;
@@ -165,7 +177,7 @@ Commands:
   check     Check prerequisites and system state
   verify    Verify applied configuration
   export    Write a re-importable snapshot of a profile to <dir>
-  update    Update this tool
+  update    Report this tool's version and check for updates
   help      Show this help text
   version   Print the version
 
@@ -178,6 +190,7 @@ Global flags:
   --force      Opt-in: run GNOME modules even when not a GNOME session
   --profile P  Select profile P
   --manifest D Replay an exported tree instead of the live profile (install)
+  --pull      Opt-in: let 'update' fast-forward this tool (default: report only)
   --list       Alias for the 'list' command
   -h, --help   Show this help text
 HELP

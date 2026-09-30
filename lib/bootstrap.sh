@@ -88,6 +88,26 @@ _cli_export_sources() {
     done
 }
 
+_cli_update_sources() {
+    local root="$1" name
+    for name in run update; do
+        . "$root/lib/$name.sh"
+    done
+}
+
+_cli_update_impl() {
+    local root="$1"
+    [[ -n "$root" ]] || _fs_die "update requires the repository root"
+    if (( ${#FS_CMD_ARGS[@]} > 0 )); then
+        io_error "update takes no arguments; got: ${FS_CMD_ARGS[*]}"
+        return 1
+    fi
+    _fs_check_layout "$root"
+    _cli_update_sources "$root"
+    update_run "$root" || return 1
+    return 0
+}
+
 _cli_manifest_tree_check() {
     local dir="${1:-}"
     if [[ -z "$dir" ]]; then
@@ -413,6 +433,10 @@ main() {
     if ! cli_parse "$@"; then
         exit 1
     fi
+    if [[ "${FS_PULL:-0}" == "1" && "$FS_CMD" != "update" ]]; then
+        io_error "flag '--pull' is only valid with the 'update' command"
+        exit 1
+    fi
     case "$FS_CMD" in
         version)
             printf 'fedora-setup %s\n' "$FS_VERSION"
@@ -448,8 +472,7 @@ main() {
             _cli_export_impl "$root" || rc=1
             ;;
         update)
-            io_error "command '$FS_CMD' not implemented yet (planned in a later phase)"
-            rc=1
+            _cli_update_impl "$root" || rc=1
             ;;
         *)
             io_error "command '$FS_CMD' is not wired into the dispatcher"

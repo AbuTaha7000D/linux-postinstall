@@ -570,21 +570,26 @@ smoke_entry() {
     if grep -q '^core\b' "$OUT" 2>/dev/null; then ok; else bad "--list shows core module"; fi
     t_rc 1 "unknown command rc" "$ROOT/setup" bogus
     t_err "unknown command"
-    local cmd rc
-    for cmd in update; do
-        "$ROOT/setup" "$cmd" >"$OUT" 2>"$ERR"
-        rc=$?
-        if (( rc == 1 )); then
-            ok
-        else
-            bad "$cmd not-implemented rc (got $rc)"
-        fi
-        if grep -q "not implemented yet" "$ERR" 2>/dev/null; then
-            ok
-        else
-            bad "$cmd not-implemented message"
-        fi
-    done
+    # P9.4: `update` is implemented. Asserted through --dry-run so this suite
+    # never reaches the network: the dry run reports the version and RENDERS the
+    # fetch instead of running it, which is the whole promise worth pinning here.
+    # The state matrix needs real repositories and lives in
+    # tests/fixtures/update.sh; what matters here is that the command dispatches
+    # into lib/update.sh rather than the old stub.
+    t_rc 0 "update dry-run rc" env FS_HOME="$TMP/uph" "$ROOT/setup" update --dry-run
+    t_out "update: fedora-setup "
+    t_out "^# would run: git -C "
+    t_out "were NOT performed"
+    if grep -q "not implemented yet" "$OUT" "$ERR" 2>/dev/null; then
+        bad "update is still the not-implemented stub"
+    else
+        ok
+    fi
+    t_rc 1 "--pull outside update rc" "$ROOT/setup" check --pull
+    t_err "only valid with the 'update' command"
+    t_rc 0 "help rc" "$ROOT/setup" help
+    t_out "^  update    "
+    t_out "^  --pull"
     t_rc 0 "install dry-run empty repo rc" env FS_HOME="$TMP/ihome" \
         FS_PKG_BACKEND=mock FS_DISTRO_FAMILY=rpm "$ROOT/setup" install --dry-run --yes
     t_out "profile: full"
