@@ -13,26 +13,28 @@
 # one. When the root DOES exist, state_init still creates its own four
 # subdirectories (logs/ modules/ backups/ notes/) as part of validating it;
 # that is state.sh's own behaviour inside a dir the user already has, and is
-# the one creation this path can make. `_check_state_root` mirrors
-# state.sh's base precedence (FS_HOME > XDG_STATE_HOME > HOME/.local/state);
-# it is a bare existence probe, so drift would only mis-word the INFO row. It
-# sets a global instead of printing the path, because a command substitution
-# runs in a subshell: a failure row raised there would update _CHECK_WORST in
-# a copy and be swallowed into the captured value, which silently reported
-# PASS on a host with no resolvable state base.
+# the one creation this path can make. The probe itself is state.sh's own
+# read-only `state_root_path`, so the path checked here and the path
+# state_init would use cannot diverge. The probe RUNS in a subshell -- which is
+# what makes a failure inside it visible at all -- and only its stdout is
+# captured into a global; the FAIL row is then raised by the caller, OUTSIDE
+# that subshell. Raising the row inside the substitution instead is the bug
+# this shape exists to prevent: STATUS_WORST would be updated on the subshell's
+# copy and lost, silently reporting PASS on a host with no resolvable state
+# base. So the rule is: probe in the subshell, report in the caller.
 # The privilege check reuses sudo_detect's canonical policy globals and adds
 # only a `command -v sudo` split so the "sudo needs a password" arm can be a
 # WARN rather than being flattened into the same answer as "no sudo at all";
 # the only privilege probe is sudo_detect's own `sudo -n true`, which can never
 # prompt and can never hang.
 #
-# EXIT CODE. One rule, one source of truth: the worst level found decides.
-# Any FAIL -> rc1; otherwise rc0, WARNs included. A warning is by definition
-# "degraded but not blocking", so folding WARN into a non-zero rc would make
-# the word a lie. Concretely an offline host is rc0 (flathub/GitHub rows are
-# WARN) while a missing sudo or an unknown distro is rc1. The verdict is
-# printed as the last line of the same summary block so the table and the
-# exit code can never disagree.
+# EXIT CODE. The rule lives in lib/status.sh (shared with `setup verify`,
+# P9.2) and is deliberately not restated as a second implementation here:
+# one source of truth, the worst level found decides. Any FAIL -> rc1;
+# otherwise rc0, WARNs included. A warning is by definition "degraded but not
+# blocking", so folding WARN into a non-zero rc would make the word a lie.
+# Concretely an offline host is rc0 (flathub/GitHub rows are WARN) while a
+# missing sudo or an unknown distro is rc1.
 #
 # DRY RUN. FS_DRY_RUN=1 suppresses the two probes that leave the machine --
 # the network HEAD requests and the sudo policy -- and reports those rows as
@@ -52,38 +54,15 @@
 # deliberately NOT honored here -- reporting what was actually detected is
 # the entire job of this command, so detection always runs.
 
-_CHECK_PASS=0
-_CHECK_WARN=1
-_CHECK_FAIL=2
-_CHECK_WORST=0
-_CHECK_ROWS=()
+# lib/status.sh owns the levels and the row/verdict/exit-code rule; these
+# aliases keep every row call in this file reading in check's own vocabulary.
+_CHECK_PASS="$STATUS_PASS"
+_CHECK_WARN="$STATUS_WARN"
+_CHECK_FAIL="$STATUS_FAIL"
 _CHECK_STATE_ROOT=""
 
-_check_label() {
-    case "${1:-0}" in
-        0) printf 'PASS' ;;
-        1) printf 'WARN' ;;
-        *) printf 'FAIL' ;;
-    esac
-}
-
 _check_row() {
-    local level="$1" name="$2" detail="$3"
-    _CHECK_ROWS+=("$(printf '%-4s %s: %s' "$(_check_label "$level")" "$name" "$detail")")
-    if (( level > _CHECK_WORST )); then
-        _CHECK_WORST=$level
-    fi
-    return 0
-}
-
-_check_verdict() {
-    if (( _CHECK_WORST >= _CHECK_FAIL )); then
-        printf 'preflight FAILED: fix the FAIL rows above before installing'
-    elif (( _CHECK_WORST == _CHECK_WARN )); then
-        printf 'preflight OK with warnings'
-    else
-        printf 'preflight OK'
-    fi
+    status_row "$1" "$2" "$3"
 }
 
 _check_distro() {
@@ -217,18 +196,10 @@ _check_disk() {
 }
 
 _check_state_root() {
-    local base=""
-    _CHECK_STATE_ROOT=""
-    if [[ -n "${FS_HOME:-}" ]]; then
-        base="$FS_HOME/.local/state"
-    elif [[ -n "${XDG_STATE_HOME:-}" ]]; then
-        base="$XDG_STATE_HOME"
-    elif [[ -n "${HOME:-}" ]]; then
-        base="$HOME/.local/state"
-    else
+    _CHECK_STATE_ROOT="$(state_root_path)" || {
+        _CHECK_STATE_ROOT=""
         return 1
-    fi
-    _CHECK_STATE_ROOT="$base/fedora-setup"
+    }
     return 0
 }
 
@@ -272,13 +243,12 @@ _check_installed() {
 }
 
 check_run() {
-    local root="${1:-}" verdict=""
+    local root="${1:-}"
     if [[ -z "$root" ]]; then
         io_error "check_run requires the repository root"
         return 1
     fi
-    _CHECK_WORST=0
-    _CHECK_ROWS=()
+    status_reset
     _check_distro
     _check_pkgmgr
     _check_privileges
@@ -286,10 +256,6 @@ check_run() {
     _check_network
     _check_disk
     _check_installed "${FS_MODULES_DIR:-$root/modules}"
-    verdict="$(_check_verdict)"
-    io_summary "preflight check" ${_CHECK_ROWS[@]+"${_CHECK_ROWS[@]}"} "$verdict"
-    if (( _CHECK_WORST >= _CHECK_FAIL )); then
-        return 1
-    fi
-    return 0
+    status_report "preflight check" "preflight" "before installing"
+    status_rc
 }

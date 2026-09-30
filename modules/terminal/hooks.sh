@@ -82,6 +82,99 @@ _term_path_ok() {
     return 0
 }
 
+# _term_block_cmp <file> <block-name> <expected-body> <rc-var> compares the
+# managed block in <file> against <expected-body> with the SAME relation
+# fs_managed_block uses to decide the block is already correct: ORDERED and
+# LENGTH-SENSITIVE. The strict comparison is the verdict; the per-line set
+# reporting below it is DIAGNOSTIC ONLY. That split is deliberate -- a
+# set-based comparison on its own reported a REORDERED block as clean while
+# fs_managed_block called the same state drift, and the set loops then found no
+# difference to report, so the failure was both wrong and silent. Leading
+# whitespace is stripped on both sides and blank lines are ignored on purpose.
+_term_block_cmp() {
+    local file="$1" name="$2" expect="$3" block="" line="" rc_var="$4" i=0
+    local -a got=() want=()
+    block="$(sed -n "/^# BEGIN fedora-setup $name\$/,/^# END fedora-setup $name\$/p" -- "$file" |
+        sed '1d;$d;s/^[[:space:]]*//')"
+    if [[ -z "$block" ]]; then
+        io_error "terminal: managed block missing in $file"
+        eval "$rc_var=1"
+        return 1
+    fi
+    if grep -q '^# BEGIN fedora-setup ' <<<"$block"; then
+        io_error "terminal: more than one managed block in $file; run() would rewrite it"
+        eval "$rc_var=1"
+        return 1
+    fi
+    # Both sides are normalized identically. Stripping only the file side would
+    # be correct today (no body line is indented) but is a trap: the first
+    # future edit that emits an indented line would false-FAIL here, because the
+    # expected side would keep the indent and the found side would not.
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        line="${line#"${line%%[![:space:]]*}"}"
+        [[ -n "$line" ]] && want+=("$line")
+    done <<<"$expect"
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        [[ -n "$line" ]] && got+=("$line")
+    done <<<"$block"
+    if [[ "${#got[@]}" -ne "${#want[@]}" ]]; then
+        io_error "terminal: $name block has ${#got[@]} line(s), run() writes ${#want[@]}"
+        eval "$rc_var=1"
+    else
+        for i in "${!want[@]}"; do
+            if [[ "${got[$i]}" != "${want[$i]}" ]]; then
+                io_error "terminal: $name block differs from what run() writes at line $((i + 1)): expected ${want[$i]}, found ${got[$i]}"
+                eval "$rc_var=1"
+            fi
+        done
+    fi
+    for line in "${want[@]}"; do
+        if ! printf '%s\n' "${got[@]}" | grep -qxF -- "$line"; then
+            io_error "terminal: $name block is missing: $line"
+            eval "$rc_var=1"
+        fi
+    done
+    for line in "${got[@]}"; do
+        if ! printf '%s\n' "${want[@]}" | grep -qxF -- "$line"; then
+            io_error "terminal: $name block has an unexpected line: $line"
+            eval "$rc_var=1"
+        fi
+    done
+    return 0
+}
+
+# _term_aliases_body prints the aliases block run() writes. run() and verify()
+# share it so the audit cannot check a subset of the aliases the installer
+# installs -- an earlier revision checked only `ll`, so a block missing la,
+# grep, egrep and less audited as clean.
+_term_aliases_body() {
+    TERM_ALIASES_BODY="alias ll='ls -la'"
+    TERM_ALIASES_BODY+=$'\n'
+    TERM_ALIASES_BODY+="alias la='ls -A'"
+    TERM_ALIASES_BODY+=$'\n'
+    TERM_ALIASES_BODY+="alias grep='grep --color=auto'"
+    TERM_ALIASES_BODY+=$'\n'
+    TERM_ALIASES_BODY+="alias egrep='egrep --color=auto'"
+    TERM_ALIASES_BODY+=$'\n'
+    TERM_ALIASES_BODY+="alias less='less -R'"
+    return 0
+}
+
+# _term_block prints the .bashrc block run() writes, for the resolved paths.
+_term_block() {
+    local aliases_q bin_q theme_q atuin_q
+    printf -v aliases_q "'%s'" "$1"
+    printf -v bin_q "'%s'" "$2"
+    printf -v theme_q "'%s'" "$3"
+    printf -v atuin_q "'%s'" "$4"
+    TERM_BLOCK_BODY="[ -r $aliases_q ] && . $aliases_q"
+    TERM_BLOCK_BODY+=$'\n'
+    TERM_BLOCK_BODY+="[ -x $bin_q ] && eval \"\$($bin_q init bash --config $theme_q)\""
+    TERM_BLOCK_BODY+=$'\n'
+    TERM_BLOCK_BODY+="[ -x $atuin_q ] && eval \"\$($atuin_q init bash)\""
+    return 0
+}
+
 run() {
     local root="" home="" aliases_abs="" bashrc_abs="" bin_abs="" theme_abs=""
     local atuin_abs="" atuin_ver="" atuin_triple="" atuin_bin_dir="" atuin_src=""
@@ -90,7 +183,7 @@ run() {
     local ver="" arch="" src_dir="" repo_omp="" tmp="" tmp_sha="" want=""
     local omp_src="" theme_src="" bin_dir="" theme_dir="" skip_bin=0 ver_present=""
     local url_bin="" url_theme="" url_atuin=""
-    local aliases_body="" term_block="" aliases_q="" bin_q="" theme_q="" atuin_q=""
+    local aliases_body="" term_block=""
     root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)" || return 1
     source "$root/lib/fs.sh"
     home="${HOME:-}"
@@ -157,24 +250,10 @@ run() {
     url_bin="https://github.com/JanDeDobbeleer/oh-my-posh/releases/download/$ver/posh-linux-$arch"
     url_theme="https://raw.githubusercontent.com/JanDeDobbeleer/oh-my-posh/$ver/themes/jandedobbeleer.omp.json"
     url_atuin="https://github.com/atuinsh/atuin/releases/download/$atuin_ver/atuin-$atuin_triple-unknown-linux-gnu.tar.gz"
-    aliases_body="alias ll='ls -la'"
-    aliases_body+=$'\n'
-    aliases_body+="alias la='ls -A'"
-    aliases_body+=$'\n'
-    aliases_body+="alias grep='grep --color=auto'"
-    aliases_body+=$'\n'
-    aliases_body+="alias egrep='egrep --color=auto'"
-    aliases_body+=$'\n'
-    aliases_body+="alias less='less -R'"
-    printf -v aliases_q "'%s'" "$aliases_abs"
-    printf -v bin_q "'%s'" "$bin_abs"
-    printf -v theme_q "'%s'" "$theme_abs"
-    printf -v atuin_q "'%s'" "$atuin_abs"
-    term_block="[ -r $aliases_q ] && . $aliases_q"
-    term_block+=$'\n'
-    term_block+="[ -x $bin_q ] && eval \"\$($bin_q init bash --config $theme_q)\""
-    term_block+=$'\n'
-    term_block+="[ -x $atuin_q ] && eval \"\$($atuin_q init bash)\""
+    _term_aliases_body
+    aliases_body="$TERM_ALIASES_BODY"
+    _term_block "$aliases_abs" "$bin_abs" "$theme_abs" "$atuin_abs"
+    term_block="$TERM_BLOCK_BODY"
     if (( FS_DRY_RUN == 1 )); then
         printf '# would run: merge fedora-setup aliases block into %q\n' "$aliases_abs"
         printf '# would run: install oh-my-posh %s (%s) release binary (%s) into %q\n' "$ver" "$arch" "$url_bin" "$bin_abs"
@@ -451,4 +530,89 @@ run() {
         fi
     fi
     fs_managed_block "$bashrc_abs" "terminal" "$term_block" || return 1
+}
+# verify() (P9.2) audits the two managed blocks and the theme this module owns,
+# re-deriving the SAME paths run() resolves (including the HOME-less seam-only
+# branch) so the two cannot drift. Both blocks are compared against the bodies
+# run() would write, produced by the shared _term_aliases_body / _term_block
+# helpers -- not against a hand-written checklist, and with the same ordered,
+# length-sensitive relation fs_managed_block itself uses. That is deliberate on
+# both counts: an earlier revision asserted a single alias, so a block missing
+# four of the five audited as clean; and a set-based comparison accepted a
+# REORDERED block that run() would have rewritten. "Exact" here means the
+# non-blank lines match one for one and in order -- blank lines are ignored on
+# purpose, since a user may well reformat the block by hand.
+#
+# Severity is deliberately asymmetric. The two managed blocks and the
+# oh-my-posh THEME are the install's actual output, and the block references
+# the theme unguarded, so a missing one is a FAIL. The oh-my-posh and atuin
+# BINARIES are referenced behind `[ -x ... ] &&` guards that make the block
+# degrade gracefully when a binary is absent, and atuin has no release at all
+# for some arches; those are reported, not failed. Read-only throughout: no
+# download, no chmod, no fc-cache, no managed-block write.
+verify() {
+    local root="" home="" aliases_abs="" bashrc_abs="" bin_abs="" theme_abs=""
+    local atuin_abs="" want="" block="" line="" rc=0
+    root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)" || return 1
+    declare -F io_error >/dev/null 2>&1 || source "$root/lib/io.sh"
+    if (( ${FS_DRY_RUN:-0} == 1 )); then
+        io_info "terminal: verify skipped in dry-run (no probing)"
+        return 0
+    fi
+    home="${HOME:-}"
+    if [[ -z "$home" || "$home" == "/" ]]; then
+        for want in FS_TERM_ALIASES FS_BASHRC FS_OMP_BIN FS_OMP_THEME FS_ATUIN_BIN; do
+            if [[ -z "${!want:-}" ]]; then
+                io_error "terminal: cannot verify without a HOME or $want"
+                return 1
+            fi
+        done
+        aliases_abs="$FS_TERM_ALIASES"
+        bashrc_abs="$FS_BASHRC"
+        bin_abs="$FS_OMP_BIN"
+        theme_abs="$FS_OMP_THEME"
+        atuin_abs="$FS_ATUIN_BIN"
+    else
+        aliases_abs="${FS_TERM_ALIASES:-$home/.local/share/fedora-setup/aliases}"
+        bashrc_abs="${FS_BASHRC:-$home/.bashrc}"
+        bin_abs="${FS_OMP_BIN:-$home/.local/bin/oh-my-posh}"
+        theme_abs="${FS_OMP_THEME:-$home/.config/oh-my-posh/themes/jandedobbeleer.omp.json}"
+        atuin_abs="${FS_ATUIN_BIN:-$home/.local/bin/atuin}"
+    fi
+    for want in "$aliases_abs" "$bashrc_abs" "$bin_abs" "$theme_abs" "$atuin_abs"; do
+        case "$want" in
+            /*) ;;
+            *) io_error "terminal: cannot verify a non-absolute path: $want"; return 1 ;;
+        esac
+    done
+    _term_block "$aliases_abs" "$bin_abs" "$theme_abs" "$atuin_abs"
+    if [[ ! -f "$bashrc_abs" ]]; then
+        io_error "terminal: bashrc not found: $bashrc_abs"
+        return 1
+    fi
+    _term_block_cmp "$bashrc_abs" terminal "$TERM_BLOCK_BODY" rc
+    (( rc != 0 )) && return 1
+    if [[ ! -f "$aliases_abs" ]]; then
+        io_error "terminal: aliases file not found: $aliases_abs"
+        return 1
+    fi
+    _term_aliases_body
+    _term_block_cmp "$aliases_abs" aliases "$TERM_ALIASES_BODY" rc
+    (( rc != 0 )) && return 1
+    if [[ ! -f "$theme_abs" ]]; then
+        io_error "terminal: oh-my-posh theme not found: $theme_abs"
+        return 1
+    fi
+    if [[ -x "$bin_abs" ]]; then
+        io_info "terminal: oh-my-posh binary present: $bin_abs"
+    else
+        io_info "terminal: oh-my-posh binary absent ($bin_abs); the managed block skips it"
+    fi
+    if [[ -x "$atuin_abs" ]]; then
+        io_info "terminal: atuin binary present: $atuin_abs"
+    else
+        io_info "terminal: atuin binary absent ($atuin_abs); it has no release for some arches"
+    fi
+    io_info "terminal: verify passed (managed blocks in $bashrc_abs and $aliases_abs)"
+    return 0
 }

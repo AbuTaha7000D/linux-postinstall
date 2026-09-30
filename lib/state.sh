@@ -110,6 +110,32 @@ _state_write() {
     return 0
 }
 
+# state_root_path prints the state root that state_init would use, and
+# creates NOTHING: no mkdir, no validation, no FS_STATE_* side effects. It
+# exists so a read-only command can ask "would there be a state dir here?"
+# without the only alternative being to call state_init and thereby create
+# one. The base precedence and the readlink -m canonicalization are
+# deliberately the same expressions state_init uses, so the two can never
+# disagree about which directory is meant; a divergence would be a silent
+# "no state yet" on a host that does have state. rc1 when no base resolves.
+state_root_path() {
+    local base dir
+    if [[ -n "${FS_HOME:-}" ]]; then
+        base="$FS_HOME/.local/state"
+    elif [[ -n "${XDG_STATE_HOME:-}" ]]; then
+        base="$XDG_STATE_HOME"
+    elif [[ -n "${HOME:-}" ]]; then
+        base="$HOME/.local/state"
+    else
+        return 1
+    fi
+    if ! base="$(readlink -m -- "$base" 2>/dev/null)"; then
+        return 1
+    fi
+    dir="$base/fedora-setup"
+    printf '%s' "$dir"
+}
+
 state_init() {
     local base dir
     FS_STATE_BASE=""

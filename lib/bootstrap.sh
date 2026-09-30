@@ -56,10 +56,21 @@ _cli_check_impl() {
     local root="$1" name rc=0
     [[ -n "$root" ]] || _fs_die "check requires the repository root"
     _fs_check_layout "$root"
-    for name in distro sudo state check; do
+    for name in distro sudo state status check; do
         . "$root/lib/$name.sh"
     done
     check_run "$root" || rc=1
+    return "$rc"
+}
+
+_cli_verify_impl() {
+    local root="$1" name rc=0
+    [[ -n "$root" ]] || _fs_die "verify requires the repository root"
+    _fs_check_layout "$root"
+    for name in distro lists modules depgraph profiles pkg state status verify; do
+        . "$root/lib/$name.sh"
+    done
+    verify_run "$root" || rc=1
     return "$rc"
 }
 
@@ -331,7 +342,10 @@ main() {
         install)
             _cli_install_impl "$root" || rc=1
             ;;
-        verify|export|update)
+        verify)
+            _cli_verify_impl "$root"
+            ;;
+        export|update)
             io_error "command '$FS_CMD' not implemented yet (planned in a later phase)"
             rc=1
             ;;

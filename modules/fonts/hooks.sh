@@ -48,6 +48,14 @@ _run_nerd_entry() {
     esac
 }
 
+# _font_marker prints the marker file name run() drops for one config entry,
+# which is the very fact the audit below trusts. Exposed so the P9.2 fixture can
+# build a known-good install from run()'s own naming instead of a hand-written
+# copy of it.
+_font_marker() {
+    printf '.fedora-setup-nerd-%s-%s' "$1" "$2"
+}
+
 run() {
     local root fonts_dir src_dir repo_assets config_file sha_file
     root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)" || return 1
@@ -100,7 +108,7 @@ run() {
             io_warn "skipping malformed nerd font entry: $line"
             continue
         fi
-        marker="$fonts_dir/.fedora-setup-nerd-${asset}-${ver}"
+        marker="$fonts_dir/$(_font_marker "$asset" "$ver")"
         if [[ -f "$marker" ]]; then
             io_info "nerd font already installed: $label ($ver)"
             continue
@@ -215,4 +223,88 @@ run() {
             io_warn "fc-cache unavailable; font file install succeeded unindexed"
         fi
     fi
+}
+# verify() (P9.2) checks the FONT set this module owns. run() installs one
+# archive per config entry and drops a marker file
+# "$fonts_dir/.fedora-setup-nerd-<asset>-<ver>" to make that install
+# idempotent, so the marker is the same fact run() itself trusts; its absence
+# means the set is not installed (or was installed by a version with a
+# different marker). The target dir is resolved exactly as run() resolves it,
+# including run()'s explicit HOME="/" refusal -- a claim of parity is only
+# true if the same guard is actually written here. Purely read-only: no
+# download, no fc-cache, no mkdir.
+verify() {
+    local root fonts_dir="" config_file="" line="" asset="" ver="" parsed=""
+    local label="" rest="" marker="" entries=() checked=0 rc=0
+    root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)" || return 1
+    declare -F io_error >/dev/null 2>&1 || source "$root/lib/io.sh"
+    declare -F list_parse >/dev/null 2>&1 || source "$root/lib/lists.sh"
+    if (( ${FS_DRY_RUN:-0} == 1 )); then
+        io_info "fonts: verify skipped in dry-run (no probing)"
+        return 0
+    fi
+    fonts_dir="${FS_FONTS_DIR:-}"
+    if [[ -z "$fonts_dir" ]]; then
+        if [[ -z "${HOME:-}" || "${HOME:-}" == "/" ]]; then
+            io_error "fonts: cannot verify without FS_FONTS_DIR or a real HOME"
+            return 1
+        fi
+        fonts_dir="$HOME/.local/share/fonts"
+    fi
+    if [[ "$fonts_dir" == "/" ]]; then
+        io_error "fonts: refusing nerd fonts target: $fonts_dir"
+        return 1
+    fi
+    if [[ ! -d "$fonts_dir" ]]; then
+        io_error "fonts: target dir not found: $fonts_dir"
+        return 1
+    fi
+    config_file="${FS_NERDFONT_CONFIG:-$root/config/nerdfonts.list}"
+    if [[ ! -f "$config_file" ]]; then
+        io_error "fonts: config not found: $config_file"
+        return 1
+    fi
+    # list_parse's rc must be CHECKED, exactly as run() checks it. A command
+    # substitution inside a herestring does not propagate the substituted
+    # command's status, so an unreadable config produced zero entries, the
+    # loop body never ran, and verify() reported "passed (0 nerd font sets
+    # installed)" -- the installer and the audit returning opposite verdicts on
+    # identical state.
+    parsed="$(list_parse "$config_file")" || {
+        io_error "fonts: cannot read the nerd font config: $config_file"
+        return 1
+    }
+    # An empty (or comment-only) config is a SUCCESSFUL NO-OP for run(), which
+    # returns 0 having installed nothing, so the auditor must not call that
+    # broken. Making verify() fail here was the inverse of the same
+    # installer/auditor disagreement B3 was about: a user who trims the config
+    # would get a clean install that `setup verify` reports as a failure with no
+    # way out. A WARN is the honest verdict, and it still surfaces the "0 sets"
+    # fact instead of hiding it behind a bare PASS.
+    if [[ -z "$parsed" ]]; then
+        io_warn "fonts: no nerd fonts configured in $config_file; nothing to verify"
+        return 0
+    fi
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        [[ -n "$line" ]] && entries+=("$line")
+    done <<<"$parsed"
+    for line in ${entries[@]+"${entries[@]}"}; do
+        if ! _run_nerd_entry "$line"; then
+            io_error "fonts: malformed config entry: $line"
+            rc=1
+            continue
+        fi
+        marker="$fonts_dir/$(_font_marker "$asset" "$ver")"
+        if [[ ! -f "$marker" ]]; then
+            io_error "fonts: ${label} (${ver}) is not installed in $fonts_dir"
+            rc=1
+            continue
+        fi
+        checked=$((checked + 1))
+    done
+    if (( rc != 0 )); then
+        return 1
+    fi
+    io_info "fonts: verify passed (${checked} nerd font set(s) installed in $fonts_dir)"
+    return 0
 }

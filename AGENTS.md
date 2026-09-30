@@ -29,8 +29,9 @@ is a "module"; modules are grouped into profiles; everything runs through the co
   **NOT wired into any profile** (open owner decision from the P6 closure; run them explicitly
   via `./setup install --yes <id>`).
   P7 is in progress. P7.1–P7.4 are **DONE and committed** (the `apps`, `media`, `dev` and
-  `containers` modules). Do not expect `verify`/`export`/`update` to work — `setup verify` is
-  still `not implemented yet` (rc1, P9.2) and `lib/depgraph.sh` is the P4.4 dependency-graph
+  `containers` modules). Do not expect `export`/`update` to work — both are still `not implemented yet`
+  (rc1, later phases). `setup verify` IS implemented as of P9.2 (`lib/verify.sh`),
+  and `lib/depgraph.sh` is the P4.4 dependency-graph
   stage, not P7 work.
   P7.5 (`vscode`) is **DONE and committed** (code `b5e50ce`, ledger `a9418a7`; final review
   `ses_f130947f7ffeq9QWe37lcpbPSj` = PASS): it added the pre-batch `prerepo` stage, the
@@ -88,7 +89,25 @@ is a "module"; modules are grouped into profiles; everything runs through the co
   on a real system" is therefore **not satisfied**; see the P8.4 phase report. The live host is at
   defaults after P8 (`/etc/locale.conf` md5 `164aba1ef1298affaa58761647f2ceba`, NM `Home` with
   empty `ipv4.dns` and `ipv4.ignore-auto-dns:no`).
-  **Next: P9 needs owner approval.** Do not start P9 until the P8 phase report is accepted.
+  **P9.1 (`check`) is DONE and committed** (code `21f919a`, ledger `87a8e08`). **P9.2
+  (`verify`, `lib/verify.sh`) is implemented and Senior Review has returned
+  `REVISE`; all 3 blocking + 8 non-blocking findings are fixed and the delta is
+  awaiting re-review.** P9.2 is read-only: it installs nothing, marks nothing,
+  backs nothing up and never sudoes. The three `verify()` hooks added in this
+  round close the ROADMAP's "fonts" and "managed files" categories, which no
+  shipped module covered.
+  **Known verification gap (P9.2) — NOT met, do not claim it:** the `[REAL]`/live-host
+  half is **DEFERRED**. This host has no `podman`/`docker` and `unshare -Ur` fails
+  (`write failed /proc/self/uid_map: Operation not permitted`), so no containerized
+  Bash-4.3 floor run and no real-distro audit were performed — the floor is a static
+  audit only. Everything else is covered hermetically by `tests/fixtures/verify.sh`
+  against the real `pkg`/flatpak seams, and a live-host READ-ONLY smoke was run
+  (it did surface real drift) — but that is supplemental, not the criterion. A
+  second, sharper limit: a fully green fixture proves the audit and its oracle
+  agree, NOT that the audit agrees with the system — which is exactly how three
+  false-PASS defects survived a 215-assert suite. The oracle is now derived from
+  the hooks' own body-builders for that reason.
+  **Next: close P9.2 (re-review → commit), then P9.3 needs owner approval.**
 - Version: `FS_VERSION="0.1.0-dev"` (see `lib/bootstrap.sh`).
 
 ## 2. Repository structure
@@ -96,19 +115,21 @@ is a "module"; modules are grouped into profiles; everything runs through the co
 | Path | Responsibility |
 |---|---|
 | `setup` | Executable launcher. Resolves its own path from `$0` (no CWD assumption), `set -euo pipefail`, `readlink -f` canonicalization, then `exec`s `lib/bootstrap.sh "$@"`. |
-| `lib/bootstrap.sh` | Entry: Bash≥4.3 check, tool/layout checks, sources `io.sh` + `cli.sh`, parses args, dispatches: `help`/`version`/`check`/`list`/`install` rc0 (install = P4.7 real wiring); `verify`/`export`/`update` rc1 "not implemented yet"; unknown → rc1. |
+| `lib/bootstrap.sh` | Entry: Bash≥4.3 check, tool/layout checks, sources `io.sh` + `cli.sh`, parses args, dispatches: `help`/`version`/`check`/`list`/`install`/`verify` rc0 (install = P4.7 real wiring; verify = P9.2 real wiring); `export`/`update` rc1 "not implemented yet"; unknown → rc1. |
 | `lib/io.sh` | Leveled logging (error/warn/info/debug), TTY-only color, timestamps, progress/summary, audit-log init. `io_*` never abort the caller under `set -e`/`set -u`. `FS_NO_COLOR` is normalized to `0` at source time, so **every color gate must compare numerically** (`(( FS_NO_COLOR == 0 ))`) — a `-z` test is false for the string `"0"` and silently kills color (P8.3, §12). `io_alert` is the one stdout/un-timestamped emitter: it annotates a rendered plan, not the narration (P8.3, §12). |
 | `lib/cli.sh` | Flags `--yes/--dry-run/--verbose/--debug/--profile V/--list/--force/--browse`, `-h/--help`, `--` end-of-options; commands `install|list|check|verify|export|update|help|version`; unknown → rc1. |
 | `lib/distro.sh` | Reads `/etc/os-release` (or `FS_DISTRO_FILE`, or 1st arg — read-only input). Capability matrix: family/id/pkgmgr/localpkg/flatpak-default/gnome. Test seam `FS_DISTRO_PKGMGR_OVERRIDE`. |
-| `lib/state.sh` | State root `$FS_HOME` (test) > `$XDG_STATE_HOME` > `$HOME`, joined with `/fedora-setup`. Run logs, module registry, backup registry. Symlink/confinement-guarded. |
+| `lib/state.sh` | State root `$FS_HOME` (test) > `$XDG_STATE_HOME` > `$HOME`, joined with `/fedora-setup`. Run logs, module registry, backup registry. Symlink/confinement-guarded. P9.2 adds `state_root_path` — a pure reader that resolves the root WITHOUT creating it, so a read-only command can report "no state dir yet" instead of manufacturing one. |
 | `lib/fs.sh` | `fs_backup`, `fs_install`, `fs_managed_block`/`fs_managed_block_remove`. Atomic temp+rename; managed-block marker covenant (see §12). |
 | `lib/sudo.sh` | `sudo_detect`, `sudo_refresh`, `sudo_exec`. Never touches `/etc/sudoers`. Dry-run keeps probe OFF and executes nothing. |
 | `lib/run.sh` | `run_cmd`/`run_sudo` with label, `--stop`, `[DESTROY]` forced stop, dry-run `# would run:` lines, `FS_LOG_FILE` audit trail + `FS_LOG_INFRA` halt. |
 | `lib/gnome.sh` | P6.1: gsettings layer — availability checks; `gnome_gsettings_get`/`gnome_gsettings_set` (idempotent probe-then-write; real `gsettings get` renders string scalars single-quoted, so the compare also matches a bare target), strv parse/build/merge + custom-keybinding merge-add primitives; P6.5 capability gate `gnome_require_capable` (`FS_GNOME_FORCE` bypass > SSH-headless > non-GNOME XDG > gsettings-missing); P6.3 `gnome_shell_version`/`gnome_extensions_list`. |
+| `lib/status.sh` | P9.1: the shared PASS/WARN/FAIL table + exit-code rule (`STATUS_PASS/WARN/FAIL`, `STATUS_WORST`, `STATUS_ROWS`, `status_reset`/`status_row`/`status_verdict`/`status_rc`/`status_report`). One implementation of the rule, consumed by both `check` (P9.1) and `verify` (P9.2) so the two tables cannot drift. `STATUS_ROWS` is an **array**, not a counter — count it with `${#STATUS_ROWS[@]}`. |
+| `lib/verify.sh` | P9.2: `verify_run <root>` — the read-only audit. Generic layer (system packages via P3.9 `pkg_verify_packages`, flatpaks via the flatpak backend, the P7.5 alt id deduped against the module's own list) plus per-module `verify()` hooks in a subshell that mirrors the runner (exports `FS_MODULE_FAMILY`, `module_load` before sourcing). Rows are `<id>:packages` / `<id>:flatpaks` / `<id>:hook`. Selection: explicit ids → `--profile` closure → P4.6 registry → all modules. Never installs, never marks, never backs up, never sudoes, and does not create a state root. |
 | `lib/runner.sh` | P4.6: `runner_run <modules_dir> <profiles_dir> <name> <family> [module...]` — resolve/plan/prereq/batch/hooks+state/summary stages; deps-first execution, destructive-stop policy, dry-run state-free, hook subshell sandbox. BATCH (P5.7): one batch per namespace — system pkg ids once via the active family backend, flatpak ids once via `( FS_PKG_BACKEND=flatpak; export FS_PKG_BACKEND; plan_install ... )` subshell (self-restoring), system first. PREREQ (P7.5): per module in resolved order, `prerepo.sh` (if present) is sourced in a subshell and `prerepo()` runs ONCE, always (never state-skipped) and BEFORE both batches; `state_init` stays after the batches. Any prerepo failure stops the run (rc1, no batch/hooks/summary) whatever the risk — including a `prerepo.sh` that never defines `prerepo()`. Both hook subshells get `FS_MODULE_FAMILY` **exported** and call `module_load <dir> strict` BEFORE sourcing the hook file, so a hook always sees its own metadata instead of the last module the PLAN stage loaded. RISK GATE (P8.3): refuses rc1 before any prerepo/batch/hook on a high/destructive module that is in the resolved set but NOT in the curated set (the passed module args, or the profile FILE's own ids via `profile_load`) — one `MODULE_DEPENDS` line must never put a destructive module on a system nobody named; a module the profile *does* name stays on the reviewed P4.7 drop-with-alert rc0 path (§12). |
 | `lib/modules.sh` | Module contract: metadata loading/validation, `module_has_hooks`/`module_has_prerepo`, `list_packages`/`list_flatpaks` for a family, deps, and the P7.5 flatpak-alternative pair `MODULE_FLATPAK_ALT_ID` + `MODULE_FLATPAK_ALT_SEAM` resolved by `module_flatpak_alt` (truthy seam `1|true|yes|on`, case-insensitive). Metadata is parsed TEXTUALLY, never executed; every optional key is reset at load time so a module can never inherit another module's value, and the alt pair is all-or-nothing (id without seam, or a seam that is not an env-var name, fails validation). |
 | `lib/ui.sh` | P4.7: `ui_multiselect`/`ui_confirm` selection + confirm layer (no external TUI tool — no ncurses; Bash + coreutils execs only). TTY raw-key re-render vs deterministic line-mode; high-risk rows never digit/`a`-toggleable (opt-in prompt is their only checklist route); EOF/`q` abort rc1 fail-closed; atomic sel-file write via `mv -fT`; `ui_confirm` returns 0 under `--yes`; color helpers must keep `return 0` (set -e safety). |
-| `tests/smoke.sh` | Plain-bash smoke suite for P2.1–P2.8 + `setup install` dry-run (P4.7) + GNOME capability/`--force` cells (P6.5); 125 asserts (P10 adds bats/CI later). |
+| `tests/smoke.sh` | Plain-bash smoke suite for P2.1–P2.8 + `setup install` dry-run (P4.7) + GNOME capability/`--force` cells (P6.5) + `setup check` (P9.1) + `setup verify` (P9.2); 138 asserts (P10 adds bats/CI later). |
 | `modules/` | Module tree: `core`/`flatpak`/`git`/`fonts`/`terminal` (P5.1–P5.6) + `gnome-base`/`gnome-extensions`/`gnome-theme` (P6.2–P6.4) + `vscode` (P7.5) + `chrome` (P7.6) + `dns` (P8.1) + `locale` (P8.2), each `module.sh` + list/config data files, optional `hooks.sh` (`run()`/`verify()`) and optional `prerepo.sh` (`prerepo()`, P7.5). `vscode` is the first prerepo user: it adds the Microsoft repository and imports/dearmors the pinned key before the batch, and has NO `hooks.sh`. `chrome` is the first **hooks-only** module: no list file at all, because its bundle version floats and is resolved at run time. `dns`/`locale` are hooks-only **destructive** modules (`MODULE_DEFAULT=off`, in NO profile), mutating NetworkManager / the systemd locale and both reversible via a state-note record. |
 | `config/` | Static repo data: `nerdfonts.sha256` (P5.7 pinned release digests), `extensions.compat` (P6.3 GNOME extension-version report windows), `vscode-gpg.fingerprint` (P7.5 pinned Microsoft repo signing-key fingerprint + provenance). |
 | `assets/`, `docs/` | Stubs (tracked `.gitkeep` only). Content arrives in later phases. |
@@ -265,6 +286,57 @@ delivered; **stop and wait for explicit owner approval** before the next phase.
   fail-loud (`*)` arm) so a future command without a case arm fails loudly.
 - Module contract is deliberately restrained: metadata vars + optional hooks + declarative lists;
   the runner stays boring.
+- **A hook's return code is a VERDICT; the audit's "not applicable" signals are
+  RESERVED (P9.2).** `lib/verify.sh` owns `_VERIFY_HOOK_NONE=90` and
+  `_VERIFY_HOOK_UNDEFINED=91` and renders every OTHER value as a hook verdict,
+  because a module `verify()` is free to return anything. An earlier revision
+  used rc 2/3 for its own two "no hook" signals, so a `verify()` returning 2 to
+  mean FAILURE was reported as WARN "module has no verify() hook" with process
+  rc 0 — a real failure audited as clean, and the module's whole point inverted.
+  No shipped hook may return 90/91 (all return 0 or 1). Even the residual case
+  of a hook that *does* return one fails LOUD — a "no verify() hook" WARN —
+  never silent. Three rules follow for anyone writing `verify()`: return 0 only
+  for a clean audit, return 1 for a finding, **never** 90/91, and never lean on a
+  bare `set -e` — both `_verify_hook` and the runner's hooks stage run as the
+  right-hand side of `||`, which suspends `errexit` for the whole subshell.
+- **An audit hook must check what the installer actually WRITES, not a hand-written
+  subset (P9.2).** Three false-PASS defects in one review round were all this
+  class: `git` checked the four config *values* but not the section headers, so a
+  block git reads as entirely inert (a setting outside any section is ignored)
+  audited clean; `terminal` asserted one of the five aliases it installs; and
+  `fonts` dropped `list_parse`'s exit status inside a herestring, so an
+  unreadable config yielded zero entries and reported "passed (0 sets
+  installed)" while `run()` failed on the same file. Two rules, both now
+  structural: compare against the **shared body-builder** `run()` itself uses
+  (`_git_body`, `_term_aliases_body`/`_term_block`, `_font_marker`) so installer
+  and auditor cannot drift, and **check every `rc` you consume** — a command
+  substitution inside a herestring does not propagate the substituted command's
+  status, so the parse must be captured and tested separately (the same
+  postcondition rule as `pkg_add_repo`/`pkg_install_local` in P7.6).
+  Corollary for tests: a fixture whose "known good" state is hand-written from
+  the same reading of the module as the verifier shares its assumptions and can
+  never catch these. Derive the oracle from the hook's own helpers.
+- **A derived oracle closes shared-assumption drift; it does NOT close a defect in
+  how the installer and the auditor COMPARE that oracle (P9.2, round 3).** B4 is
+  the proof: after `git`/`terminal` were switched to the shared body-builders, a
+  fully green suite still reported a REORDERED managed block as clean, because
+  the auditor compared line **sets** while `fs_managed_block` — the writer —
+  compares line **arrays** (`_fs_array_equal`: length first, then element-wise
+  ordered). Every line was present and correct, so the set matched; the file was
+  not what `run()` writes, so the writer would rewrite it. `git` is section-scoped,
+  so the swapped pair had put both values in the wrong section and git read
+  neither — audited "identical" in the one sense that mattered. The rule: **the
+  auditor's comparison relation must BE the writer's relation, not merely be
+  built from the writer's data.** Both hooks now use the same ordered,
+  length-sensitive array comparison, applied to identically NORMALIZED lines
+  (leading whitespace stripped, blank lines dropped) — normalization is
+  deliberately strictly permissive, so it can only turn a mismatch into a match,
+  never a false FAIL. Corollary for tests: a mutation cell must assert that its
+  mutation is **not a no-op** (`cmp -s` against the good state) — the first
+  reorder cell in this round silently changed nothing and would have passed
+  vacuously. Corollary for reviews: mutating an *ordering* finds what mutating a
+  *membership* cannot; B1–B4 were four different ways to check a weaker thing
+  than claimed, and three were invisible to a 215-assert suite.
 - Module hooks are two separate, single-purpose files (P7.5): `hooks.sh`/`run()` runs AFTER the
   batches, `prerepo.sh`/`prerepo()` runs BEFORE them so a module can configure the repository its
   own `packages.*.list` entries resolve from. `prerepo()` is always-run and idempotent (never

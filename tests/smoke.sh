@@ -571,7 +571,7 @@ smoke_entry() {
     t_rc 1 "unknown command rc" "$ROOT/setup" bogus
     t_err "unknown command"
     local cmd rc
-    for cmd in verify export update; do
+    for cmd in export update; do
         "$ROOT/setup" "$cmd" >"$OUT" 2>"$ERR"
         rc=$?
         if (( rc == 1 )); then
@@ -598,7 +598,37 @@ smoke_entry() {
     block_rc_last=$?
     t_block_rc "runs from other CWD with correct output" 0
 }
+smoke_verify() {
+    : >"$TMP/empty-installed"
+    printf 'wget\nvim\n' >"$TMP/installed-core"
+    t_rc 1 "verify FAIL rc" env FS_HOME="$TMP/vh" FS_PKG_BACKEND=mock \
+        FS_MOCK_INSTALLED="$TMP/empty-installed" FS_DISTRO_FAMILY=rpm \
+        "$ROOT/setup" verify core
+    t_out "== verify =="
+    t_out "FAIL core:packages: missing: gnupg2"
+    t_out "WARN core:hook: module has no verify() hook"
+    t_out "verify FAILED"
+    (
+        set +e
+        . "$ROOT/lib/io.sh"
+        . "$ROOT/lib/lists.sh"
+        . "$ROOT/lib/distro.sh"
+        list_packages "$ROOT/modules/core" rpm
+    ) >"$TMP/installed-core" 2>/dev/null
+    t_block_rc "seed core installed set" 0
+    t_rc 0 "verify PASS rc" env FS_HOME="$TMP/vh" FS_PKG_BACKEND=mock \
+        FS_MOCK_INSTALLED="$TMP/installed-core" FS_DISTRO_FAMILY=rpm \
+        "$ROOT/setup" verify core
+    t_out "PASS core:packages: all "
+    t_out "verify OK with warnings"
+    t_rc 1 "verify unknown module rc" env FS_HOME="$TMP/vh" FS_PKG_BACKEND=mock \
+        FS_DISTRO_FAMILY=rpm "$ROOT/setup" verify nosuchmodule
+    t_err "module not found: nosuchmodule"
+    t_rc 1 "verify invalid id rc" env FS_HOME="$TMP/vh" FS_PKG_BACKEND=mock \
+        FS_DISTRO_FAMILY=rpm "$ROOT/setup" verify 'bad id!'
+    t_err "invalid module id: bad id!"
+}
 smoke_entry
-
+smoke_verify
 printf 'summary: %s passed, %s failed\n' "$pass" "$fail"
 (( fail == 0 ))
