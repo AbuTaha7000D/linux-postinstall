@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2209  # data file: MODULE_* values are strings, not commands
 # modules/dns/module.sh - metadata for the high-risk DNS module (P8.1).
 # Sets DNS servers on the active NetworkManager connection (the
 # nmcli-native way) and records the prior connection properties so the

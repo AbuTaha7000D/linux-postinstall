@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2209  # data file: MODULE_* values are strings, not commands
 # modules/gnome-base/module.sh - metadata for the GNOME base module (P6.2).
 # Merges a curated set of dock favorites into org.gnome.shell favorite-apps
 # without disturbing existing user favorites (P6.2 verification: the dock
@@ -16,7 +17,7 @@
 # matching *GNOME*) is guarded inside run(), mirroring the prototype's own
 # guard; desktop-gating for whole profiles arrives with P6.5.
 MODULE_ID=gnome-base
-MODULE_TITLE=GNOME base configuration
-MODULE_DESCRIPTION=Favorite-apps merge, custom shortcuts, wallpaper
+MODULE_TITLE="GNOME base configuration"
+MODULE_DESCRIPTION="Favorite-apps merge, custom shortcuts, wallpaper"
 MODULE_RISK=low
 MODULE_DEFAULT=on

@@ -58,8 +58,8 @@ _CLI_ENV_FORCE="${FS_GNOME_FORCE:-0}"
 
 _cli_known_cmd() {
     case "$1" in
-        install|list|check|verify|export|update|help|version) return 0 ;;
-        *) return 1 ;;
+    install | list | check | verify | export | update | help | version) return 0 ;;
+    *) return 1 ;;
     esac
 }
 
@@ -80,88 +80,88 @@ cli_parse() {
     FS_CMD=""
     FS_CMD_ARGS=()
 
-    while (( i < $# )); do
+    while ((i < $#)); do
         local tok="${args[$i]}"
-        if (( end_opts == 0 )); then
+        if ((end_opts == 0)); then
             case "$tok" in
-                --)
-                    end_opts=1
-                    i=$(( i + 1 ))
-                    continue
-                    ;;
-                -h|--help)
-                    FS_CMD="help"
-                    i=$(( i + 1 ))
-                    continue
-                    ;;
-                --yes)
-                    FS_YES=1
-                    i=$(( i + 1 ))
-                    continue
-                    ;;
-                --dry-run)
-                    FS_DRY_RUN=1
-                    i=$(( i + 1 ))
-                    continue
-                    ;;
-                --verbose)
-                    FS_VERBOSE=1
-                    i=$(( i + 1 ))
-                    continue
-                    ;;
-                --debug)
-                    FS_DEBUG=1
-                    i=$(( i + 1 ))
-                    continue
-                    ;;
-                --browse)
-                    FS_GNOME_BROWSE=1
-                    i=$(( i + 1 ))
-                    continue
-                    ;;
-                --force)
-                    FS_GNOME_FORCE=1
-                    i=$(( i + 1 ))
-                    continue
-                    ;;
-                --pull)
-                    FS_PULL=1
-                    i=$(( i + 1 ))
-                    continue
-                    ;;
-                --list)
-                    FS_LIST=1
-                    saw_list=1
-                    i=$(( i + 1 ))
-                    continue
-                    ;;
-                --profile)
-                    if (( i + 1 >= $# )); then
-                        io_error "flag '--profile' requires a value"
-                        return 1
-                    fi
-                    i=$(( i + 1 ))
-                    FS_PROFILE="${args[$i]}"
-                    FS_PROFILE_SET=1
-                    i=$(( i + 1 ))
-                    continue
-                    ;;
-                --manifest)
-                    if (( i + 1 >= $# )); then
-                        io_error "flag '--manifest' requires a directory"
-                        return 1
-                    fi
-                    i=$(( i + 1 ))
-                    FS_MANIFEST="${args[$i]}"
-                    i=$(( i + 1 ))
-                    continue
-                    ;;
-                -*) io_error "unknown flag: $tok"
+            --)
+                end_opts=1
+                i=$((i + 1))
+                continue
+                ;;
+            -h | --help)
+                FS_CMD="help"
+                i=$((i + 1))
+                continue
+                ;;
+            --yes)
+                FS_YES=1
+                i=$((i + 1))
+                continue
+                ;;
+            --dry-run)
+                FS_DRY_RUN=1
+                i=$((i + 1))
+                continue
+                ;;
+            --verbose)
+                FS_VERBOSE=1
+                i=$((i + 1))
+                continue
+                ;;
+            --debug)
+                FS_DEBUG=1
+                i=$((i + 1))
+                continue
+                ;;
+            --browse)
+                FS_GNOME_BROWSE=1
+                i=$((i + 1))
+                continue
+                ;;
+            --force)
+                FS_GNOME_FORCE=1
+                i=$((i + 1))
+                continue
+                ;;
+            --pull)
+                FS_PULL=1
+                i=$((i + 1))
+                continue
+                ;;
+            --list)
+                FS_LIST=1
+                saw_list=1
+                i=$((i + 1))
+                continue
+                ;;
+            --profile)
+                if ((i + 1 >= $#)); then
+                    io_error "flag '--profile' requires a value"
                     return 1
-                    ;;
-                --*) io_error "unknown flag: $tok"
+                fi
+                i=$((i + 1))
+                FS_PROFILE="${args[$i]}"
+                FS_PROFILE_SET=1
+                i=$((i + 1))
+                continue
+                ;;
+            --manifest)
+                if ((i + 1 >= $#)); then
+                    io_error "flag '--manifest' requires a directory"
                     return 1
-                    ;;
+                fi
+                i=$((i + 1))
+                FS_MANIFEST="${args[$i]}"
+                i=$((i + 1))
+                continue
+                ;;
+            # `-*` also matches `--flag`, so a separate `--*)` arm would be
+            # unreachable dead code (SC2221/SC2222).
+            -*)
+                io_error "unknown flag: $tok"
+                return 1
+                ;;
             esac
         fi
         if [[ -z "$FS_CMD" ]]; then
@@ -174,11 +174,11 @@ cli_parse() {
         else
             FS_CMD_ARGS+=("$tok")
         fi
-        i=$(( i + 1 ))
+        i=$((i + 1))
     done
 
     if [[ -z "$FS_CMD" ]]; then
-        if (( saw_list )); then
+        if ((saw_list)); then
             FS_CMD="list"
         else
             FS_CMD="help"

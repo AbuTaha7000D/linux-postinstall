@@ -111,7 +111,7 @@ summary_line() {
     local log="${FS_LOG_FILE:-}" artifacts=""
     if _io_log_usable "$log"; then
         artifacts="artifacts in $log"
-    elif (( ${FS_DRY_RUN:-0} == 1 )); then
+    elif ((${FS_DRY_RUN:-0} == 1)); then
         artifacts="artifacts: none (a dry run writes nothing)"
     else
         artifacts="artifacts: none (no run log was opened)"
@@ -126,11 +126,11 @@ summary_report() {
     local i=0
     local -i n=${#SUMMARY_FAIL_IDS[@]}
     rows+=("$(summary_line)")
-    while (( i < n )); do
+    while ((i < n)); do
         rows+=("FAIL ${SUMMARY_FAIL_IDS[i]}: ${SUMMARY_FAIL_DETAIL[i]}")
-        i=$(( i + 1 ))
+        i=$((i + 1))
     done
-    if (( n > 0 )); then
+    if ((n > 0)); then
         rows+=("retry: re-run the same command; completed modules are skipped")
     fi
     io_summary "run complete" ${rows[@]+"${rows[@]}"}
@@ -138,7 +138,7 @@ summary_report() {
 }
 
 summary_rc() {
-    if (( ${#SUMMARY_FAIL_IDS[@]} > 0 )); then
+    if ((${#SUMMARY_FAIL_IDS[@]} > 0)); then
         return 1
     fi
     return 0

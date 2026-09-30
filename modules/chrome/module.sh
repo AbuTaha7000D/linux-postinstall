@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2209  # data file: MODULE_* values are strings, not commands
 # modules/chrome/module.sh - metadata for the Google Chrome module (P7.6).
 # Text-parsed by lib/modules.sh, never sourced, so it carries no
 # `set -euo pipefail` -- symmetric with every other module.sh.
@@ -77,8 +78,8 @@
 # Seams: FS_CHROME_FLATPAK (exclusive alternative), FS_CHROME_ARCH (host
 # arch override), FS_CHROME_DESKTOP_DIR (verify() target directory).
 MODULE_ID=chrome
-MODULE_TITLE=Google Chrome
-MODULE_DESCRIPTION=Distro-native Chrome bundle with a digest check, or the flatpak build
+MODULE_TITLE="Google Chrome"
+MODULE_DESCRIPTION="Distro-native Chrome bundle with a digest check, or the flatpak build"
 MODULE_RISK=medium
 MODULE_DEFAULT=on
 MODULE_FLATPAK_ALT_ID=com.google.Chrome

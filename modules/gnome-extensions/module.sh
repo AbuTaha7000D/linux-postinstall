@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2209  # data file: MODULE_* values are strings, not commands
 # modules/gnome-extensions/module.sh - metadata for the GNOME Shell
 # extensions module (P6.3).
 # Installs distro-packaged extensions where available (packages.<family>.list)
@@ -11,7 +12,7 @@
 # prototype forked xdg-open in a loop over 20 URLs; this module never opens
 # more than two and never backgrounds them.
 MODULE_ID=gnome-extensions
-MODULE_TITLE=GNOME Shell extensions
-MODULE_DESCRIPTION=Packaged extensions, curated enables, compatibility notes
+MODULE_TITLE="GNOME Shell extensions"
+MODULE_DESCRIPTION="Packaged extensions, curated enables, compatibility notes"
 MODULE_RISK=medium
 MODULE_DEFAULT=on

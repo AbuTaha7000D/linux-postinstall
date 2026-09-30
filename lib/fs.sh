@@ -18,7 +18,7 @@
 _fs_valid_name() {
     local name="$1"
     case "$name" in
-        "" | "." | ".." | *[!A-Za-z0-9._-]*) return 1 ;;
+    "" | "." | ".." | *[!A-Za-z0-9._-]*) return 1 ;;
     esac
     return 0
 }
@@ -29,38 +29,38 @@ _fs_validate_markers() {
     for ((i = 0; i < ${#arr[@]}; i++)); do
         line="${arr[i]}"
         case "$line" in
-            "# BEGIN fedora-setup" | "# BEGIN fedora-setup " | "# END fedora-setup" | "# END fedora-setup ")
+        "# BEGIN fedora-setup" | "# BEGIN fedora-setup " | "# END fedora-setup" | "# END fedora-setup ")
+            io_error "malformed managed block marker: $line"
+            return 1
+            ;;
+        "# BEGIN fedora-setup "*)
+            name="${line#*# BEGIN fedora-setup}"
+            name="${name# }"
+            if [[ "$state" == "open" ]]; then
+                io_error "nested managed block ($name) inside ($region)"
+                return 1
+            fi
+            if ! _fs_valid_name "$name"; then
                 io_error "malformed managed block marker: $line"
                 return 1
-                ;;
-            "# BEGIN fedora-setup "*)
-                name="${line#*# BEGIN fedora-setup}"
-                name="${name# }"
-                if [[ "$state" == "open" ]]; then
-                    io_error "nested managed block ($name) inside ($region)"
-                    return 1
-                fi
-                if ! _fs_valid_name "$name"; then
-                    io_error "malformed managed block marker: $line"
-                    return 1
-                fi
-                state="open"
-                region="$name"
-                ;;
-            "# END fedora-setup "*)
-                name="${line#*# END fedora-setup}"
-                name="${name# }"
-                if [[ "$state" != "open" ]]; then
-                    io_error "orphan managed block end marker: $line"
-                    return 1
-                fi
-                if [[ "$name" != "$region" ]]; then
-                    io_error "crossing managed block markers ('$region' closed by '$name')"
-                    return 1
-                fi
-                state="closed"
-                region=""
-                ;;
+            fi
+            state="open"
+            region="$name"
+            ;;
+        "# END fedora-setup "*)
+            name="${line#*# END fedora-setup}"
+            name="${name# }"
+            if [[ "$state" != "open" ]]; then
+                io_error "orphan managed block end marker: $line"
+                return 1
+            fi
+            if [[ "$name" != "$region" ]]; then
+                io_error "crossing managed block markers ('$region' closed by '$name')"
+                return 1
+            fi
+            state="closed"
+            region=""
+            ;;
         esac
     done
     if [[ "$state" == "open" ]]; then
@@ -84,7 +84,7 @@ _fs_array_equal() {
     local -n a="$1"
     local -n b="$2"
     local i
-    if (( ${#a[@]} != ${#b[@]} )); then
+    if ((${#a[@]} != ${#b[@]})); then
         return 1
     fi
     for ((i = 0; i < ${#a[@]}; i++)); do
@@ -103,10 +103,10 @@ _fs_chain_ok() {
         return 1
     fi
     case "$path" in
-        *$'\n'* | *$'\r'* | *"/../"* | *"/..")
-            io_error "refusing suspicious path: $path"
-            return 1
-            ;;
+    *$'\n'* | *$'\r'* | *"/../"* | *"/..")
+        io_error "refusing suspicious path: $path"
+        return 1
+        ;;
     esac
     path="${path#/}"
     IFS=/ read -r -a segs <<<"$path"
@@ -154,7 +154,10 @@ fs_backup() {
         return 1
     }
     case "$src" in
-        *"|"*) io_error "refusing path containing '|': $src"; return 1 ;;
+    *"|"*)
+        io_error "refusing path containing '|': $src"
+        return 1
+        ;;
     esac
     if [[ -z "${FS_STATE_DIR:-}" ]]; then
         io_error "fs_backup requires initialized state (lib/state.sh)"
@@ -173,7 +176,7 @@ fs_backup() {
     i=1
     while [[ -e "$bkp" ]]; do
         bkp="$target/$base.$ts.$$.$i"
-        i=$(( i + 1 ))
+        i=$((i + 1))
     done
     tmp="$(mktemp -- "$target/fs-backup.XXXXXX" 2>/dev/null)" || {
         io_error "cannot create temp in: $target"
@@ -206,10 +209,10 @@ fs_install() {
         return 1
     fi
     case "$dst" in
-        *$'\n'* | *$'\r'* | */ | .. | ../* | *"/../"* | *"/..")
-            io_error "invalid destination: $dst"
-            return 1
-            ;;
+    *$'\n'* | *$'\r'* | */ | .. | ../* | *"/../"* | *"/..")
+        io_error "invalid destination: $dst"
+        return 1
+        ;;
     esac
     [[ -f "$src" ]] || {
         io_error "source not found: $src"
@@ -251,11 +254,11 @@ _fs_locate() {
     _FS_EC=0
     for ((i = 0; i < ${#arr[@]}; i++)); do
         if [[ "${arr[i]}" == "$begin" ]]; then
-            _FS_BC=$(( _FS_BC + 1 ))
+            _FS_BC=$((_FS_BC + 1))
             _FS_B=$i
         fi
         if [[ "${arr[i]}" == "$end" ]]; then
-            _FS_EC=$(( _FS_EC + 1 ))
+            _FS_EC=$((_FS_EC + 1))
             _FS_E=$i
         fi
     done
@@ -283,7 +286,7 @@ _fs_block_lines() {
 _fs_write_atomic() {
     local file="$1" tmp mode=""
     local -a lines=()
-    if (( $# > 1 )); then
+    if (($# > 1)); then
         lines=("${@:2}")
     fi
     if [[ -f "$file" && ! -L "$file" ]]; then
@@ -322,10 +325,10 @@ fs_managed_block() {
         return 1
     fi
     case "$file" in
-        *$'\n'* | *$'\r'* | */ | .. | ../* | *"/../"* | *"/..")
-            io_error "invalid managed block file: $file"
-            return 1
-            ;;
+    *$'\n'* | *$'\r'* | */ | .. | ../* | *"/../"* | *"/..")
+        io_error "invalid managed block file: $file"
+        return 1
+        ;;
     esac
     if ! _fs_valid_name "$name"; then
         io_error "invalid managed block name"
@@ -358,10 +361,10 @@ fs_managed_block() {
     _fs_block_lines "$content"
     for ((i = 0; i < ${#_FS_BLOCK[@]}; i++)); do
         case "${_FS_BLOCK[i]}" in
-            "# BEGIN fedora-setup" | "# BEGIN fedora-setup "* | "# END fedora-setup" | "# END fedora-setup "*)
-                io_error "managed block content contains a marker line"
-                return 1
-                ;;
+        "# BEGIN fedora-setup" | "# BEGIN fedora-setup "* | "# END fedora-setup" | "# END fedora-setup "*)
+            io_error "managed block content contains a marker line"
+            return 1
+            ;;
         esac
     done
     if _fs_locate_ok; then
@@ -373,31 +376,31 @@ fs_managed_block() {
             return 0
         fi
         out=()
-        if (( _FS_B > 0 )); then
+        if ((_FS_B > 0)); then
             out+=("${in[@]:0:_FS_B}")
         fi
         out+=("$begin")
-        if (( ${#_FS_BLOCK[@]} > 0 )); then
+        if ((${#_FS_BLOCK[@]} > 0)); then
             out+=("${_FS_BLOCK[@]}")
         fi
         out+=("$end")
-        if (( _FS_E + 1 < ${#in[@]} )); then
+        if ((_FS_E + 1 < ${#in[@]})); then
             out+=("${in[@]:_FS_E+1}")
         fi
         changed=1
     else
         out=()
-        if (( ${#in[@]} > 0 )); then
+        if ((${#in[@]} > 0)); then
             out+=("${in[@]}")
         fi
         out+=("$begin")
-        if (( ${#_FS_BLOCK[@]} > 0 )); then
+        if ((${#_FS_BLOCK[@]} > 0)); then
             out+=("${_FS_BLOCK[@]}")
         fi
         out+=("$end")
         changed=1
     fi
-    if (( changed )); then
+    if ((changed)); then
         _fs_parent "$file"
         if ! mkdir -p -- "$_FS_PARENT" 2>/dev/null; then
             io_error "cannot create parent dir for: $file"
@@ -406,7 +409,7 @@ fs_managed_block() {
         if [[ -e "$file" ]]; then
             fs_backup "$file" >/dev/null || return 1
         fi
-        if (( ${#out[@]} > 0 )); then
+        if ((${#out[@]} > 0)); then
             _fs_write_atomic "$file" "${out[@]}"
         else
             _fs_write_atomic "$file"
@@ -422,10 +425,10 @@ fs_managed_block_remove() {
         return 1
     fi
     case "$file" in
-        *$'\n'* | *$'\r'* | */ | .. | ../* | *"/../"* | *"/..")
-            io_error "invalid managed block file: $file"
-            return 1
-            ;;
+    *$'\n'* | *$'\r'* | */ | .. | ../* | *"/../"* | *"/..")
+        io_error "invalid managed block file: $file"
+        return 1
+        ;;
     esac
     if ! _fs_valid_name "$name"; then
         io_error "invalid managed block name"
@@ -459,14 +462,14 @@ fs_managed_block_remove() {
         return 0
     fi
     out=()
-    if (( _FS_B > 0 )); then
+    if ((_FS_B > 0)); then
         out+=("${in[@]:0:_FS_B}")
     fi
-    if (( _FS_E + 1 < ${#in[@]} )); then
+    if ((_FS_E + 1 < ${#in[@]})); then
         out+=("${in[@]:_FS_E+1}")
     fi
     fs_backup "$file" >/dev/null || return 1
-    if (( ${#out[@]} > 0 )); then
+    if ((${#out[@]} > 0)); then
         _fs_write_atomic "$file" "${out[@]}"
     else
         _fs_write_atomic "$file"
@@ -483,10 +486,10 @@ fs_dedupe_lines() {
         return 1
     fi
     case "$file" in
-        *$'\n'* | *$'\r'* | */ | .. | ../* | *"/../"* | *"/..")
-            io_error "invalid dedupe target: $file"
-            return 1
-            ;;
+    *$'\n'* | *$'\r'* | */ | .. | ../* | *"/../"* | *"/..")
+        io_error "invalid dedupe target: $file"
+        return 1
+        ;;
     esac
     [[ -f "$file" ]] || {
         io_error "cannot dedupe non-regular path: $file"
@@ -507,13 +510,13 @@ fs_dedupe_lines() {
     for ((i = 0; i < ${#in[@]}; i++)); do
         line="${in[i]}"
         if [[ -n "${seen["L$line"]:-}" ]]; then
-            dup=$(( dup + 1 ))
+            dup=$((dup + 1))
             continue
         fi
         seen["L$line"]=1
         out+=("$line")
     done
-    if (( dup == 0 )); then
+    if ((dup == 0)); then
         printf '0\n'
         return 0
     fi

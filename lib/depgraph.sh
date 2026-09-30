@@ -64,7 +64,7 @@ dep_toposort() {
         IFS=$' \t\n' read -ra ds <<<"$MODULE_DEPENDS"
         for dep in ${ds[@]+"${ds[@]}"}; do
             case " $seen " in
-                *" $dep "*) continue ;;
+            *" $dep "*) continue ;;
             esac
             seen="$seen $dep"
             deps_sorted="$deps_sorted $dep"
@@ -128,7 +128,7 @@ dep_toposort() {
                 break
             fi
         done
-        if (( ! hit )); then
+        if ((!hit)); then
             remain+=("$id")
         fi
     done
@@ -155,10 +155,10 @@ dep_toposort() {
             break
         fi
         case " $path " in
-            *" $nxt "*)
-                path="$path -> $nxt"
-                break
-                ;;
+        *" $nxt "*)
+            path="$path -> $nxt"
+            break
+            ;;
         esac
         path="$path -> $nxt"
         cur2="$nxt"

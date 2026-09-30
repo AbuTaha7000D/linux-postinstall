@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2209  # data file: MODULE_* values are strings, not commands
 # modules/vscode/module.sh - metadata for the Visual Studio Code module.
 #
 # The only module so far that adds a THIRD-PARTY package repository, which
@@ -89,8 +90,8 @@
 # query would be the P5.7 NB-A family trap. `./setup install --dry-run
 # --yes vscode` is the way to see what would happen.
 MODULE_ID=vscode
-MODULE_TITLE=Visual Studio Code
-MODULE_DESCRIPTION=Official Microsoft code repository and key, or the flatpak build
+MODULE_TITLE="Visual Studio Code"
+MODULE_DESCRIPTION="Official Microsoft code repository and key, or the flatpak build"
 MODULE_RISK=medium
 MODULE_DEFAULT=on
 MODULE_FLATPAK_ALT_ID=com.visualstudio.code

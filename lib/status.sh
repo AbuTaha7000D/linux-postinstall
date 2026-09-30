@@ -31,9 +31,9 @@ STATUS_ROWS=()
 
 status_label() {
     case "${1:-0}" in
-        0) printf 'PASS' ;;
-        1) printf 'WARN' ;;
-        *) printf 'FAIL' ;;
+    0) printf 'PASS' ;;
+    1) printf 'WARN' ;;
+    *) printf 'FAIL' ;;
     esac
 }
 
@@ -46,7 +46,7 @@ status_reset() {
 status_row() {
     local level="${1:-0}" name="${2:-}" detail="${3:-}"
     STATUS_ROWS+=("$(printf '%-4s %s: %s' "$(status_label "$level")" "$name" "$detail")")
-    if (( level > STATUS_WORST )); then
+    if ((level > STATUS_WORST)); then
         STATUS_WORST=$level
     fi
     return 0
@@ -63,9 +63,9 @@ status_verdict() {
     if [[ -n "$action" ]]; then
         tail="$tail $action"
     fi
-    if (( STATUS_WORST >= STATUS_FAIL )); then
+    if ((STATUS_WORST >= STATUS_FAIL)); then
         printf '%s FAILED: %s' "$noun" "$tail"
-    elif (( STATUS_WORST == STATUS_WARN )); then
+    elif ((STATUS_WORST == STATUS_WARN)); then
         printf '%s OK with warnings' "$noun"
     else
         printf '%s OK' "$noun"
@@ -73,7 +73,7 @@ status_verdict() {
 }
 
 status_rc() {
-    if (( STATUS_WORST >= STATUS_FAIL )); then
+    if ((STATUS_WORST >= STATUS_FAIL)); then
         return 1
     fi
     return 0

@@ -37,6 +37,10 @@
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$ROOT/tests/fixtures/lib.sh"
 fx_init
+# Snapshot the repo's modules/ and profiles/ state so the end-of-run self-check
+# can tell "the fixture left a change" from "the developer had uncommitted
+# changes before the fixture ran". Without this, a dirty tree fails the check.
+GIT_STATUS_BEFORE="$(git -C "$ROOT" status --porcelain -- modules profiles 2>/dev/null || :)"
 SETUP="$ROOT/setup"
 printf 'P9.3 export manifest\n'
 
@@ -809,14 +813,14 @@ if diff -r "$ROOT/modules" "$MODS" >/dev/null 2>&1; then
 else
     fx_bad "the fixture left the private module copy modified"
 fi
-if git -C "$ROOT" status --porcelain -- modules profiles >/dev/null 2>&1; then
-    if [[ -z "$(git -C "$ROOT" status --porcelain -- modules profiles)" ]]; then
-        fx_ok
-    else
-        fx_bad "the fixture left a change in the repo modules/ or profiles/"
-    fi
-else
+# The repo's modules/ and profiles/ must be no dirtier than they were BEFORE
+# the fixture ran (see GIT_STATUS_BEFORE). A pre-existing dirty tree is the
+# developer's state, not something the fixture left behind.
+GIT_STATUS_AFTER="$(git -C "$ROOT" status --porcelain -- modules profiles 2>/dev/null || :)"
+if [[ "$GIT_STATUS_AFTER" == "$GIT_STATUS_BEFORE" ]]; then
     fx_ok
+else
+    fx_bad "the fixture left a change in the repo modules/ or profiles/"
 fi
 
 fx_summary

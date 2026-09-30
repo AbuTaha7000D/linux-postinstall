@@ -47,8 +47,8 @@ deb_list_installed() {
 
 deb_install_batch() {
     deb_supported || return $?
-    if (( FS_DRY_RUN == 1 )); then
-        if (( _deb_repos_changed == 1 )); then
+    if ((FS_DRY_RUN == 1)); then
+        if ((_deb_repos_changed == 1)); then
             run_sudo "refresh apt metadata" -- apt-get update
         fi
         run_sudo "install packages ($#)" -- apt-get install -y "$@"
@@ -60,11 +60,11 @@ deb_install_batch() {
             list+=("$pkg")
         fi
     done
-    if (( ${#list[@]} == 0 )); then
+    if ((${#list[@]} == 0)); then
         io_info "all packages already installed"
         return 0
     fi
-    if (( _deb_repos_changed == 1 )); then
+    if ((_deb_repos_changed == 1)); then
         run_sudo "refresh apt metadata" -- apt-get update || return $?
         _deb_repos_changed=0
     fi
@@ -108,7 +108,7 @@ deb_add_repo() {
         return 0
     fi
     printf -v content 'deb %s%s\n' "${key:+[signed-by=$key] }" "$url"
-    if (( FS_DRY_RUN == 1 )); then
+    if ((FS_DRY_RUN == 1)); then
         run_sudo "add repo $id" -- install -m 0644 \
             "${TMPDIR:-/tmp}/fedora-setup-repo-$id.dry" "$dest"
         return 0
@@ -121,7 +121,7 @@ deb_add_repo() {
     }
     run_sudo "add repo $id" -- install -m 0644 "$tmp" "$dest" || rv=$?
     rm -f -- "$tmp"
-    if (( rv == 0 )); then
+    if ((rv == 0)); then
         _deb_repos_changed=1
     fi
     return "$rv"

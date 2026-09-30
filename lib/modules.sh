@@ -135,7 +135,7 @@ MODULE_FLATPAK_ALT_SEAM=""
 
 module_valid_id() {
     case "${1:-}" in
-        "" | "." | ".." | *[!A-Za-z0-9._-]*) return 1 ;;
+    "" | "." | ".." | *[!A-Za-z0-9._-]*) return 1 ;;
     esac
     return 0
 }
@@ -166,11 +166,11 @@ module_load() {
     fi
     while IFS= read -r line || [[ -n "$line" ]]; do
         case "$line" in
-            "" | \#*) continue ;;
+        "" | \#*) continue ;;
         esac
         case "$line" in
-            *=*) ;;
-            *) continue ;;
+        *=*) ;;
+        *) continue ;;
         esac
         key="${line%%=*}"
         key="${key#"${key%%[![:space:]]*}"}"
@@ -178,33 +178,33 @@ module_load() {
         val="${line#*=}"
         val="${val#"${val%%[![:space:]]*}"}"
         val="${val%"${val##*[![:space:]]}"}"
-        if (( ${#val} >= 2 )) && [[ "$val" == \"*\" ]]; then
-            val="${val:1:$(( ${#val} - 2 ))}"
-        elif (( ${#val} >= 2 )) && [[ "$val" == \'*\' ]]; then
-            val="${val:1:$(( ${#val} - 2 ))}"
+        if ((${#val} >= 2)) && [[ "$val" == \"*\" ]]; then
+            val="${val:1:$((${#val} - 2))}"
+        elif ((${#val} >= 2)) && [[ "$val" == \'*\' ]]; then
+            val="${val:1:$((${#val} - 2))}"
         fi
         case "$key" in
-            MODULE_ID | MODULE_TITLE | MODULE_DESCRIPTION | \
-                MODULE_RISK | MODULE_DEFAULT | MODULE_DEPENDS | \
-                MODULE_FLATPAK_ALT_ID | MODULE_FLATPAK_ALT_SEAM) ;;
-            *)
-                if [[ "$strict" == "strict" ]]; then
-                    io_error "unknown metadata key '$key' in $dir/module.sh"
-                    return 1
-                fi
-                io_warn "unknown metadata key '$key' in $dir/module.sh"
-                continue
-                ;;
+        MODULE_ID | MODULE_TITLE | MODULE_DESCRIPTION | \
+            MODULE_RISK | MODULE_DEFAULT | MODULE_DEPENDS | \
+            MODULE_FLATPAK_ALT_ID | MODULE_FLATPAK_ALT_SEAM) ;;
+        *)
+            if [[ "$strict" == "strict" ]]; then
+                io_error "unknown metadata key '$key' in $dir/module.sh"
+                return 1
+            fi
+            io_warn "unknown metadata key '$key' in $dir/module.sh"
+            continue
+            ;;
         esac
         case "$key" in
-            MODULE_ID) MODULE_ID="$val" ;;
-            MODULE_TITLE) MODULE_TITLE="$val" ;;
-            MODULE_DESCRIPTION) MODULE_DESCRIPTION="$val" ;;
-            MODULE_RISK) MODULE_RISK="$val" ;;
-            MODULE_DEFAULT) MODULE_DEFAULT="$val" ;;
-            MODULE_DEPENDS) MODULE_DEPENDS="$val" ;;
-            MODULE_FLATPAK_ALT_ID) MODULE_FLATPAK_ALT_ID="$val" ;;
-            MODULE_FLATPAK_ALT_SEAM) MODULE_FLATPAK_ALT_SEAM="$val" ;;
+        MODULE_ID) MODULE_ID="$val" ;;
+        MODULE_TITLE) MODULE_TITLE="$val" ;;
+        MODULE_DESCRIPTION) MODULE_DESCRIPTION="$val" ;;
+        MODULE_RISK) MODULE_RISK="$val" ;;
+        MODULE_DEFAULT) MODULE_DEFAULT="$val" ;;
+        MODULE_DEPENDS) MODULE_DEPENDS="$val" ;;
+        MODULE_FLATPAK_ALT_ID) MODULE_FLATPAK_ALT_ID="$val" ;;
+        MODULE_FLATPAK_ALT_SEAM) MODULE_FLATPAK_ALT_SEAM="$val" ;;
         esac
     done <"$dir/module.sh"
     if [[ -z "$MODULE_ID" ]]; then
@@ -260,8 +260,8 @@ module_flatpak_alt() {
     fi
     val="${!seam:-}"
     case "${val,,}" in
-        1 | true | yes | on) ;;
-        *) return 0 ;;
+    1 | true | yes | on) ;;
+    *) return 0 ;;
     esac
     printf '%s\n' "$MODULE_FLATPAK_ALT_ID"
     return 0
@@ -280,18 +280,18 @@ module_validate() {
         return 1
     fi
     case "$MODULE_RISK" in
-        none | low | medium | high | destructive) ;;
-        *)
-            io_error "invalid MODULE_RISK '$MODULE_RISK' in $dir/module.sh (allowed: $_MODULE_RISK_LEVELS)"
-            return 1
-            ;;
+    none | low | medium | high | destructive) ;;
+    *)
+        io_error "invalid MODULE_RISK '$MODULE_RISK' in $dir/module.sh (allowed: $_MODULE_RISK_LEVELS)"
+        return 1
+        ;;
     esac
     case "$MODULE_DEFAULT" in
-        on | off) ;;
-        *)
-            io_error "invalid MODULE_DEFAULT '$MODULE_DEFAULT' in $dir/module.sh (allowed: on off)"
-            return 1
-            ;;
+    on | off) ;;
+    *)
+        io_error "invalid MODULE_DEFAULT '$MODULE_DEFAULT' in $dir/module.sh (allowed: on off)"
+        return 1
+        ;;
     esac
     if [[ -n "$MODULE_FLATPAK_ALT_ID" || -n "$MODULE_FLATPAK_ALT_SEAM" ]]; then
         if [[ -z "$MODULE_FLATPAK_ALT_ID" || -z "$MODULE_FLATPAK_ALT_SEAM" ]]; then
@@ -308,20 +308,20 @@ module_validate() {
         fi
     fi
     case "$MODULE_TITLE" in
-        *$'\t'* | *$'\n'* | *$'\r'*)
-            io_error "MODULE_TITLE must not contain control characters (module $MODULE_ID)"
-            return 1
-            ;;
+    *$'\t'* | *$'\n'* | *$'\r'*)
+        io_error "MODULE_TITLE must not contain control characters (module $MODULE_ID)"
+        return 1
+        ;;
     esac
     case "$MODULE_DESCRIPTION" in
-        *$'\t'* | *$'\n'* | *$'\r'*)
-            io_error "MODULE_DESCRIPTION must not contain control characters (module $MODULE_ID)"
-            return 1
-            ;;
+    *$'\t'* | *$'\n'* | *$'\r'*)
+        io_error "MODULE_DESCRIPTION must not contain control characters (module $MODULE_ID)"
+        return 1
+        ;;
     esac
     case "$family" in
-        rpm | deb | arch) ;;
-        *) return 0 ;;
+    rpm | deb | arch) ;;
+    *) return 0 ;;
     esac
     for f in "${MODULE_LIST_NAMES[@]}"; do
         if [[ -f "$dir/$f" ]]; then
@@ -329,7 +329,7 @@ module_validate() {
             break
         fi
     done
-    if (( ! has )); then
+    if ((!has)); then
         return 0
     fi
     if [[ -f "$dir/packages.list" || -f "$dir/packages.$family.list" || -f "$dir/flatpaks.list" ]]; then

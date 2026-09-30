@@ -41,14 +41,14 @@ ui_tty_mode() {
 }
 
 _ui_color_red() {
-    if (( ${FS_NO_COLOR:-0} == 0 )) && [[ -t 1 ]]; then
+    if ((${FS_NO_COLOR:-0} == 0)) && [[ -t 1 ]]; then
         printf '\033[31m'
     fi
     return 0
 }
 
 _ui_color_reset() {
-    if (( ${FS_NO_COLOR:-0} == 0 )) && [[ -t 1 ]]; then
+    if ((${FS_NO_COLOR:-0} == 0)) && [[ -t 1 ]]; then
         printf '\033[0m'
     fi
     return 0
@@ -72,11 +72,11 @@ _ui_emit_list() {
             mark=" "
             ishr=""
             for c in ${hh[@]+"${hh[@]}"}; do
-                if (( c == i )); then
+                if ((c == i)); then
                     ishr=1
                 fi
             done
-            if (( i < ${#cv[@]} )) && (( cv[i] == 1 )); then
+            if ((i < ${#cv[@]})) && ((cv[i] == 1)); then
                 mark="x"
             fi
             if [[ -n "$ishr" ]]; then
@@ -88,7 +88,7 @@ _ui_emit_list() {
                 _ui_color_reset
             fi
             printf '\n'
-            i=$(( i + 1 ))
+            i=$((i + 1))
         done <"$entries"
     fi
 }
@@ -99,7 +99,7 @@ _ui_rows() {
         n="$(grep -c . "$entries" 2>/dev/null || true)"
         n="${n:-0}"
     fi
-    printf '%s' "$(( n + 2 ))"
+    printf '%s' "$((n + 2))"
 }
 
 _ui_write_sel() {
@@ -115,8 +115,8 @@ _ui_write_sel() {
         io_error "cannot create selection temp file in: $dir"
         return 1
     }
-    if (( $# > 0 )); then
-        for id do
+    if (($# > 0)); then
+        for id; do
             printf '%s\n' "$id"
         done >"$tmp" || {
             io_error "cannot write selection temp file"
@@ -137,35 +137,35 @@ _ui_write_sel() {
 ui_confirm() {
     local prompt="${1:-}" default="${2:-n}"
     local answer="" suff="" rc=1
-    if (( ${FS_YES:-0} == 1 )); then
+    if ((${FS_YES:-0} == 1)); then
         return 0
     fi
     case "$default" in
-        y | Y | yes | YES)
-            suff="[Y/n]"
-            rc=0
-            ;;
-        *)
-            suff="[y/N]"
-            ;;
+    y | Y | yes | YES)
+        suff="[Y/n]"
+        rc=0
+        ;;
+    *)
+        suff="[y/N]"
+        ;;
     esac
     while :; do
         printf '%s %s ' "$prompt" "$suff"
         IFS= read -r answer || return "$rc"
         answer="${answer,,}"
         case "$answer" in
-            "")
-                return "$rc"
-                ;;
-            y | yes)
-                return 0
-                ;;
-            n | no)
-                return 1
-                ;;
-            *)
-                printf 'please answer y or n\n'
-                ;;
+        "")
+            return "$rc"
+            ;;
+        y | yes)
+            return 0
+            ;;
+        n | no)
+            return 1
+            ;;
+        *)
+            printf 'please answer y or n\n'
+            ;;
         esac
     done
 }
@@ -193,17 +193,17 @@ ui_multiselect() {
         erisk+=("${rk:-none}")
         checked+=(0)
         case "${rk:-none}" in
-            high | destructive) high+=("$(( ${#eid[@]} - 1 ))") ;;
+        high | destructive) high+=("$((${#eid[@]} - 1))") ;;
         esac
     done
-    if (( ${#eid[@]} == 0 )); then
+    if ((${#eid[@]} == 0)); then
         _ui_write_sel "$sel"
         return $?
     fi
     if [[ -f "$sel" ]]; then
         while IFS= read -r id; do
             [[ -n "$id" ]] || continue
-            for (( i = 0; i < ${#eid[@]}; i++ )); do
+            for ((i = 0; i < ${#eid[@]}; i++)); do
                 if [[ "${eid[i]}" == "$id" ]]; then
                     checked[i]=1
                 fi
@@ -213,8 +213,8 @@ ui_multiselect() {
     while :; do
         lvls=""
         his=""
-        for (( i = 0; i < ${#eid[@]}; i++ )); do
-            lvls="$lvls$(( checked[i] )) "
+        for ((i = 0; i < ${#eid[@]}; i++)); do
+            lvls="$lvls$((checked[i])) "
         done
         for j in ${high[@]+"${high[@]}"}; do
             his="$his$j "
@@ -226,99 +226,99 @@ ui_multiselect() {
             printf '(digits: toggle | a: all | n: none | q: quit | Enter: accept)\n'
             IFS= read -rsn1 key || return 1
             case "$key" in
-                [0-9])
-                    if (( key >= 1 && key <= ${#eid[@]} )); then
-                        i=$(( key - 1 ))
-                        case "${erisk[i]}" in
-                            high | destructive) : ;;
-                            *)
-                                if (( checked[i] == 1 )); then
-                                    checked[i]=0
-                                else
-                                    checked[i]=1
-                                fi
-                                ;;
-                        esac
-                    fi
-                    ;;
-                a | A)
-                    for (( i = 0; i < ${#eid[@]}; i++ )); do
-                        case "${erisk[i]}" in
-                            high | destructive) : ;;
-                            *) checked[i]=1 ;;
-                        esac
-                    done
-                    ;;
-                n | N)
-                    for (( i = 0; i < ${#eid[@]}; i++ )); do
-                        checked[i]=0
-                    done
-                    ;;
-                q | Q)
-                    return 1
-                    ;;
-                $'\n' | $'\r')
-                    break
-                    ;;
-                *) : ;;
+            [0-9])
+                if ((key >= 1 && key <= ${#eid[@]})); then
+                    i=$((key - 1))
+                    case "${erisk[i]}" in
+                    high | destructive) : ;;
+                    *)
+                        if ((checked[i] == 1)); then
+                            checked[i]=0
+                        else
+                            checked[i]=1
+                        fi
+                        ;;
+                    esac
+                fi
+                ;;
+            a | A)
+                for ((i = 0; i < ${#eid[@]}; i++)); do
+                    case "${erisk[i]}" in
+                    high | destructive) : ;;
+                    *) checked[i]=1 ;;
+                    esac
+                done
+                ;;
+            n | N)
+                for ((i = 0; i < ${#eid[@]}; i++)); do
+                    checked[i]=0
+                done
+                ;;
+            q | Q)
+                return 1
+                ;;
+            $'\n' | $'\r')
+                break
+                ;;
+            *) : ;;
             esac
         else
             _ui_emit_list "$title" "$entries" "${lvls% }" "${his% }"
             printf "toggle (ids, 'a', 'n'; 'q' quit; Enter accept): "
             IFS= read -r line || return 1
             case "$line" in
-                "")
-                    break
-                    ;;
-                q | Q)
-                    return 1
-                    ;;
-                a | A)
-                    for (( i = 0; i < ${#eid[@]}; i++ )); do
-                        case "${erisk[i]}" in
-                            high | destructive) : ;;
-                            *) checked[i]=1 ;;
-                        esac
-                    done
-                    ;;
-                n | N)
-                    for (( i = 0; i < ${#eid[@]}; i++ )); do
-                        checked[i]=0
-                    done
-                    ;;
-                *)
-                    IFS=' ,' read -ra toks <<<"$line"
-                    for t in ${toks[@]+"${toks[@]}"}; do
-                        case "$t" in
-                            '' | *[!0-9]*)
-                                io_warn "ignoring non-numeric toggle: '$t'"
+            "")
+                break
+                ;;
+            q | Q)
+                return 1
+                ;;
+            a | A)
+                for ((i = 0; i < ${#eid[@]}; i++)); do
+                    case "${erisk[i]}" in
+                    high | destructive) : ;;
+                    *) checked[i]=1 ;;
+                    esac
+                done
+                ;;
+            n | N)
+                for ((i = 0; i < ${#eid[@]}; i++)); do
+                    checked[i]=0
+                done
+                ;;
+            *)
+                IFS=' ,' read -ra toks <<<"$line"
+                for t in ${toks[@]+"${toks[@]}"}; do
+                    case "$t" in
+                    '' | *[!0-9]*)
+                        io_warn "ignoring non-numeric toggle: '$t'"
+                        ;;
+                    *)
+                        if ((10#$t >= 1 && 10#$t <= ${#eid[@]})); then
+                            case "${erisk[10#$t - 1]}" in
+                            high | destructive)
+                                io_warn "high-risk module ${eid[10#$t - 1]} cannot be toggled here (use the opt-in prompt)"
                                 ;;
                             *)
-                                if (( 10#$t >= 1 && 10#$t <= ${#eid[@]} )); then
-                                    case "${erisk[10#$t - 1]}" in
-                                        high | destructive)
-                                            io_warn "high-risk module ${eid[10#$t - 1]} cannot be toggled here (use the opt-in prompt)"
-                                            ;;
-                                        *)
-                                            i=$(( 10#$t - 1 ))
-                                            if (( checked[i] == 1 )); then
-                                                checked[i]=0
-                                            else
-                                                checked[i]=1
-                                            fi
-                                            ;;
-                                    esac
+                                i=$((10#$t - 1))
+                                if ((checked[i] == 1)); then
+                                    checked[i]=0
                                 else
-                                    io_warn "no such row: $t"
+                                    checked[i]=1
                                 fi
                                 ;;
-                        esac
-                    done
-                    ;;
+                            esac
+                        else
+                            io_warn "no such row: $t"
+                        fi
+                        ;;
+                    esac
+                done
+                ;;
             esac
         fi
     done
-    if (( ${#high[@]} > 0 )); then
+    if ((${#high[@]} > 0)); then
         printf 'Enable high-risk modules (ids, space/comma separated; Enter to skip): '
         IFS= read -r line || return 1
         if [[ -n "$line" ]]; then
@@ -331,14 +331,14 @@ ui_multiselect() {
                         found=1
                     fi
                 done
-                if (( found == 0 )); then
+                if ((found == 0)); then
                     io_warn "not a high-risk module: $opt"
                 fi
             done
         fi
     fi
-    for (( i = 0; i < ${#eid[@]}; i++ )); do
-        if (( checked[i] == 1 )); then
+    for ((i = 0; i < ${#eid[@]}; i++)); do
+        if ((checked[i] == 1)); then
             selids+=("${eid[i]}")
         fi
     done

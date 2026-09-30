@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2209  # data file: MODULE_* values are strings, not commands
 # modules/terminal/module.sh - metadata for the terminal shell-setup module.
 # Shell integration done via managed blocks (lib/fs.sh marker covenant, P2.5)
 # in ~/.bashrc (aliases sourcing guard + oh-my-posh init line + atuin init
@@ -17,7 +18,7 @@
 # Fonts glyphs), NOT a MODULE_DEPENDS: profile curation stays explicit
 # (P5.2 NB-B philosophy) and P5.7 wires the desktop profile by hand.
 MODULE_ID=terminal
-MODULE_TITLE=Terminal setup
-MODULE_DESCRIPTION=Managed shell aliases, pinned oh-my-posh prompt and theme, atuin shell history
+MODULE_TITLE="Terminal setup"
+MODULE_DESCRIPTION="Managed shell aliases, pinned oh-my-posh prompt and theme, atuin shell history"
 MODULE_RISK=low
 MODULE_DEFAULT=on

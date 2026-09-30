@@ -64,7 +64,7 @@ run() {
     fi
     dir="$root/modules/gnome-extensions"
     cfile="${FS_GNOME_COMPAT_FILE:-$root/config/extensions.compat}"
-    if (( FS_DRY_RUN == 1 )); then
+    if ((FS_DRY_RUN == 1)); then
         _gnome_ext_dry "$dir" || return 1
     else
         _gnome_ext_real "$dir" "$cfile" || return 1
@@ -87,7 +87,7 @@ verify() {
     source "$root/lib/gnome.sh"
     source "$root/lib/lists.sh"
     gnome_require_capable gnome-extensions || return 0
-    if (( FS_DRY_RUN == 1 )); then
+    if ((FS_DRY_RUN == 1)); then
         io_info "gnome-extensions: verify is read-only; runs only in real mode"
         return 0
     fi
@@ -97,7 +97,7 @@ verify() {
     fi
     dir="$root/modules/gnome-extensions"
     _gnome_ext_verify "$dir" || rc=1
-    if (( rc == 0 )); then
+    if ((rc == 0)); then
         io_info "gnome-extensions: verify passed"
     fi
     return "$rc"
@@ -109,7 +109,7 @@ _gnome_ext_verify() {
     local -A installed=() enabled=()
     local -i n=0
     _gnome_ext_uuids "$dir" uuids || return 1
-    if (( ${#uuids[@]} == 0 )); then
+    if ((${#uuids[@]} == 0)); then
         io_info "gnome-extensions: verify: extensions.list empty; nothing to verify"
         return 0
     fi
@@ -117,7 +117,7 @@ _gnome_ext_verify() {
     if [[ -n "$out" ]]; then
         while IFS= read -r uuid; do
             case "$uuid" in
-                "" | *[!A-Za-z0-9._@-]*) continue ;;
+            "" | *[!A-Za-z0-9._@-]*) continue ;;
             esac
             installed[$uuid]=1
         done <<<"$out"
@@ -126,12 +126,12 @@ _gnome_ext_verify() {
     if [[ -n "$out" ]]; then
         while IFS= read -r uuid; do
             case "$uuid" in
-                "" | *[!A-Za-z0-9._@-]*) continue ;;
+            "" | *[!A-Za-z0-9._@-]*) continue ;;
             esac
             enabled[$uuid]=1
         done <<<"$out"
     fi
-    for (( n = 0; n < ${#uuids[@]}; n++ )); do
+    for ((n = 0; n < ${#uuids[@]}; n++)); do
         uuid="${uuids[$n]}"
         if [[ -z "${installed[$uuid]:-}" ]]; then
             io_error "gnome-extensions: verify FAILED: extension not installed: $uuid"
@@ -153,9 +153,10 @@ _gnome_ext_uuids() {
     if [[ -n "$out" ]]; then
         while IFS= read -r uuid; do
             case "$uuid" in
-                "" | *[!A-Za-z0-9._@-]*) io_error "gnome-extensions: invalid uuid in extensions.list: $uuid"
-                                        return 1
-                                        ;;
+            "" | *[!A-Za-z0-9._@-]*)
+                io_error "gnome-extensions: invalid uuid in extensions.list: $uuid"
+                return 1
+                ;;
             esac
             ref+=("$uuid")
         done <<<"$out"
@@ -167,11 +168,11 @@ _gnome_ext_dry() {
     local dir="$1" uuid="" n=0
     local -a uuids=()
     _gnome_ext_uuids "$dir" uuids || return 1
-    if (( ${#uuids[@]} == 0 )); then
+    if ((${#uuids[@]} == 0)); then
         io_info "gnome-extensions: extensions.list empty; no extensions to enable"
         return 0
     fi
-    for (( n = 0; n < ${#uuids[@]}; n++ )); do
+    for ((n = 0; n < ${#uuids[@]}; n++)); do
         uuid="${uuids[$n]}"
         run_cmd "gnome-extensions enable $uuid" -- gnome-extensions enable "$uuid" || return 1
     done
@@ -180,7 +181,7 @@ _gnome_ext_dry() {
 }
 
 _gnome_ext_compat() {
-    local cfile="$1" line="" uuid="" min="" max="" rest="" 
+    local cfile="$1" line="" uuid="" min="" max="" rest=""
     local -n minref="$2"
     local -n maxref="$3"
     [[ -f "$cfile" && -r "$cfile" ]] || return 0
@@ -188,24 +189,24 @@ _gnome_ext_compat() {
         line="${line#"${line%%[![:space:]]*}"}"
         line="${line%"${line##*[![:space:]]}"}"
         case "$line" in
-            "" | \#*) continue ;;
+        "" | \#*) continue ;;
         esac
         case "$line" in
-            *\|*\|*) ;;
-            *) continue ;;
+        *\|*\|*) ;;
+        *) continue ;;
         esac
         uuid="${line%%|*}"
         rest="${line#*|}"
         min="${rest%%|*}"
         max="${rest#*|}"
         case "$uuid" in
-            "" | *[!A-Za-z0-9._@-]*) continue ;;
+        "" | *[!A-Za-z0-9._@-]*) continue ;;
         esac
         case "$min" in
-            "" | *[!0-9]*) continue ;;
+        "" | *[!0-9]*) continue ;;
         esac
         case "$max" in
-            "" | *[!0-9]*) continue ;;
+        "" | *[!0-9]*) continue ;;
         esac
         minref[$uuid]="$min"
         maxref[$uuid]="$max"
@@ -223,26 +224,26 @@ _gnome_ext_real() {
     _gnome_ext_compat "$cfile" cmin cmax
     rc=0
     version="$(gnome_shell_version 2>&1)" || rc=$?
-    if (( rc != 0 )); then
+    if ((rc != 0)); then
         io_debug "gnome-extensions: shell version probe failed: ${version:-unknown reason}"
         version=""
     fi
     rc=0
     installed_out="$(gnome_extensions_list)" || rc=$?
-    if (( rc != 0 )); then
+    if ((rc != 0)); then
         io_error "gnome-extensions: cannot list installed extensions"
         return 1
     fi
     rc=0
     enabled_out="$(gnome_extensions_list --enabled)" || rc=$?
-    if (( rc != 0 )); then
+    if ((rc != 0)); then
         io_error "gnome-extensions: cannot list enabled extensions"
         return 1
     fi
     if [[ -n "$installed_out" ]]; then
         while IFS= read -r uuid; do
             case "$uuid" in
-                "" | *[!A-Za-z0-9._@-]*) continue ;;
+            "" | *[!A-Za-z0-9._@-]*) continue ;;
             esac
             installed[$uuid]=1
         done <<<"$installed_out"
@@ -250,7 +251,7 @@ _gnome_ext_real() {
     if [[ -n "$enabled_out" ]]; then
         while IFS= read -r uuid; do
             case "$uuid" in
-                "" | *[!A-Za-z0-9._@-]*) continue ;;
+            "" | *[!A-Za-z0-9._@-]*) continue ;;
             esac
             enabled[$uuid]=1
         done <<<"$enabled_out"
@@ -261,22 +262,22 @@ _gnome_ext_real() {
         io_info "gnome-extensions: GNOME shell $version"
         major="${version%%.*}"
         case "$major" in
-            "" | *[!0-9]*) ;;
-            *)
-                for u in "${!installed[@]}"; do
-                    [[ -n "${cmin[$u]:-}" ]] || continue
-                    if (( major < ${cmin[$u]} || major > ${cmax[$u]} )); then
-                        io_warn "gnome-extensions: $u may not be compatible with GNOME Shell $major (supports ${cmin[$u]}-${cmax[$u]})"
-                    fi
-                done
-                ;;
+        "" | *[!0-9]*) ;;
+        *)
+            for u in "${!installed[@]}"; do
+                [[ -n "${cmin[$u]:-}" ]] || continue
+                if ((major < ${cmin[$u]} || major > ${cmax[$u]})); then
+                    io_warn "gnome-extensions: $u may not be compatible with GNOME Shell $major (supports ${cmin[$u]}-${cmax[$u]})"
+                fi
+            done
+            ;;
         esac
     fi
-    if (( ${#uuids[@]} == 0 )); then
+    if ((${#uuids[@]} == 0)); then
         io_info "gnome-extensions: extensions.list empty; no extensions to enable"
         return 0
     fi
-    for (( n = 0; n < ${#uuids[@]}; n++ )); do
+    for ((n = 0; n < ${#uuids[@]}; n++)); do
         uuid="${uuids[$n]}"
         if [[ -z "${installed[$uuid]:-}" ]]; then
             io_info "gnome-extensions: $uuid not installed; skipping (install its distro package)"
@@ -298,14 +299,15 @@ _gnome_ext_browse() {
         io_info "gnome-extensions: browse.list empty; nothing to open"
         return 0
     fi
-    while IFS= read -r url && (( n < limit )); do
+    while IFS= read -r url && ((n < limit)); do
         case "$url" in
-            http://* | https://*) ;;
-            *) io_error "gnome-extensions: invalid browse URL: $url"
-               return 1
-               ;;
+        http://* | https://*) ;;
+        *)
+            io_error "gnome-extensions: invalid browse URL: $url"
+            return 1
+            ;;
         esac
-        if (( FS_DRY_RUN == 0 )) && ! command -v xdg-open >/dev/null 2>&1; then
+        if ((FS_DRY_RUN == 0)) && ! command -v xdg-open >/dev/null 2>&1; then
             io_info "gnome-extensions: xdg-open not found; open manually: $url"
         else
             run_cmd "gnome-extensions browse $((n + 1))" -- xdg-open "$url" || return 1

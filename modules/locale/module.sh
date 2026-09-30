@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2209  # data file: MODULE_* values are strings, not commands
 # modules/locale/module.sh - metadata for the high-risk locale module (P8.2).
 # Sets the system locale on a systemd host through `localectl set-locale`
 # (the supported path) and backs up /etc/locale.conf with a timestamped

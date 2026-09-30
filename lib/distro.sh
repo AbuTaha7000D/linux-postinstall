@@ -13,18 +13,18 @@ _distro_parse_value() {
         rhs="${BASH_REMATCH[1]}"
         rhs="${rhs#"${rhs%%[![:space:]]*}"}"
         case "$rhs" in
-            \"*)
-                value="${rhs#\"}"
-                value="${value%%\"*}"
-                ;;
-            \'*)
-                value="${rhs#\'}"
-                value="${value%%\'*}"
-                ;;
-            *)
-                value="${rhs%%\#*}"
-                value="${value%"${value##*[![:space:]]}"}"
-                ;;
+        \"*)
+            value="${rhs#\"}"
+            value="${value%%\"*}"
+            ;;
+        \'*)
+            value="${rhs#\'}"
+            value="${value%%\'*}"
+            ;;
+        *)
+            value="${rhs%%\#*}"
+            value="${value%"${value##*[![:space:]]}"}"
+            ;;
         esac
         break
     done <"$file"
@@ -34,15 +34,15 @@ _distro_parse_value() {
 _distro_family_from_id() {
     local id="$1" id_like="$2" fam=""
     case "$id" in
-        fedora|nobara|rhel|centos|rocky|almalinux|ol|amzn) fam="rpm" ;;
-        debian|ubuntu|linuxmint|pop|kali|elementary|zorin|mx|tuxedo) fam="deb" ;;
-        arch|archlinux|cachyos|endeavouros|manjaro|arcolinux|garuda|artix|archcraft) fam="arch" ;;
+    fedora | nobara | rhel | centos | rocky | almalinux | ol | amzn) fam="rpm" ;;
+    debian | ubuntu | linuxmint | pop | kali | elementary | zorin | mx | tuxedo) fam="deb" ;;
+    arch | archlinux | cachyos | endeavouros | manjaro | arcolinux | garuda | artix | archcraft) fam="arch" ;;
     esac
     if [[ -z "$fam" ]]; then
         case "$id_like" in
-            *fedora*|*rhel*|*centos*) fam="rpm" ;;
-            *debian*|*ubuntu*) fam="deb" ;;
-            *arch*) fam="arch" ;;
+        *fedora* | *rhel* | *centos*) fam="rpm" ;;
+        *debian* | *ubuntu*) fam="deb" ;;
+        *arch*) fam="arch" ;;
         esac
     fi
     printf '%s' "$fam"
@@ -51,45 +51,45 @@ _distro_family_from_id() {
 _distro_pkgmgr() {
     local fam="$1"
     case "$fam" in
-        rpm)
-            if command -v dnf5 >/dev/null 2>&1; then
-                printf 'dnf5'
-            elif command -v dnf >/dev/null 2>&1; then
-                printf 'dnf'
-            fi
-            ;;
-        deb)
-            if command -v apt-get >/dev/null 2>&1; then
-                printf 'apt-get'
-            fi
-            ;;
-        arch)
-            if command -v pacman >/dev/null 2>&1; then
-                printf 'pacman'
-            fi
-            ;;
+    rpm)
+        if command -v dnf5 >/dev/null 2>&1; then
+            printf 'dnf5'
+        elif command -v dnf >/dev/null 2>&1; then
+            printf 'dnf'
+        fi
+        ;;
+    deb)
+        if command -v apt-get >/dev/null 2>&1; then
+            printf 'apt-get'
+        fi
+        ;;
+    arch)
+        if command -v pacman >/dev/null 2>&1; then
+            printf 'pacman'
+        fi
+        ;;
     esac
 }
 
 _distro_localpkg() {
     local fam="$1" mgr="$2"
     case "$fam" in
-        rpm)
-            if [[ "$mgr" == "dnf5" ]]; then
-                printf 'dnf5 localinstall'
-            else
-                printf 'dnf localinstall'
-            fi
-            ;;
-        deb) printf 'apt-get install' ;;
-        arch) printf 'pacman -U' ;;
+    rpm)
+        if [[ "$mgr" == "dnf5" ]]; then
+            printf 'dnf5 localinstall'
+        else
+            printf 'dnf localinstall'
+        fi
+        ;;
+    deb) printf 'apt-get install' ;;
+    arch) printf 'pacman -U' ;;
     esac
 }
 
 _distro_gnome() {
     case "$1" in
-        fedora|nobara|ubuntu|pop|debian) printf '1' ;;
-        *) printf '0' ;;
+    fedora | nobara | ubuntu | pop | debian) printf '1' ;;
+    *) printf '0' ;;
     esac
 }
 

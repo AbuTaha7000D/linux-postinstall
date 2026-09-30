@@ -113,7 +113,7 @@ _verify_need_root() {
 # state has nothing recorded, which is a normal state, not an error.
 _verify_registry_ids() {
     local root="" id=""
-        root="$(state_root_path)" || return 0
+    root="$(state_root_path)" || return 0
     if [[ ! -d "$root" ]]; then
         return 0
     fi
@@ -151,7 +151,7 @@ _verify_resolve() {
     local -a ids=()
     local -a want=()
     want=(${FS_CMD_ARGS[@]+"${FS_CMD_ARGS[@]}"})
-    if (( ${#want[@]} > 0 )); then
+    if ((${#want[@]} > 0)); then
         for id in "${want[@]}"; do
             module_valid_id "$id" || {
                 io_error "invalid module id: $id"
@@ -189,7 +189,7 @@ _verify_resolve() {
             done < <(_verify_all_ids)
         fi
     fi
-    (( ${#ids[@]} > 0 )) || {
+    ((${#ids[@]} > 0)) || {
         io_error "no modules to verify"
         return 1
     }
@@ -223,7 +223,7 @@ _verify_system_packages() {
         [[ -n "$p" ]] || continue
         pkgs+=("$p")
     done <<<"$out"
-    (( ${#pkgs[@]} > 0 )) || return 0
+    ((${#pkgs[@]} > 0)) || return 0
     if ! pkg_supported; then
         status_row "$STATUS_WARN" "$id:packages" \
             "cannot check ${#pkgs[@]} package(s): no package backend available"
@@ -231,7 +231,7 @@ _verify_system_packages() {
     fi
     while IFS= read -r p; do
         case "$p" in
-            "missing: "*) missing+="${p#missing: } " ;;
+        "missing: "*) missing+="${p#missing: } " ;;
         esac
     done < <(pkg_verify_packages "${pkgs[@]}" 2>/dev/null) || :
     if [[ -n "$missing" ]]; then
@@ -258,7 +258,7 @@ _verify_flatpaks() {
         [[ -n "$app" ]] || continue
         apps+=("$app")
     done <<<"$out"
-    (( ${#apps[@]} > 0 )) || return 0
+    ((${#apps[@]} > 0)) || return 0
     if ! command -v flatpak >/dev/null 2>&1; then
         status_row "$STATUS_WARN" "$id:flatpaks" \
             "cannot check ${#apps[@]} app(s): flatpak CLI not in PATH"
@@ -356,38 +356,38 @@ _verify_one() {
         "$id:packages" "the package list could not be read"
     _verify_flatpaks "$id" "$dir" || status_row "$STATUS_FAIL" \
         "$id:flatpaks" "the flatpak list could not be read"
-    generic=$(( ${#STATUS_ROWS[@]} - before ))
+    generic=$((${#STATUS_ROWS[@]} - before))
     rc=0
     _verify_hook "$dir" || rc=$?
-    if (( rc == _VERIFY_HOOK_NONE && generic == 0 )); then
+    if ((rc == _VERIFY_HOOK_NONE && generic == 0)); then
         status_row "$STATUS_WARN" "$id" \
             "nothing to verify (no list files, no verify() hook)"
         return 0
     fi
     case "$rc" in
-        0)
-            if (( ${FS_DRY_RUN:-0} == 1 )); then
-                status_row "$STATUS_WARN" "$id:hook" \
-                    "skipped (dry run; the hook refuses to probe)"
-            else
-                status_row "$STATUS_PASS" "$id:hook" "verify() passed"
-            fi
-            ;;
-        "$_VERIFY_HOOK_NONE")
-            status_row "$STATUS_WARN" "$id:hook" "module has no verify() hook"
-            ;;
-        "$_VERIFY_HOOK_UNDEFINED")
-            status_row "$STATUS_WARN" "$id:hook" "hooks.sh defines no verify()"
-            ;;
-        *)
-            status_row "$STATUS_FAIL" "$id:hook" "verify() reported problems (rc $rc)"
-            ;;
+    0)
+        if ((${FS_DRY_RUN:-0} == 1)); then
+            status_row "$STATUS_WARN" "$id:hook" \
+                "skipped (dry run; the hook refuses to probe)"
+        else
+            status_row "$STATUS_PASS" "$id:hook" "verify() passed"
+        fi
+        ;;
+    "$_VERIFY_HOOK_NONE")
+        status_row "$STATUS_WARN" "$id:hook" "module has no verify() hook"
+        ;;
+    "$_VERIFY_HOOK_UNDEFINED")
+        status_row "$STATUS_WARN" "$id:hook" "hooks.sh defines no verify()"
+        ;;
+    *)
+        status_row "$STATUS_FAIL" "$id:hook" "verify() reported problems (rc $rc)"
+        ;;
     esac
     return 0
 }
 
 verify_run() {
-    local root="${1:-}" ids="" id="" dir=""
+    local root="${1:-}" id_list="" id="" dir=""
     _verify_need_root "$root" || return 1
     _VERIFY_MODULES_DIR="${FS_MODULES_DIR:-$root/modules}"
     _VERIFY_PROFILES_DIR="${FS_PROFILES_DIR:-$root/profiles}"
@@ -404,10 +404,13 @@ verify_run() {
     fi
     _VERIFY_FAMILY="${FS_DISTRO_FAMILY:-}"
     case "$_VERIFY_FAMILY" in
-        rpm | deb | arch) ;;
-        *) io_error "unsupported family: $_VERIFY_FAMILY"; return 1 ;;
+    rpm | deb | arch) ;;
+    *)
+        io_error "unsupported family: $_VERIFY_FAMILY"
+        return 1
+        ;;
     esac
-    ids="$(_verify_resolve "$root")" || return 1
+    id_list="$(_verify_resolve "$root")" || return 1
     status_reset
     _verify_remote
     while IFS= read -r id; do
@@ -419,7 +422,7 @@ verify_run() {
         fi
         dir="$_VERIFY_MODULES_DIR/$id"
         _verify_one "$dir" "$id"
-    done <<<"$ids"
+    done <<<"$id_list"
     status_report "verify" "verify" "or re-run install for them"
     status_rc
 }

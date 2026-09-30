@@ -100,16 +100,16 @@ _check_pkgmgr() {
 
 _check_privileges() {
     local euid="${FS_EUID:-$EUID}"
-    if (( euid == 0 )); then
+    if ((euid == 0)); then
         _check_row "$_CHECK_PASS" "privileges" "running as root (euid 0); no sudo needed"
         return 0
     fi
-    if (( FS_DRY_RUN == 1 )); then
+    if ((FS_DRY_RUN == 1)); then
         _check_row "$_CHECK_WARN" "privileges" "skipped (dry run probes nothing)"
         return 0
     fi
     sudo_detect
-    if (( FS_SUDO_AVAILABLE == 1 )); then
+    if ((FS_SUDO_AVAILABLE == 1)); then
         _check_row "$_CHECK_PASS" "privileges" "non-root with passwordless sudo"
     elif command -v sudo >/dev/null 2>&1; then
         _check_row "$_CHECK_WARN" "privileges" "non-root; sudo needs a password, so unattended runs will prompt"
@@ -141,9 +141,9 @@ _check_http_client() {
 _check_probe_url() {
     local url="$1" client="$2" tmo="$3"
     case "$client" in
-        curl) curl -fsS -I -o /dev/null --max-time "$tmo" -- "$url" >/dev/null 2>&1 ;;
-        wget) wget -q --spider --timeout="$tmo" -- "$url" >/dev/null 2>&1 ;;
-        *) return 2 ;;
+    curl) curl -fsS -I -o /dev/null --max-time "$tmo" -- "$url" >/dev/null 2>&1 ;;
+    wget) wget -q --spider --timeout="$tmo" -- "$url" >/dev/null 2>&1 ;;
+    *) return 2 ;;
     esac
 }
 
@@ -159,7 +159,7 @@ _check_net_one() {
 
 _check_network() {
     local client tmo=""
-    if (( FS_DRY_RUN == 1 )); then
+    if ((FS_DRY_RUN == 1)); then
         _check_row "$_CHECK_WARN" "network" "skipped (dry run probes nothing)"
         return 0
     fi
@@ -169,7 +169,7 @@ _check_network() {
         return 0
     fi
     tmo="${FS_CHECK_NET_TIMEOUT:-5}"
-    if [[ ! "$tmo" =~ ^[0-9]+$ ]] || (( tmo < 1 )); then
+    if [[ ! "$tmo" =~ ^[0-9]+$ ]] || ((tmo < 1)); then
         tmo=5
     fi
     _check_net_one "flathub" "https://dl.flathub.org/repo/flathub.flatpakrepo" "$client" "$tmo"
@@ -179,7 +179,7 @@ _check_network() {
 
 _check_disk() {
     local want="${FS_CHECK_MIN_FREE_MB:-2048}" free=""
-    if [[ ! "$want" =~ ^[0-9]+$ ]] || (( want < 1 )); then
+    if [[ ! "$want" =~ ^[0-9]+$ ]] || ((want < 1)); then
         want=2048
     fi
     free="$(df -Pm / 2>/dev/null | awk 'NR==2 {print $4}')"
@@ -187,7 +187,7 @@ _check_disk() {
         _check_row "$_CHECK_WARN" "disk" "cannot determine free space on /"
         return 0
     fi
-    if (( free >= want )); then
+    if ((free >= want)); then
         _check_row "$_CHECK_PASS" "disk" "$free MB free on / (need $want MB)"
     else
         _check_row "$_CHECK_WARN" "disk" "$free MB free on / (want $want MB); installs may fail"
@@ -234,7 +234,7 @@ _check_installed() {
             n=$((n + 1))
         fi
     done
-    if (( n == 0 )); then
+    if ((n == 0)); then
         _check_row "$_CHECK_PASS" "modules" "none recorded as installed yet"
     else
         _check_row "$_CHECK_PASS" "modules" "$n recorded as installed: ${done_ids[*]}"

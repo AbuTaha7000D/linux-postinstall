@@ -227,7 +227,7 @@ _export_block() {
         return 1
     }
     _fs_locate lines "# BEGIN fedora-setup $name" "# END fedora-setup $name"
-    if (( _FS_BC > 0 || _FS_EC > 0 )); then
+    if ((_FS_BC > 0 || _FS_EC > 0)); then
         _fs_locate_ok || {
             io_warn "export: malformed managed block ($name) in $path; skipping"
             return 1
@@ -237,7 +237,7 @@ _export_block() {
         for ((i = _FS_B + 1; i < _FS_E; i++)); do
             mid+=("${lines[i]}")
         done
-        if (( ${#mid[@]} > 0 )); then
+        if ((${#mid[@]} > 0)); then
             body="$(printf '%s\n' "${mid[@]}")"
         fi
     fi
@@ -282,7 +282,7 @@ _export_mkdir() {
 
 _export_write() {
     local path="${1:-}" body="${2:-}" tmp="" dir=""
-    if (( $# < 2 )); then
+    if (($# < 2)); then
         io_error "_export_write requires a path and a body"
         return 1
     fi
@@ -325,7 +325,7 @@ _export_gnome() {
     else
         io_info "export: gsettings snapshot skipped (not a GNOME session)"
     fi
-    if (( gnome_ok == 1 )); then
+    if ((gnome_ok == 1)); then
         for entry in ${_EXPORT_GSETTINGS[@]+"${_EXPORT_GSETTINGS[@]}"}; do
             schema="${entry%%	*}"
             key="${entry#*	}"
@@ -340,13 +340,13 @@ _export_gnome() {
             body="${body:+$body
 }${schema}	${key}	${value}"
         done
-        if (( rc != 0 )); then
+        if ((rc != 0)); then
             io_warn "export: some managed gsettings keys could not be read; the snapshot is partial"
         fi
     fi
     _export_write "$outdir/state/gsettings.list" "$body" || return 1
     ids=""
-    if (( gnome_ok == 1 )); then
+    if ((gnome_ok == 1)); then
         if gnome_extensions_available; then
             ids="$(gnome_extensions_list --enabled)" || ids=""
             if [[ -z "$ids" ]]; then
@@ -388,7 +388,11 @@ _export_fonts() {
         FS_FONTS_DIR="$fonts_dir"
         export FS_FONTS_DIR
         source "$moddir/fonts/hooks.sh" || exit 1
-        label=""; asset=""; ver=""; marker=""; line=""
+        label=""
+        asset=""
+        ver=""
+        marker=""
+        line=""
         while IFS= read -r line || [[ -n "$line" ]]; do
             [[ -n "$line" ]] || continue
             _run_nerd_entry "$line" || continue
@@ -413,21 +417,21 @@ _export_files() {
     local outdir="${1:-}" name="" path="" body="" index="" line=""
     while IFS=$'\t' read -r name path; do
         [[ -n "$name" && -n "$path" ]] || continue
-        if (( FS_DRY_RUN == 1 )); then
+        if ((FS_DRY_RUN == 1)); then
             body=""
             io_info "would write: $outdir/files/$name"
         elif ! body="$(_export_block "$path" "$name")"; then
             io_info "export: no managed block '$name' in $path"
             continue
         fi
-        if (( FS_DRY_RUN != 1 )); then
+        if ((FS_DRY_RUN != 1)); then
             _export_write "$outdir/files/$name" "$body" || return 1
         fi
         line="${name}	$(_export_rel "$path")"
         index="${index:+$index
 }${line}"
     done < <(_export_managed_paths)
-    if (( FS_DRY_RUN == 1 )); then
+    if ((FS_DRY_RUN == 1)); then
         io_info "would write: $outdir/files/index"
         return 0
     fi
@@ -436,7 +440,7 @@ _export_files() {
 }
 
 export_run() {
-    if (( $# < 6 )); then
+    if (($# < 6)); then
         io_error "export_run requires root, outdir, family, profile, modules_dir, profiles_dir"
         return 1
     fi
@@ -457,7 +461,7 @@ export_run() {
     if [[ -z "$ids" ]]; then
         io_warn "export: profile '$profile' resolves to no modules; the tree will be empty"
     fi
-    if (( FS_DRY_RUN != 1 )); then
+    if ((FS_DRY_RUN != 1)); then
         if [[ -e "$outdir" && ! -d "$outdir" ]]; then
             io_error "export: output path exists and is not a directory: $outdir"
             return 1
@@ -467,7 +471,7 @@ export_run() {
             return 1
         fi
     fi
-    if (( FS_DRY_RUN != 1 )); then
+    if ((FS_DRY_RUN != 1)); then
         _export_mkdir "$outdir" || return 1
         rm -f -- "$outdir/export.meta" || return 1
     fi
@@ -476,7 +480,7 @@ export_run() {
         dir="$modules_dir/$id"
         module_validate "$dir" "$family" || return 1
         pkgs="$(list_packages "$dir" "$family")" || return 1
-        if (( FS_DRY_RUN == 1 )); then
+        if ((FS_DRY_RUN == 1)); then
             io_info "would write: $outdir/manifests/$id.list ($(printf '%s\n' "$pkgs" | grep -c . || true) packages)"
             io_info "would write: $outdir/manifests/$id.flatpaks.list"
         else
@@ -484,14 +488,14 @@ export_run() {
             apps="$(list_flatpaks "$dir")" || return 1
             _export_write "$outdir/manifests/$id.flatpaks.list" "$apps" || return 1
         fi
-        n=$(( n + 1 ))
+        n=$((n + 1))
     done <<<"$ids"
     meta="format=$_EXPORT_FORMAT
 fs_version=${FS_VERSION:-unknown}
 family=$family
 profile=$profile
 modules=$(printf '%s' "$ids" | tr '\n' ',')"
-    if (( FS_DRY_RUN == 1 )); then
+    if ((FS_DRY_RUN == 1)); then
         io_info "would write: $outdir/export.meta"
         io_info "would write: $outdir/$profile.conf"
         io_info "would write: $outdir/state/gsettings.list"

@@ -74,7 +74,7 @@ _run_exec() {
 run_cmd() {
     local label="" stop=0 IFS=' '
     local -a cmd=()
-    if (( $# == 0 )); then
+    if (($# == 0)); then
         io_error "run_cmd requires a label"
         return 1
     fi
@@ -92,7 +92,7 @@ run_cmd() {
         io_error "run_cmd requires a label"
         return 1
     fi
-    if (( ${#cmd[@]} == 0 )); then
+    if ((${#cmd[@]} == 0)); then
         io_error "run_cmd requires a command for '$label'"
         return 1
     fi
@@ -100,33 +100,33 @@ run_cmd() {
         io_error "run_cmd requires a non-empty command for '$label'"
         return 1
     fi
-    if (( FS_DRY_RUN == 1 )); then
+    if ((FS_DRY_RUN == 1)); then
         printf '# would run: %s\n' "$(_run_render "${cmd[@]}")"
         return 0
     fi
     local logfile="${FS_LOG_FILE:-}"
     local rc=0
     FS_LOG_INFRA=0
-    if [[ -n "$logfile" && ( ! -f "$logfile" || ! -w "$logfile" ) ]]; then
+    if [[ -n "$logfile" && (! -f "$logfile" || ! -w "$logfile") ]]; then
         FS_LOG_INFRA=1
         _run_err "log file not usable: $logfile"
         return 1
     fi
-    if (( FS_VERBOSE == 1 )); then
+    if ((FS_VERBOSE == 1)); then
         io_info "run: $label :: $(_run_render "${cmd[@]}")"
     else
         io_debug "run: $label :: $(_run_render "${cmd[@]}")"
     fi
     _run_exec "$logfile" "${cmd[@]}" || rc=$?
-    if (( FS_LOG_INFRA == 1 )); then
+    if ((FS_LOG_INFRA == 1)); then
         return 1
     fi
-    if (( rc == 0 )); then
+    if ((rc == 0)); then
         io_debug "ok: $label"
         return 0
     fi
     io_error "command failed (rc=$rc): $label :: $(_run_render "${cmd[@]}")"
-    if (( stop == 1 )) || [[ "$label" == *\[DESTROY\]* ]]; then
+    if ((stop == 1)) || [[ "$label" == *\[DESTROY\]* ]]; then
         return 1
     fi
     return 0
@@ -135,7 +135,7 @@ run_cmd() {
 run_sudo() {
     local label="" stop=0 IFS=' '
     local -a args=()
-    if (( $# == 0 )); then
+    if (($# == 0)); then
         io_error "run_sudo requires a label"
         return 1
     fi
@@ -153,7 +153,7 @@ run_sudo() {
         io_error "run_sudo requires a label"
         return 1
     fi
-    if (( ${#args[@]} == 0 )); then
+    if ((${#args[@]} == 0)); then
         io_error "run_sudo requires a command for '$label'"
         return 1
     fi
@@ -161,8 +161,8 @@ run_sudo() {
         io_error "run_sudo requires a non-empty command for '$label'"
         return 1
     fi
-    if (( FS_DRY_RUN == 1 )); then
-        if (( FS_RUNNING_AS_ROOT == 1 )); then
+    if ((FS_DRY_RUN == 1)); then
+        if ((FS_RUNNING_AS_ROOT == 1)); then
             printf '# would run: %s\n' "$(_run_render "${args[@]}")"
         else
             printf '# would run: %s\n' "$(_run_render sudo "${args[@]}")"
@@ -170,17 +170,17 @@ run_sudo() {
         return 0
     fi
     local rv=0
-    if (( FS_RUNNING_AS_ROOT == 1 )); then
-        if (( stop == 1 )); then
+    if ((FS_RUNNING_AS_ROOT == 1)); then
+        if ((stop == 1)); then
             run_cmd "$label" --stop -- "${args[@]}" || rv=$?
         else
             run_cmd "$label" -- "${args[@]}" || rv=$?
         fi
-    elif (( FS_SUDO_AVAILABLE != 1 )); then
+    elif ((FS_SUDO_AVAILABLE != 1)); then
         io_error "run_sudo: sudo unavailable; cannot escalate: $(_run_render "${args[@]}")"
         return 1
     else
-        if (( stop == 1 )); then
+        if ((stop == 1)); then
             run_cmd "$label" --stop -- sudo -- "${args[@]}" || rv=$?
         else
             run_cmd "$label" -- sudo -- "${args[@]}" || rv=$?

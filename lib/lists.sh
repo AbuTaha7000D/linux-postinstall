@@ -88,7 +88,7 @@ list_parse() {
         line="${line#"${line%%[![:space:]]*}"}"
         line="${line%"${line##*[![:space:]]}"}"
         case "$line" in
-            "" | \#*) continue ;;
+        "" | \#*) continue ;;
         esac
         if [[ -z "${seen[$line]:-}" ]]; then
             seen[$line]=1
@@ -108,7 +108,7 @@ _list_manifest_file() {
     fi
     id="${dir##*/}"
     case "$id" in
-        ''|.|..|*/*) return 1 ;;
+    '' | . | .. | */*) return 1 ;;
     esac
     path="$FS_MANIFEST/manifests/$id.$kind"
     if [[ -L "$path" ]]; then
@@ -128,7 +128,7 @@ _list_manifest_read() {
         return 1
     fi
     mfile="$(_list_manifest_file "$dir" "$kind")" || rc=$?
-    if (( rc == 2 )); then
+    if ((rc == 2)); then
         return 1
     fi
     if [[ -z "$mfile" ]]; then

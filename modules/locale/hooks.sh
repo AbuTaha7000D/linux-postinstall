@@ -75,7 +75,7 @@ _locale_ok_value() {
     local v="${1:-}"
     [[ -n "$v" ]] || return 1
     case "$v" in
-        *[[:space:]]* | *[\"\'\\]* | *"="* | *[[:cntrl:]]*) return 1 ;;
+    *[[:space:]]* | *[\"\'\\]* | *"="* | *[[:cntrl:]]*) return 1 ;;
     esac
     return 0
 }
@@ -84,27 +84,27 @@ _locale_current() {
     local raw="" line="" rc=0
     rc=0
     raw="$(localectl status 2>/dev/null)" || rc=$?
-    if (( rc != 0 )); then
+    if ((rc != 0)); then
         return 1
     fi
     while IFS= read -r line || [[ -n "$line" ]]; do
         case "$line" in
-            *"System Locale:"*)
-                line="${line#*System Locale:}"
-                line="${line#"${line%%[![:space:]]*}"}"
-                line="${line%"${line##*[![:space:]]}"}"
-                line="${line#LANG=}"
-                line="${line#\"}"
-                line="${line%\"}"
-                if [[ -z "$line" ]]; then
-                    return 0
-                fi
-                if ! _locale_ok_value "$line"; then
-                    return 1
-                fi
-                printf '%s' "$line"
+        *"System Locale:"*)
+            line="${line#*System Locale:}"
+            line="${line#"${line%%[![:space:]]*}"}"
+            line="${line%"${line##*[![:space:]]}"}"
+            line="${line#LANG=}"
+            line="${line#\"}"
+            line="${line%\"}"
+            if [[ -z "$line" ]]; then
                 return 0
-                ;;
+            fi
+            if ! _locale_ok_value "$line"; then
+                return 1
+            fi
+            printf '%s' "$line"
+            return 0
+            ;;
         esac
     done <<<"$raw"
     return 0
@@ -117,7 +117,7 @@ _locale_known() {
     fi
     rc=0
     raw="$(localectl list-locales 2>/dev/null)" || rc=$?
-    if (( rc != 0 )); then
+    if ((rc != 0)); then
         return 0
     fi
     if printf '%s\n' "$raw" | grep -qxF "$want"; then
@@ -128,7 +128,7 @@ _locale_known() {
 
 _locale_revert() {
     local rec="" prior="" cur="" rc=0
-    if (( FS_DRY_RUN == 1 )); then
+    if ((FS_DRY_RUN == 1)); then
         run_sudo "locale: restore previous LANG [DESTROY]" -- \
             localectl set-locale "LANG=<recorded>"
         io_info "locale: dry-run state is not read, so the recorded value is not shown"
@@ -136,7 +136,7 @@ _locale_revert() {
     fi
     rc=0
     rec="$(state_note_get "$_LOCALE_NOTE_KEY")" || rc=$?
-    if (( rc != 0 )); then
+    if ((rc != 0)); then
         io_info "locale: no recorded change; nothing to revert"
         return 0
     fi
@@ -157,7 +157,7 @@ _locale_revert() {
     rc=0
     run_sudo "locale: restore previous LANG [DESTROY]" --stop -- \
         localectl set-locale "LANG=$prior" || rc=$?
-    if (( rc != 0 )); then
+    if ((rc != 0)); then
         return 1
     fi
     cur="$(_locale_current)" || {
@@ -179,7 +179,7 @@ _locale_apply() {
         io_error "locale: invalid locale value: $want"
         return 1
     fi
-    if (( FS_DRY_RUN == 1 )); then
+    if ((FS_DRY_RUN == 1)); then
         run_sudo "locale: set system LANG [DESTROY]" -- \
             localectl set-locale "LANG=$want"
         io_info "locale: the readback check cannot run in dry-run (no probing)"
@@ -213,7 +213,7 @@ _locale_apply() {
     rc=0
     run_sudo "locale: set system LANG [DESTROY]" --stop -- \
         localectl set-locale "LANG=$want" || rc=$?
-    if (( rc != 0 )); then
+    if ((rc != 0)); then
         return 1
     fi
     cur="$(_locale_current)" || {
@@ -252,7 +252,7 @@ verify() {
     local want="${1:-}" cur="" root
     root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)" || return 1
     declare -F io_error >/dev/null 2>&1 || source "$root/lib/io.sh"
-    if (( FS_DRY_RUN == 1 )); then
+    if ((FS_DRY_RUN == 1)); then
         io_info "locale: verify skipped in dry-run (no probing)"
         return 0
     fi

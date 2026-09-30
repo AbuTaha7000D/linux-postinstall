@@ -41,10 +41,10 @@ _run_nerd_entry() {
     ver="${rest#*:}"
     [[ -n "$label" && -n "$asset" && -n "$ver" ]] || return 1
     case "$asset" in
-        *[!A-Za-z0-9._-]* | "") return 1 ;;
+    *[!A-Za-z0-9._-]* | "") return 1 ;;
     esac
     case "$ver" in
-        *[!A-Za-z0-9._-]* | "") return 1 ;;
+    *[!A-Za-z0-9._-]* | "") return 1 ;;
     esac
 }
 
@@ -83,7 +83,7 @@ run() {
     while IFS= read -r line || [[ -n "$line" ]]; do
         [[ -n "$line" ]] && entries+=("$line")
     done <<<"$entries_out"
-    if (( FS_DRY_RUN == 1 )); then
+    if ((FS_DRY_RUN == 1)); then
         local label="" asset="" ver="" rest="" planned=0
         for line in "${entries[@]}"; do
             if ! _run_nerd_entry "$line"; then
@@ -92,9 +92,9 @@ run() {
             fi
             printf '# would run: download https://github.com/ryanoasis/nerd-fonts/releases/download/%s/%s.zip\n' "$ver" "$asset"
             printf '# would run: verify sha256 and extract %s into %s\n' "$asset" "$fonts_dir"
-            planned=$(( planned + 1 ))
+            planned=$((planned + 1))
         done
-        if (( planned > 0 )); then
+        if ((planned > 0)); then
             printf '# would run: fc-cache (incremental) once per changed set\n'
         fi
         return 0
@@ -155,9 +155,9 @@ run() {
             curl_url="https://github.com/ryanoasis/nerd-fonts/releases/download/$ver/${asset}.zip"
             run_cmd "nerd font download" --stop "curl" "-fsSL" "--proto" "=https" \
                 "--max-time" "300" "-o" "$tmp_zip" "$curl_url" || {
-                    rm -f -- "$tmp_zip" 2>/dev/null || :
-                    return 1
-                }
+                rm -f -- "$tmp_zip" 2>/dev/null || :
+                return 1
+            }
         fi
         if [[ -f "$tmp_sha" ]]; then
             want="$(cut -d' ' -f1 -- "$tmp_sha" 2>/dev/null)" || {
@@ -211,9 +211,9 @@ run() {
             return 1
         fi
         io_info "installed nerd font: $label ($ver)"
-        installed_new=$(( installed_new + 1 ))
+        installed_new=$((installed_new + 1))
     done
-    if (( installed_new > 0 )); then
+    if ((installed_new > 0)); then
         if command -v fc-cache >/dev/null 2>&1; then
             run_cmd "font cache refresh" --stop "fc-cache" "$fonts_dir" || {
                 io_error "fc-cache failed"
@@ -239,7 +239,7 @@ verify() {
     root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)" || return 1
     declare -F io_error >/dev/null 2>&1 || source "$root/lib/io.sh"
     declare -F list_parse >/dev/null 2>&1 || source "$root/lib/lists.sh"
-    if (( ${FS_DRY_RUN:-0} == 1 )); then
+    if ((${FS_DRY_RUN:-0} == 1)); then
         io_info "fonts: verify skipped in dry-run (no probing)"
         return 0
     fi
@@ -302,7 +302,7 @@ verify() {
         fi
         checked=$((checked + 1))
     done
-    if (( rc != 0 )); then
+    if ((rc != 0)); then
         return 1
     fi
     io_info "fonts: verify passed (${checked} nerd font set(s) installed in $fonts_dir)"

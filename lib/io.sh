@@ -52,18 +52,18 @@ _io_log_usable() {
 _io_ansi() {
     local name="$1"
     case "$name" in
-        red)    printf '%s' $'\033[31m' ;;
-        yellow) printf '%s' $'\033[33m' ;;
-        green)  printf '%s' $'\033[32m' ;;
-        dim)    printf '%s' $'\033[2m' ;;
-        bold)   printf '%s' $'\033[1m' ;;
+    red) printf '%s' $'\033[31m' ;;
+    yellow) printf '%s' $'\033[33m' ;;
+    green) printf '%s' $'\033[32m' ;;
+    dim) printf '%s' $'\033[2m' ;;
+    bold) printf '%s' $'\033[1m' ;;
     esac
 }
 
 _io_logline() {
     local msg="$1"
     if [[ -n "$FS_LOG_FILE" ]]; then
-        if [[ -e "$FS_LOG_FILE" && ( ! -f "$FS_LOG_FILE" || ! -w "$FS_LOG_FILE" ) ]]; then
+        if [[ -e "$FS_LOG_FILE" && (! -f "$FS_LOG_FILE" || ! -w "$FS_LOG_FILE") ]]; then
             return 0
         fi
         printf '%s\n' "$msg" 2>/dev/null >>"$FS_LOG_FILE" || true
@@ -79,7 +79,7 @@ _io_log() {
     if [[ "$level" == "debug" && "$FS_DEBUG" != "1" ]]; then
         return 0
     fi
-    if (( FS_NO_COLOR == 0 )) && _io_fd_tty "$fd"; then
+    if ((FS_NO_COLOR == 0)) && _io_fd_tty "$fd"; then
         col="$(_io_ansi "$color")"
         rst=$'\033[0m'
     fi
@@ -101,7 +101,7 @@ io_init() {
             [[ -z "$parent" ]] && parent="/"
         fi
         mkdir -p -- "$parent" 2>/dev/null || log_ok=0
-        if [[ -e "$FS_LOG_FILE" && ( ! -f "$FS_LOG_FILE" || ! -w "$FS_LOG_FILE" ) ]]; then
+        if [[ -e "$FS_LOG_FILE" && (! -f "$FS_LOG_FILE" || ! -w "$FS_LOG_FILE") ]]; then
             log_ok=0
         else
             {
@@ -110,7 +110,7 @@ io_init() {
                 printf '[%s] io initialized\n' "$ts"
             } 2>/dev/null >>"$FS_LOG_FILE" || log_ok=0
         fi
-        (( log_ok == 1 )) || printf 'warning: log file unusable: %s\n' "$FS_LOG_FILE" >&2 2>/dev/null || true
+        ((log_ok == 1)) || printf 'warning: log file unusable: %s\n' "$FS_LOG_FILE" >&2 2>/dev/null || true
     fi
     IO_INITIALIZED=1
     return 0
@@ -135,7 +135,7 @@ io_debug() {
 io_alert() {
     local msg="$*" col="" rst=""
     _io_logline "!! $msg"
-    if (( FS_NO_COLOR == 0 )) && _io_fd_tty 1; then
+    if ((FS_NO_COLOR == 0)) && _io_fd_tty 1; then
         col="$(_io_ansi red)$(_io_ansi bold)"
         rst=$'\033[0m'
     fi

@@ -143,7 +143,7 @@ gnome_require_capable() {
 _gnome_ok_id() {
     local v="$1"
     case "$v" in
-        *[!A-Za-z0-9._-]*|"") return 1 ;;
+    *[!A-Za-z0-9._-]* | "") return 1 ;;
     esac
     return 0
 }
@@ -158,11 +158,11 @@ _gnome_ok_schema() {
     _gnome_ok_id "$head" || return 1
     rest="${s#*:}"
     case "$rest" in
-        /*) ;;
-        *) return 1 ;;
+    /*) ;;
+    *) return 1 ;;
     esac
     case "$rest" in
-        *"//"*) return 1 ;;
+    *"//"*) return 1 ;;
     esac
     t="${rest#/}"
     t="${t%/}"
@@ -172,7 +172,7 @@ _gnome_ok_schema() {
     while [[ -n "$t" ]]; do
         seg="${t%%/*}"
         case "$seg" in
-            ""|"."|".."|*[!A-Za-z0-9._-]*) return 1 ;;
+        "" | "." | ".." | *[!A-Za-z0-9._-]*) return 1 ;;
         esac
         if [[ "$t" != */* ]]; then
             break
@@ -185,7 +185,7 @@ _gnome_ok_schema() {
 _gnome_ok_ele() {
     local e="$1" LC_ALL=C tab=$'\t' nl=$'\n' cr=$'\r'
     case "$e" in
-        ""|*[\'\\]*|*" "*|*"$tab"*|*"$nl"*|*"$cr"*|*[!" "-\~]*) return 1 ;;
+    "" | *[\'\\]* | *\"* | *" "* | *"$tab"* | *"$nl"* | *"$cr"* | *[![:print:]]*) return 1 ;;
     esac
     return 0
 }
@@ -193,14 +193,14 @@ _gnome_ok_ele() {
 _gnome_ok_val() {
     local v="$1" LC_ALL=C tab=$'\t' nl=$'\n' cr=$'\r'
     case "$v" in
-        ""|*"$tab"*|*"$nl"*|*"$cr"*|*[!" "-\~]*) return 1 ;;
+    "" | *"$tab"* | *"$nl"* | *"$cr"* | *[!" "-\~]*) return 1 ;;
     esac
     return 0
 }
 
 _gnome_isspace() {
     case "$1" in
-        ' '|$'\t'|$'\n'|$'\r') return 0 ;;
+    ' ' | $'\t' | $'\n' | $'\r') return 0 ;;
     esac
     return 1
 }
@@ -219,37 +219,37 @@ gnome_strv_parse() {
     fi
     if [[ "${s:i:1}" == "@" ]]; then
         i=1
-        while (( i < n )); do
+        while ((i < n)); do
             c="${s:i:1}"
             case "$c" in
-                '['|' '|$'\t') break ;;
-                *) i=$((i + 1)) ;;
+            '[' | ' ' | $'\t') break ;;
+            *) i=$((i + 1)) ;;
             esac
         done
     fi
-    while (( i < n )) && _gnome_isspace "${s:i:1}"; do
+    while ((i < n)) && _gnome_isspace "${s:i:1}"; do
         i=$((i + 1))
     done
-    if (( i >= n )) || [[ "${s:i:1}" != "[" ]]; then
+    if ((i >= n)) || [[ "${s:i:1}" != "[" ]]; then
         _gnome_parse_fail "$value"
         return 1
     fi
     i=$((i + 1))
-    while (( i < n )); do
-        while (( i < n )) && _gnome_isspace "${s:i:1}"; do
+    while ((i < n)); do
+        while ((i < n)) && _gnome_isspace "${s:i:1}"; do
             i=$((i + 1))
         done
-        if (( i >= n )); then
+        if ((i >= n)); then
             _gnome_parse_fail "$value"
             return 1
         fi
         c="${s:i:1}"
         if [[ "$c" == "]" ]]; then
             i=$((i + 1))
-            while (( i < n )) && _gnome_isspace "${s:i:1}"; do
+            while ((i < n)) && _gnome_isspace "${s:i:1}"; do
                 i=$((i + 1))
             done
-            if (( i < n )); then
+            if ((i < n)); then
                 _gnome_parse_fail "$value"
                 return 1
             fi
@@ -259,7 +259,7 @@ gnome_strv_parse() {
         if [[ "$c" == "'" ]]; then
             i=$((i + 1))
             seen=0
-            while (( i < n )); do
+            while ((i < n)); do
                 c="${s:i:1}"
                 if [[ "$c" == "'" ]]; then
                     i=$((i + 1))
@@ -268,7 +268,7 @@ gnome_strv_parse() {
                 fi
                 if [[ "$c" == "\\" ]]; then
                     i=$((i + 1))
-                    if (( i >= n )); then
+                    if ((i >= n)); then
                         _gnome_parse_fail "$value"
                         return 1
                     fi
@@ -277,22 +277,31 @@ gnome_strv_parse() {
                     continue
                 fi
                 case "$c" in
-                    $'\t'|$'\n'|$'\r') _gnome_parse_fail "$value"; return 1 ;;
-                    *[!" "-\~]*) _gnome_parse_fail "$value"; return 1 ;;
+                $'\t' | $'\n' | $'\r')
+                    _gnome_parse_fail "$value"
+                    return 1
+                    ;;
+                *[!" "-\~]*)
+                    _gnome_parse_fail "$value"
+                    return 1
+                    ;;
                 esac
                 el+="$c"
                 i=$((i + 1))
             done
-            if (( seen != 1 )); then
+            if ((seen != 1)); then
                 _gnome_parse_fail "$value"
                 return 1
             fi
         else
-            while (( i < n )); do
+            while ((i < n)); do
                 c="${s:i:1}"
                 case "$c" in
-                    ','|']'|' '|$'\t'|$'\n'|$'\r') break ;;
-                    *) el+="$c"; i=$((i + 1)) ;;
+                ',' | ']' | ' ' | $'\t' | $'\n' | $'\r') break ;;
+                *)
+                    el+="$c"
+                    i=$((i + 1))
+                    ;;
                 esac
             done
         fi
@@ -301,26 +310,31 @@ gnome_strv_parse() {
             return 1
         fi
         printf '%s\n' "$el"
-        while (( i < n )) && _gnome_isspace "${s:i:1}"; do
+        while ((i < n)) && _gnome_isspace "${s:i:1}"; do
             i=$((i + 1))
         done
-        if (( i >= n )); then
+        if ((i >= n)); then
             _gnome_parse_fail "$value"
             return 1
         fi
         c="${s:i:1}"
         case "$c" in
-            ',') i=$((i + 1)) ;;
-            ']') i=$((i + 1))
-                 while (( i < n )) && _gnome_isspace "${s:i:1}"; do
-                     i=$((i + 1))
-                 done
-                 if (( i < n )); then
-                     _gnome_parse_fail "$value"
-                     return 1
-                 fi
-                 return 0 ;;
-            *) _gnome_parse_fail "$value"; return 1 ;;
+        ',') i=$((i + 1)) ;;
+        ']')
+            i=$((i + 1))
+            while ((i < n)) && _gnome_isspace "${s:i:1}"; do
+                i=$((i + 1))
+            done
+            if ((i < n)); then
+                _gnome_parse_fail "$value"
+                return 1
+            fi
+            return 0
+            ;;
+        *)
+            _gnome_parse_fail "$value"
+            return 1
+            ;;
         esac
     done
     _gnome_parse_fail "$value"
@@ -329,7 +343,7 @@ gnome_strv_parse() {
 
 gnome_strv_build() {
     local -a els=("$@")
-    if (( ${#els[@]} == 0 )); then
+    if ((${#els[@]} == 0)); then
         printf '@as []\n'
         return 0
     fi
@@ -346,7 +360,7 @@ gnome_strv_build() {
     fi
     printf '['
     for el in "${els[@]}"; do
-        if (( first == 1 )); then
+        if ((first == 1)); then
             first=0
         else
             printf ', '
@@ -363,11 +377,12 @@ gnome_strv_merge() {
     if [[ -n "$current" ]]; then
         rc=0
         out="$(gnome_strv_parse "$current")" || rc=$?
-        if (( rc != 0 )); then
+        if ((rc != 0)); then
             return 1
         fi
         if [[ -n "$out" ]]; then
             local IFS=$'\n'
+            # shellcheck disable=SC2206  # intentional: word-splits parsed output into an array
             merged=($out)
         fi
     fi
@@ -378,7 +393,7 @@ gnome_strv_merge() {
             return 1
         fi
         seen=0
-        if (( ${#merged[@]} > 0 )); then
+        if ((${#merged[@]} > 0)); then
             for j in "${!merged[@]}"; do
                 if [[ "${merged[$j]}" == "$new" ]]; then
                     seen=1
@@ -386,7 +401,7 @@ gnome_strv_merge() {
                 fi
             done
         fi
-        if (( seen == 0 )); then
+        if ((seen == 0)); then
             merged+=("$new")
         fi
     done
@@ -404,7 +419,7 @@ gnome_gsettings_get() {
         io_error "gnome_gsettings_get: invalid key: ${key:-<empty>}"
         return 1
     fi
-    if (( FS_DRY_RUN == 1 )); then
+    if ((FS_DRY_RUN == 1)); then
         io_error "gnome_gsettings_get: cannot probe gsettings in dry-run ($schema $key)"
         return 1
     fi
@@ -415,7 +430,7 @@ gnome_gsettings_get() {
     bin="$(command -v gsettings)"
     rc=0
     out="$("$bin" get "$schema" "$key" 2>/dev/null)" || rc=$?
-    if (( rc != 0 )); then
+    if ((rc != 0)); then
         io_error "gnome_gsettings_get: gsettings get failed ($schema $key)"
         return 1
     fi
@@ -437,10 +452,10 @@ gnome_gsettings_set() {
         io_error "gnome_gsettings_set: invalid value for $key"
         return 1
     fi
-    if (( FS_DRY_RUN == 0 )); then
+    if ((FS_DRY_RUN == 0)); then
         rc=0
         cur="$(gnome_gsettings_get "$schema" "$key")" || rc=$?
-        if (( rc != 0 )); then
+        if ((rc != 0)); then
             return 1
         fi
         if [[ "$cur" == "$value" || "$cur" == "'$value'" ]]; then
@@ -454,41 +469,41 @@ gnome_gsettings_set() {
 }
 
 gnome_strv_merge_set() {
-    local schema="${1:-}" key="${2:-}" current="" merged="" rc=0
+    local schema="${1:-}" key="${2:-}" current="" result="" rc=0
     shift 2 || true
-    if (( $# == 0 )); then
+    if (($# == 0)); then
         io_error "gnome_strv_merge_set requires at least one new element"
         return 1
     fi
-    if (( FS_DRY_RUN == 1 )); then
+    if ((FS_DRY_RUN == 1)); then
         rc=0
-        merged="$(gnome_strv_build "$@")" || rc=$?
-        if (( rc != 0 )); then
+        result="$(gnome_strv_build "$@")" || rc=$?
+        if ((rc != 0)); then
             return 1
         fi
         rc=0
-        gnome_gsettings_set "$schema" "$key" "$merged" || rc=$?
+        gnome_gsettings_set "$schema" "$key" "$result" || rc=$?
         return "$rc"
     fi
     rc=0
     current="$(gnome_gsettings_get "$schema" "$key")" || rc=$?
-    if (( rc != 0 )); then
+    if ((rc != 0)); then
         return 1
     fi
     rc=0
-    merged="$(gnome_strv_merge "$current" "$@")" || rc=$?
-    if (( rc != 0 )); then
+    result="$(gnome_strv_merge "$current" "$@")" || rc=$?
+    if ((rc != 0)); then
         return 1
     fi
     rc=0
-    gnome_gsettings_set "$schema" "$key" "$merged" || rc=$?
+    gnome_gsettings_set "$schema" "$key" "$result" || rc=$?
     return "$rc"
 }
 
 gnome_custom_keybindings_merge_add() {
     local schema="org.gnome.settings-daemon.plugins.media-keys"
     local key="custom-keybindings"
-    if (( $# == 0 )); then
+    if (($# == 0)); then
         io_error "gnome_custom_keybindings_merge_add requires at least one dconf path"
         return 1
     fi
@@ -497,7 +512,7 @@ gnome_custom_keybindings_merge_add() {
 
 gnome_shell_version() {
     local bin="" out="" rc=0 version=""
-    if (( FS_DRY_RUN == 1 )); then
+    if ((FS_DRY_RUN == 1)); then
         io_error "gnome_shell_version: cannot probe gnome-shell version in dry-run"
         return 1
     fi
@@ -508,16 +523,16 @@ gnome_shell_version() {
     bin="$(command -v gnome-shell)"
     rc=0
     out="$("$bin" --version 2>/dev/null)" || rc=$?
-    if (( rc != 0 )); then
+    if ((rc != 0)); then
         io_error "gnome_shell_version: gnome-shell --version failed"
         return 1
     fi
     version="${out##* }"
     case "$version" in
-        "" | *[!0-9.]* | *..* | .* | *.)
-            io_error "gnome_shell_version: cannot parse version from: $out"
-            return 1
-            ;;
+    "" | *[!0-9.]* | *..* | .* | *.)
+        io_error "gnome_shell_version: cannot parse version from: $out"
+        return 1
+        ;;
     esac
     printf '%s\n' "$version"
     return 0
@@ -525,7 +540,7 @@ gnome_shell_version() {
 
 gnome_extensions_list() {
     local flag="${1:-}" bin="" out="" rc=0
-    if (( FS_DRY_RUN == 1 )); then
+    if ((FS_DRY_RUN == 1)); then
         io_error "gnome_extensions_list: cannot probe gnome-extensions in dry-run"
         return 1
     fi
@@ -534,11 +549,12 @@ gnome_extensions_list() {
         return 1
     fi
     case "$flag" in
-        --enabled) ;;
-        "") ;;
-        *) io_error "gnome_extensions_list: unknown flag: $flag"
-           return 1
-           ;;
+    --enabled) ;;
+    "") ;;
+    *)
+        io_error "gnome_extensions_list: unknown flag: $flag"
+        return 1
+        ;;
     esac
     bin="$(command -v gnome-extensions)"
     local -a args=("$bin" list)
@@ -547,7 +563,7 @@ gnome_extensions_list() {
     fi
     rc=0
     out="$("${args[@]}" 2>/dev/null)" || rc=$?
-    if (( rc != 0 )); then
+    if ((rc != 0)); then
         io_error "gnome_extensions_list: gnome-extensions list failed"
         return 1
     fi

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2209  # data file: MODULE_* values are strings, not commands
 # modules/fonts/module.sh - metadata for the fonts module.
 # Two halves: (1) distro font packages per family (packages.<family>.list -
 # conservative curated names; real-host presence is a P5.4/P5.7 curation
@@ -11,6 +12,6 @@
 # hermetic tests. fc-cache runs incrementally only when something changed.
 MODULE_ID=fonts
 MODULE_TITLE=Fonts
-MODULE_DESCRIPTION=Distro font packages plus pinned Nerd Fonts with sha256 verification
+MODULE_DESCRIPTION="Distro font packages plus pinned Nerd Fonts with sha256 verification"
 MODULE_RISK=low
 MODULE_DEFAULT=on

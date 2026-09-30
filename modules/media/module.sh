@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2209  # data file: MODULE_* values are strings, not commands
 # modules/media/module.sh - metadata for the media-tools module (P7.2).
 # Declarative module: OBS Studio is installed from the distro's own package
 # where the base repos carry it (packages.deb.list / packages.arch.list =
@@ -20,7 +21,7 @@
 # verify`, which talks to the pkg backend; a hook-local native query would be
 # the P5.7 NB-A trap (dispatch resolves the family backend).
 MODULE_ID=media
-MODULE_TITLE=Media tools
-MODULE_DESCRIPTION=OBS Studio + curated media flatpaks
+MODULE_TITLE="Media tools"
+MODULE_DESCRIPTION="OBS Studio + curated media flatpaks"
 MODULE_RISK=none
 MODULE_DEFAULT=on

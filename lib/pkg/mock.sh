@@ -69,7 +69,7 @@ mock_list_installed() {
 }
 
 mock_install_batch() {
-    if (( FS_DRY_RUN == 1 )); then
+    if ((FS_DRY_RUN == 1)); then
         run_cmd "mock install" "mock" "install" "$@"
         return 0
     fi
@@ -80,7 +80,7 @@ mock_install_batch() {
             missing+=("$pkg")
         fi
     done
-    if (( ${#missing[@]} == 0 )); then
+    if ((${#missing[@]} == 0)); then
         return 0
     fi
     _mock_record "mock install ${missing[*]}" || return 1
@@ -91,7 +91,7 @@ mock_install_batch() {
 }
 
 mock_update_metadata() {
-    if (( FS_DRY_RUN == 1 )); then
+    if ((FS_DRY_RUN == 1)); then
         run_cmd "mock update" "mock" "update"
         return 0
     fi
@@ -105,11 +105,14 @@ mock_install_local() {
         io_error "mock install_local requires a package file"
         return 1
     fi
-    if (( FS_DRY_RUN == 1 )); then
+    if ((FS_DRY_RUN == 1)); then
         run_cmd "mock install-local" "mock" "install-local" "$file"
         return 0
     fi
-    [[ -f "$file" ]] || { io_error "mock local package file not found: $file"; return 1; }
+    [[ -f "$file" ]] || {
+        io_error "mock local package file not found: $file"
+        return 1
+    }
     _mock_record "mock install-local $file" || return 1
     return 0
 }
@@ -124,14 +127,23 @@ mock_add_repo() {
         io_error "mock add_repo requires a repo url"
         return 1
     fi
-    [[ "$id" =~ ^[A-Za-z0-9._-]+$ ]] || { io_error "invalid mock repo id: $id"; return 1; }
-    [[ "$id" != '.' && "$id" != '..' ]] || { io_error "invalid mock repo id: $id"; return 1; }
-    [[ "$url" != *$'\n'* && "$url" != *$'\r'* ]] || { io_error "invalid mock repo url: $url"; return 1; }
+    [[ "$id" =~ ^[A-Za-z0-9._-]+$ ]] || {
+        io_error "invalid mock repo id: $id"
+        return 1
+    }
+    [[ "$id" != '.' && "$id" != '..' ]] || {
+        io_error "invalid mock repo id: $id"
+        return 1
+    }
+    [[ "$url" != *$'\n'* && "$url" != *$'\r'* ]] || {
+        io_error "invalid mock repo url: $url"
+        return 1
+    }
     local args=("add-repo" "$id" "$url")
     if [[ -n "$key" ]]; then
         args+=("$key")
     fi
-    if (( FS_DRY_RUN == 1 )); then
+    if ((FS_DRY_RUN == 1)); then
         run_cmd "mock add-repo" "mock" "${args[@]}"
         return 0
     fi

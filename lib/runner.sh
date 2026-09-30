@@ -233,7 +233,7 @@ runner_run() {
     local -A curated=()
     local -a cids=()
     local -a pkgs=() apps=()
-    if (( $# > 0 )); then
+    if (($# > 0)); then
         cids=("$@")
     else
         cids=()
@@ -253,9 +253,9 @@ runner_run() {
         risks[$sid]="$MODULE_RISK"
         io_info "module: $sid (${risks[$sid]})"
         case "${risks[$sid]}" in
-            high | destructive)
-                [[ -n "${curated[$sid]:-}" ]] || pulled+=("$sid")
-                ;;
+        high | destructive)
+            [[ -n "${curated[$sid]:-}" ]] || pulled+=("$sid")
+            ;;
         esac
         alt="$(module_flatpak_alt)" || return 1
         if [[ -n "$alt" ]]; then
@@ -275,7 +275,7 @@ runner_run() {
             done <<<"$out"
         fi
     done
-    if (( ${#pulled[@]} > 0 )); then
+    if ((${#pulled[@]} > 0)); then
         ptxt=""
         for pid in ${pulled[@]+"${pulled[@]}"}; do
             ptxt="$ptxt $pid"
@@ -284,12 +284,12 @@ runner_run() {
         io_error "name them on the command line to run them, or drop the dependency"
         return 1
     fi
-    if (( FS_DRY_RUN == 1 )); then
+    if ((FS_DRY_RUN == 1)); then
         for sid in ${ids[@]+"${ids[@]}"}; do
             case "${risks[$sid]}" in
-                high | destructive)
-                    io_alert "dry run: $sid is ${risks[$sid]}; a real run would change this system"
-                    ;;
+            high | destructive)
+                io_alert "dry run: $sid is ${risks[$sid]}; a real run would change this system"
+                ;;
             esac
         done
     fi
@@ -309,13 +309,13 @@ runner_run() {
             fi
         fi
     done
-    if (( ${#pkgs[@]} > 0 )); then
+    if ((${#pkgs[@]} > 0)); then
         plan_install "${pkgs[@]}" || {
             io_error "package batch failed"
             return 1
         }
     fi
-    if (( ${#apps[@]} > 0 )); then
+    if ((${#apps[@]} > 0)); then
         (
             FS_PKG_BACKEND=flatpak
             export FS_PKG_BACKEND
@@ -325,13 +325,13 @@ runner_run() {
             return 1
         }
     fi
-    if (( FS_DRY_RUN != 1 && ${#ids[@]} > 0 )); then
+    if ((FS_DRY_RUN != 1 && ${#ids[@]} > 0)); then
         state_init || return 1
     fi
     local rc=0
     for sid in ${ids[@]+"${ids[@]}"}; do
         dir="$modules_dir/$sid"
-        if (( FS_DRY_RUN != 1 )) && state_module_check "$sid"; then
+        if ((FS_DRY_RUN != 1)) && state_module_check "$sid"; then
             io_info "already completed: $sid"
             summary_module_skip "$sid"
             continue
@@ -345,7 +345,7 @@ runner_run() {
                 source "$dir/hooks.sh"
                 run
             ) || rc=$?
-            if (( rc != 0 )); then
+            if ((rc != 0)); then
                 io_error "module failed: $sid"
                 if [[ "${risks[$sid]:-none}" == destructive ]]; then
                     io_error "stopping run (destructive module $sid)"
@@ -355,7 +355,7 @@ runner_run() {
                 continue
             fi
         fi
-        if (( FS_DRY_RUN != 1 )); then
+        if ((FS_DRY_RUN != 1)); then
             state_module_mark "$sid" || return 1
         fi
         summary_module_ok "$sid"

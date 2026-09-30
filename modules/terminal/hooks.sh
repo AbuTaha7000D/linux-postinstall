@@ -59,25 +59,25 @@
 _term_arch() {
     local m
     case "${FS_OMP_ARCH:-}" in
-        amd64 | arm64 | arm)
-            printf '%s' "$FS_OMP_ARCH"
-            return 0
-            ;;
-        "") ;;
-        *) return 1 ;;
+    amd64 | arm64 | arm)
+        printf '%s' "$FS_OMP_ARCH"
+        return 0
+        ;;
+    "") ;;
+    *) return 1 ;;
     esac
     m="$(uname -m)"
     case "$m" in
-        x86_64) printf 'amd64' ;;
-        aarch64 | arm64) printf 'arm64' ;;
-        armv7l | armv6l | arm) printf 'arm' ;;
-        *) return 1 ;;
+    x86_64) printf 'amd64' ;;
+    aarch64 | arm64) printf 'arm64' ;;
+    armv7l | armv6l | arm) printf 'arm' ;;
+    *) return 1 ;;
     esac
 }
 
 _term_path_ok() {
     case "$1" in
-        *"'"* | *$'\n'* | *$'\r'*) return 1 ;;
+    *"'"* | *$'\n'* | *$'\r'*) return 1 ;;
     esac
     return 0
 }
@@ -180,7 +180,7 @@ run() {
     local atuin_abs="" atuin_ver="" atuin_triple="" atuin_bin_dir="" atuin_src=""
     local atuin_skip=0 atuin_ver_present="" atuin_ver_tok="" atuin_tmpdir=""
     local atuin_tmp_tar="" atuin_tmp_sha="" atuin_extracted=""
-    local ver="" arch="" src_dir="" repo_omp="" tmp="" tmp_sha="" want=""
+    local ver="" arch="" src_dir="" repo_omp="" tmp="" tmp_sha="" wpath=""
     local omp_src="" theme_src="" bin_dir="" theme_dir="" skip_bin=0 ver_present=""
     local url_bin="" url_theme="" url_atuin=""
     local aliases_body="" term_block=""
@@ -224,13 +224,16 @@ run() {
         theme_abs="${FS_OMP_THEME:-$home/.config/oh-my-posh/themes/jandedobbeleer.omp.json}"
         atuin_abs="${FS_ATUIN_BIN:-$home/.local/bin/atuin}"
     fi
-    for want in "$aliases_abs" "$bashrc_abs" "$bin_abs" "$theme_abs" "$atuin_abs"; do
-        case "$want" in
-            /*) ;;
-            *) io_error "terminal paths must be absolute: $want"; return 1 ;;
+    for wpath in "$aliases_abs" "$bashrc_abs" "$bin_abs" "$theme_abs" "$atuin_abs"; do
+        case "$wpath" in
+        /*) ;;
+        *)
+            io_error "terminal paths must be absolute: $wpath"
+            return 1
+            ;;
         esac
-        _term_path_ok "$want" || {
-            io_error "terminal path contains a quote or newline: $want"
+        _term_path_ok "$wpath" || {
+            io_error "terminal path contains a quote or newline: $wpath"
             return 1
         }
     done
@@ -239,13 +242,13 @@ run() {
         return 1
     }
     case "${FS_ATUIN_ARCH:-}" in
-        x86_64 | aarch64) atuin_triple="$FS_ATUIN_ARCH" ;;
-        "") case "$(uname -m)" in
-                x86_64) atuin_triple="x86_64" ;;
-                aarch64 | arm64) atuin_triple="aarch64" ;;
-                *) atuin_triple="" ;;
-            esac ;;
-        *) atuin_triple="" ;;
+    x86_64 | aarch64) atuin_triple="$FS_ATUIN_ARCH" ;;
+    "") case "$(uname -m)" in
+    x86_64) atuin_triple="x86_64" ;;
+    aarch64 | arm64) atuin_triple="aarch64" ;;
+    *) atuin_triple="" ;;
+    esac ;;
+    *) atuin_triple="" ;;
     esac
     url_bin="https://github.com/JanDeDobbeleer/oh-my-posh/releases/download/$ver/posh-linux-$arch"
     url_theme="https://raw.githubusercontent.com/JanDeDobbeleer/oh-my-posh/$ver/themes/jandedobbeleer.omp.json"
@@ -254,7 +257,7 @@ run() {
     aliases_body="$TERM_ALIASES_BODY"
     _term_block "$aliases_abs" "$bin_abs" "$theme_abs" "$atuin_abs"
     term_block="$TERM_BLOCK_BODY"
-    if (( FS_DRY_RUN == 1 )); then
+    if ((FS_DRY_RUN == 1)); then
         printf '# would run: merge fedora-setup aliases block into %q\n' "$aliases_abs"
         printf '# would run: install oh-my-posh %s (%s) release binary (%s) into %q\n' "$ver" "$arch" "$url_bin" "$bin_abs"
         printf '# would run: install oh-my-posh theme (%s) into %q\n' "$url_theme" "$theme_abs"
@@ -277,7 +280,7 @@ run() {
             io_warn "replacing oh-my-posh (installed: ${ver_present:-unknown}, pinned: $ver)"
         fi
     fi
-    if (( skip_bin != 1 )); then
+    if ((skip_bin != 1)); then
         bin_dir="${bin_abs%/*}"
         run_cmd "oh-my-posh bin dir" --stop "mkdir" "-p" "--" "$bin_dir" || return 1
         tmp="$(mktemp -- "$bin_dir/.oh-my-posh.XXXXXX")" 2>/dev/null || {
@@ -315,31 +318,31 @@ run() {
             }
             run_cmd "oh-my-posh binary download" --stop "curl" "-fsSL" "--proto" "=https" \
                 "--max-time" "300" "-o" "$tmp" "$url_bin" || {
-                    rm -f -- "$tmp" "$tmp_sha" 2>/dev/null || :
-                    return 1
-                }
+                rm -f -- "$tmp" "$tmp_sha" 2>/dev/null || :
+                return 1
+            }
             run_cmd "oh-my-posh checksum download" --stop "curl" "-fsSL" "--proto" "=https" \
                 "--max-time" "300" "-o" "$tmp_sha" "$url_bin.sha256" || {
-                    rm -f -- "$tmp" "$tmp_sha" 2>/dev/null || :
-                    return 1
-                }
+                rm -f -- "$tmp" "$tmp_sha" 2>/dev/null || :
+                return 1
+            }
         fi
         [[ -f "$tmp_sha" ]] || {
             io_error "no checksum available for oh-my-posh ($arch); refusing unverified install"
             rm -f -- "$tmp" "$tmp_sha" 2>/dev/null || :
             return 1
         }
-        want="$(cut -d' ' -f1 -- "$tmp_sha" 2>/dev/null)" || {
+        wpath="$(cut -d' ' -f1 -- "$tmp_sha" 2>/dev/null)" || {
             io_error "cannot read checksum for oh-my-posh ($arch)"
             rm -f -- "$tmp" "$tmp_sha" 2>/dev/null || :
             return 1
         }
-        want="$(printf '%s' "$want" | tr -d '\r')" || {
+        wpath="$(printf '%s' "$wpath" | tr -d '\r')" || {
             io_error "cannot normalize checksum for oh-my-posh ($arch)"
             rm -f -- "$tmp" "$tmp_sha" 2>/dev/null || :
             return 1
         }
-        want="$(printf '%s' "$want" | tr '[:upper:]' '[:lower:]')" || {
+        wpath="$(printf '%s' "$wpath" | tr '[:upper:]' '[:lower:]')" || {
             io_error "cannot lowercase checksum for oh-my-posh ($arch)"
             rm -f -- "$tmp" "$tmp_sha" 2>/dev/null || :
             return 1
@@ -349,7 +352,7 @@ run() {
             rm -f -- "$tmp" "$tmp_sha" 2>/dev/null || :
             return 1
         }
-        if ! printf '%s  %s\n' "$want" "$tmp" | sha256sum -c - >/dev/null 2>&1; then
+        if ! printf '%s  %s\n' "$wpath" "$tmp" | sha256sum -c - >/dev/null 2>&1; then
             io_error "sha256 mismatch for oh-my-posh binary ($arch)"
             rm -f -- "$tmp" "$tmp_sha" 2>/dev/null || :
             return 1
@@ -399,9 +402,9 @@ run() {
             }
             run_cmd "oh-my-posh theme download" --stop "curl" "-fsSL" "--proto" "=https" \
                 "--max-time" "300" "-o" "$tmp" "$url_theme" || {
-                    rm -f -- "$tmp" 2>/dev/null || :
-                    return 1
-                }
+                rm -f -- "$tmp" 2>/dev/null || :
+                return 1
+            }
             run_cmd "oh-my-posh theme install" --stop "mv" "-fT" "--" "$tmp" "$theme_abs" || {
                 rm -f -- "$tmp" 2>/dev/null || :
                 return 1
@@ -423,7 +426,7 @@ run() {
                 io_warn "replacing atuin (installed: ${atuin_ver_tok:-unknown}, pinned: $atuin_ver)"
             fi
         fi
-        if (( atuin_skip != 1 )); then
+        if ((atuin_skip != 1)); then
             atuin_bin_dir="${atuin_abs%/*}"
             run_cmd "atuin bin dir" --stop "mkdir" "-p" "--" "$atuin_bin_dir" || return 1
             atuin_tmpdir="$(mktemp -d -- "$atuin_bin_dir/.atuin.XXXXXX")" 2>/dev/null || {
@@ -462,31 +465,31 @@ run() {
                 }
                 run_cmd "atuin archive download" --stop "curl" "-fsSL" "--proto" "=https" \
                     "--max-time" "300" "-o" "$atuin_tmp_tar" "$url_atuin" || {
-                        rm -rf -- "$atuin_tmpdir" 2>/dev/null || :
-                        return 1
-                    }
+                    rm -rf -- "$atuin_tmpdir" 2>/dev/null || :
+                    return 1
+                }
                 run_cmd "atuin checksum download" --stop "curl" "-fsSL" "--proto" "=https" \
                     "--max-time" "300" "-o" "$atuin_tmp_sha" "$url_atuin.sha256" || {
-                        rm -rf -- "$atuin_tmpdir" 2>/dev/null || :
-                        return 1
-                    }
+                    rm -rf -- "$atuin_tmpdir" 2>/dev/null || :
+                    return 1
+                }
             fi
             [[ -f "$atuin_tmp_sha" ]] || {
                 io_error "no checksum available for atuin ($atuin_triple); refusing unverified install"
                 rm -rf -- "$atuin_tmpdir" 2>/dev/null || :
                 return 1
             }
-            want="$(cut -d' ' -f1 -- "$atuin_tmp_sha" 2>/dev/null)" || {
+            wpath="$(cut -d' ' -f1 -- "$atuin_tmp_sha" 2>/dev/null)" || {
                 io_error "cannot read checksum for atuin ($atuin_triple)"
                 rm -rf -- "$atuin_tmpdir" 2>/dev/null || :
                 return 1
             }
-            want="$(printf '%s' "$want" | tr -d '\r')" || {
+            wpath="$(printf '%s' "$wpath" | tr -d '\r')" || {
                 io_error "cannot normalize checksum for atuin ($atuin_triple)"
                 rm -rf -- "$atuin_tmpdir" 2>/dev/null || :
                 return 1
             }
-            want="$(printf '%s' "$want" | tr '[:upper:]' '[:lower:]')" || {
+            wpath="$(printf '%s' "$wpath" | tr '[:upper:]' '[:lower:]')" || {
                 io_error "cannot lowercase checksum for atuin ($atuin_triple)"
                 rm -rf -- "$atuin_tmpdir" 2>/dev/null || :
                 return 1
@@ -496,7 +499,7 @@ run() {
                 rm -rf -- "$atuin_tmpdir" 2>/dev/null || :
                 return 1
             }
-            if ! printf '%s  %s\n' "$want" "$atuin_tmp_tar" | sha256sum -c - >/dev/null 2>&1; then
+            if ! printf '%s  %s\n' "$wpath" "$atuin_tmp_tar" | sha256sum -c - >/dev/null 2>&1; then
                 io_error "sha256 mismatch for atuin archive ($atuin_triple)"
                 rm -rf -- "$atuin_tmpdir" 2>/dev/null || :
                 return 1
@@ -552,18 +555,18 @@ run() {
 # download, no chmod, no fc-cache, no managed-block write.
 verify() {
     local root="" home="" aliases_abs="" bashrc_abs="" bin_abs="" theme_abs=""
-    local atuin_abs="" want="" block="" line="" rc=0
+    local atuin_abs="" wpath="" block="" line="" rc=0
     root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)" || return 1
     declare -F io_error >/dev/null 2>&1 || source "$root/lib/io.sh"
-    if (( ${FS_DRY_RUN:-0} == 1 )); then
+    if ((${FS_DRY_RUN:-0} == 1)); then
         io_info "terminal: verify skipped in dry-run (no probing)"
         return 0
     fi
     home="${HOME:-}"
     if [[ -z "$home" || "$home" == "/" ]]; then
-        for want in FS_TERM_ALIASES FS_BASHRC FS_OMP_BIN FS_OMP_THEME FS_ATUIN_BIN; do
-            if [[ -z "${!want:-}" ]]; then
-                io_error "terminal: cannot verify without a HOME or $want"
+        for wpath in FS_TERM_ALIASES FS_BASHRC FS_OMP_BIN FS_OMP_THEME FS_ATUIN_BIN; do
+            if [[ -z "${!wpath:-}" ]]; then
+                io_error "terminal: cannot verify without a HOME or $wpath"
                 return 1
             fi
         done
@@ -579,10 +582,13 @@ verify() {
         theme_abs="${FS_OMP_THEME:-$home/.config/oh-my-posh/themes/jandedobbeleer.omp.json}"
         atuin_abs="${FS_ATUIN_BIN:-$home/.local/bin/atuin}"
     fi
-    for want in "$aliases_abs" "$bashrc_abs" "$bin_abs" "$theme_abs" "$atuin_abs"; do
-        case "$want" in
-            /*) ;;
-            *) io_error "terminal: cannot verify a non-absolute path: $want"; return 1 ;;
+    for wpath in "$aliases_abs" "$bashrc_abs" "$bin_abs" "$theme_abs" "$atuin_abs"; do
+        case "$wpath" in
+        /*) ;;
+        *)
+            io_error "terminal: cannot verify a non-absolute path: $wpath"
+            return 1
+            ;;
         esac
     done
     _term_block "$aliases_abs" "$bin_abs" "$theme_abs" "$atuin_abs"
@@ -591,14 +597,14 @@ verify() {
         return 1
     fi
     _term_block_cmp "$bashrc_abs" terminal "$TERM_BLOCK_BODY" rc
-    (( rc != 0 )) && return 1
+    ((rc != 0)) && return 1
     if [[ ! -f "$aliases_abs" ]]; then
         io_error "terminal: aliases file not found: $aliases_abs"
         return 1
     fi
     _term_aliases_body
     _term_block_cmp "$aliases_abs" aliases "$TERM_ALIASES_BODY" rc
-    (( rc != 0 )) && return 1
+    ((rc != 0)) && return 1
     if [[ ! -f "$theme_abs" ]]; then
         io_error "terminal: oh-my-posh theme not found: $theme_abs"
         return 1

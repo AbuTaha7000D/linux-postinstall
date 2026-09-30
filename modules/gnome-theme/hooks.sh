@@ -91,7 +91,7 @@ verify() {
     source "$root/lib/gnome.sh"
     source "$root/lib/fs.sh"
     gnome_require_capable gnome-theme || return 0
-    if (( FS_DRY_RUN == 1 )); then
+    if ((FS_DRY_RUN == 1)); then
         io_info "gnome-theme: verify is read-only; runs only in real mode"
         return 0
     fi
@@ -99,7 +99,7 @@ verify() {
     _gnome_theme_verify gtk-theme THEME "$root" || rc=1
     _gnome_theme_verify cursor-theme CURSOR "$root" || rc=1
     _gnome_theme_verify_bookmarks "$root" || rc=1
-    if (( rc == 0 )); then
+    if ((rc == 0)); then
         io_info "gnome-theme: verify passed"
     fi
     return "$rc"
@@ -135,30 +135,30 @@ _gnome_theme_apply() {
     local name="" src="" assets="" seam_var=""
     local -a list=()
     case "$namekey" in
-        THEME)
-            src="${FS_THEME_SRC:-${HOME:-}/.themes}"
-            assets="${FS_THEME_ASSETS_DIR:-$root/assets/themes}"
-            name="${FS_THEME_NAME:-}"
-            ;;
-        CURSOR)
-            src="${FS_CURSOR_SRC:-${HOME:-}/.icons}"
-            assets="${FS_CURSOR_ASSETS_DIR:-$root/assets/cursors}"
-            name="${FS_CURSOR_NAME:-}"
-            ;;
+    THEME)
+        src="${FS_THEME_SRC:-${HOME:-}/.themes}"
+        assets="${FS_THEME_ASSETS_DIR:-$root/assets/themes}"
+        name="${FS_THEME_NAME:-}"
+        ;;
+    CURSOR)
+        src="${FS_CURSOR_SRC:-${HOME:-}/.icons}"
+        assets="${FS_CURSOR_ASSETS_DIR:-$root/assets/cursors}"
+        name="${FS_CURSOR_NAME:-}"
+        ;;
     esac
     if [[ -z "$name" ]]; then
         mapfile -t list < <(_gnome_theme_pick "$src")
-        if (( ${#list[@]} == 1 )); then
+        if ((${#list[@]} == 1)); then
             name="${list[0]}"
-        elif (( ${#list[@]} > 1 )); then
+        elif ((${#list[@]} > 1)); then
             seam_var="FS_${namekey}_NAME"
             io_info "gnome-theme: multiple $kind themes in $src; set $seam_var to choose"
             return 0
         else
             mapfile -t list < <(_gnome_theme_pick "$assets")
-            if (( ${#list[@]} == 1 )); then
+            if ((${#list[@]} == 1)); then
                 name="${list[0]}"
-            elif (( ${#list[@]} > 1 )); then
+            elif ((${#list[@]} > 1)); then
                 seam_var="FS_${namekey}_NAME"
                 io_info "gnome-theme: multiple $kind themes in $assets; set $seam_var to choose"
                 return 0
@@ -188,16 +188,16 @@ _gnome_theme_bookmarks() {
         io_info "gnome-theme: no GTK bookmarks file; nothing to dedupe"
         return 0
     fi
-    if (( FS_DRY_RUN == 1 )); then
+    if ((FS_DRY_RUN == 1)); then
         printf '# would run: dedupe gtk-3.0 bookmarks %q\n' "$file"
         return 0
     fi
     rc=0
     n="$(fs_dedupe_lines "$file")" || rc=$?
-    if (( rc != 0 )); then
+    if ((rc != 0)); then
         return 1
     fi
-    if (( n == 0 )); then
+    if ((n == 0)); then
         io_info "gnome-theme: bookmarks already deduplicated; no write"
     else
         io_info "gnome-theme: bookmarks deduplicated ($n duplicate line(s) removed)"
@@ -211,30 +211,30 @@ _gnome_theme_verify() {
     local name="" src="" assets="" cur="" seam_var=""
     local -a list=()
     case "$namekey" in
-        THEME)
-            src="${FS_THEME_SRC:-${HOME:-}/.themes}"
-            assets="${FS_THEME_ASSETS_DIR:-$root/assets/themes}"
-            name="${FS_THEME_NAME:-}"
-            ;;
-        CURSOR)
-            src="${FS_CURSOR_SRC:-${HOME:-}/.icons}"
-            assets="${FS_CURSOR_ASSETS_DIR:-$root/assets/cursors}"
-            name="${FS_CURSOR_NAME:-}"
-            ;;
+    THEME)
+        src="${FS_THEME_SRC:-${HOME:-}/.themes}"
+        assets="${FS_THEME_ASSETS_DIR:-$root/assets/themes}"
+        name="${FS_THEME_NAME:-}"
+        ;;
+    CURSOR)
+        src="${FS_CURSOR_SRC:-${HOME:-}/.icons}"
+        assets="${FS_CURSOR_ASSETS_DIR:-$root/assets/cursors}"
+        name="${FS_CURSOR_NAME:-}"
+        ;;
     esac
     if [[ -z "$name" ]]; then
         mapfile -t list < <(_gnome_theme_pick "$src")
-        if (( ${#list[@]} == 1 )); then
+        if ((${#list[@]} == 1)); then
             name="${list[0]}"
-        elif (( ${#list[@]} > 1 )); then
+        elif ((${#list[@]} > 1)); then
             seam_var="FS_${namekey}_NAME"
             io_info "gnome-theme: verify: multiple $kind themes in $src; set $seam_var to choose"
             return 0
         else
             mapfile -t list < <(_gnome_theme_pick "$assets")
-            if (( ${#list[@]} == 1 )); then
+            if ((${#list[@]} == 1)); then
                 name="${list[0]}"
-            elif (( ${#list[@]} > 1 )); then
+            elif ((${#list[@]} > 1)); then
                 seam_var="FS_${namekey}_NAME"
                 io_info "gnome-theme: verify: multiple $kind themes in $assets; set $seam_var to choose"
                 return 0
@@ -276,7 +276,7 @@ _gnome_theme_verify_bookmarks() {
             vd["L$line"]=1
         fi
     done <"$file"
-    if (( n == 0 )); then
+    if ((n == 0)); then
         io_info "gnome-theme: verify ok: bookmarks deduplicated"
         return 0
     fi

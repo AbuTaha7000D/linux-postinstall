@@ -44,7 +44,7 @@ arch_list_installed() {
 
 arch_install_batch() {
     arch_supported || return $?
-    if (( FS_DRY_RUN == 1 )); then
+    if ((FS_DRY_RUN == 1)); then
         run_sudo "install packages ($#)" -- pacman -S --noconfirm --needed "$@"
         return 0
     fi
@@ -54,7 +54,7 @@ arch_install_batch() {
             list+=("$pkg")
         fi
     done
-    if (( ${#list[@]} == 0 )); then
+    if ((${#list[@]} == 0)); then
         io_info "all packages already installed"
         return 0
     fi
@@ -100,7 +100,7 @@ arch_add_repo() {
     if [[ -n "$key" ]]; then
         content+="SigLevel = ${key}"$'\n'
     fi
-    if (( FS_DRY_RUN == 1 )); then
+    if ((FS_DRY_RUN == 1)); then
         run_sudo "add repo $id" -- install -m 0644 \
             "${TMPDIR:-/tmp}/fedora-setup-repo-$id.dry" "$dest"
         return 0
@@ -129,7 +129,7 @@ arch_aur_helper() {
 }
 
 arch_aur_batch() {
-    if (( $# == 0 )); then
+    if (($# == 0)); then
         io_error "aur_batch requires at least one package"
         return 1
     fi

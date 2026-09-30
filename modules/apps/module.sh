@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2209  # data file: MODULE_* values are strings, not commands
 # modules/apps/module.sh - metadata for the curated desktop-apps module.
 # A purely declarative flatpak module (P7.1): flatpaks.list drives the
 # install. The flathub remote is ensured (--if-not-exists) ahead of every
@@ -10,7 +11,7 @@
 # the flatpak batch at stage 3) and verify() confirms every curated app is
 # installed (flatpak info --user then --system) without writing anything.
 MODULE_ID=apps
-MODULE_TITLE=Desktop apps
-MODULE_DESCRIPTION=Curated Flatpak desktop applications
+MODULE_TITLE="Desktop apps"
+MODULE_DESCRIPTION="Curated Flatpak desktop applications"
 MODULE_RISK=none
 MODULE_DEFAULT=on

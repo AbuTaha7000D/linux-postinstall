@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2209  # data file: MODULE_* values are strings, not commands
 # modules/gnome-theme/module.sh - metadata for the GNOME theme module (P6.4).
 # Applies a GTK theme and a cursor theme to org.gnome.desktop.interface and
 # dedupes the gtk-3.0 bookmarks file. The theme source is, in order of
@@ -12,7 +13,7 @@
 # Hooks-only module (no package/flatpak lists): GNOME availability is
 # guarded inside run() like gnome-base; whole-profile desktop gating is P6.5.
 MODULE_ID=gnome-theme
-MODULE_TITLE=GNOME theme configuration
-MODULE_DESCRIPTION=GTK + cursor theme selection, bookmarks dedupe
+MODULE_TITLE="GNOME theme configuration"
+MODULE_DESCRIPTION="GTK + cursor theme selection, bookmarks dedupe"
 MODULE_RISK=medium
 MODULE_DEFAULT=on

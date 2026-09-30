@@ -180,14 +180,14 @@ _update_report_dirty() {
     local n=0 shown=0 line=""
     while IFS= read -r line || [[ -n "$line" ]]; do
         [[ -n "$line" ]] || continue
-        n=$(( n + 1 ))
-        if (( shown < _UPDATE_DIRTY_MAX )); then
+        n=$((n + 1))
+        if ((shown < _UPDATE_DIRTY_MAX)); then
             io_info "update:   ${line}"
-            shown=$(( shown + 1 ))
+            shown=$((shown + 1))
         fi
     done <<<"$_UPDATE_OUT"
-    if (( n > _UPDATE_DIRTY_MAX )); then
-        io_info "update:   ... and $(( n - _UPDATE_DIRTY_MAX )) more"
+    if ((n > _UPDATE_DIRTY_MAX)); then
+        io_info "update:   ... and $((n - _UPDATE_DIRTY_MAX)) more"
     fi
     io_error "update: working tree is not clean ($n change(s)); commit, stash or remove them, then re-run"
 }
@@ -224,7 +224,7 @@ update_run() {
     fi
     io_info "update: fedora-setup ${FS_VERSION:-unknown}"
 
-    if (( FS_DRY_RUN == 1 )); then
+    if ((FS_DRY_RUN == 1)); then
         run_cmd "update: fetch remote" -- git -C "$root" fetch
         if [[ "$FS_PULL" == "1" ]]; then
             io_alert "update: --pull rewrites tracked files in $root after a fast-forward"
@@ -257,7 +257,7 @@ update_run() {
     _update_identity "$root" || return 1
 
     if ! _update_query git -C "$root" rev-parse --verify --quiet '@{u}'; then
-        if (( _UPDATE_DETACHED == 1 )); then
+        if ((_UPDATE_DETACHED == 1)); then
             io_warn "update: HEAD is detached, so there is no branch to compare against"
             if [[ "$FS_PULL" == "1" ]]; then
                 io_error "update: --pull needs a branch; check out a branch first (a detached HEAD has nothing to fast-forward)"
@@ -304,21 +304,21 @@ update_run() {
         io_error "update: git returned a non-numeric commit count (behind='$behind' ahead='$ahead')"
         return 1
     fi
-    behind=$(( 10#$behind ))
-    ahead=$(( 10#$ahead ))
+    behind=$((10#$behind))
+    ahead=$((10#$ahead))
 
-    if (( ahead == 0 && behind == 0 )); then
+    if ((ahead == 0 && behind == 0)); then
         io_info "update: already current with the remote"
         if [[ "$FS_PULL" == "1" ]]; then
             io_info "update: nothing to pull"
         fi
         return 0
     fi
-    if (( behind == 0 )); then
+    if ((behind == 0)); then
         io_info "update: already current, and $ahead commit(s) ahead of the remote"
         return 0
     fi
-    if (( ahead > 0 )); then
+    if ((ahead > 0)); then
         io_info "update: diverged - $behind commit(s) behind and $ahead commit(s) ahead of the remote"
         if [[ "$FS_PULL" == "1" ]]; then
             io_error "update: --pull only fast-forwards, and a diverged branch cannot be fast-forwarded; resolve it yourself"
@@ -354,7 +354,7 @@ update_run() {
         collide=1
         io_error "update: the fast-forward would overwrite your untracked file: $path"
     done
-    if (( collide == 1 )); then
+    if ((collide == 1)); then
         io_error "update: refusing to overwrite it; move, commit or delete the file(s) above, then re-run"
         return 1
     fi

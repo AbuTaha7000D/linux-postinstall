@@ -100,53 +100,53 @@ _CHROME_MARKER=RESOLVED-AT-RUN-TIME
 _chrome_host_arch() {
     local m="${FS_CHROME_ARCH:-}"
     case "$m" in
-        x86_64 | amd64)
-            printf 'x86_64\n'
-            return 0
-            ;;
-        aarch64 | arm64)
-            printf 'aarch64\n'
-            return 0
-            ;;
-        "")
-            m="$(uname -m)"
-            case "$m" in
-                x86_64 | amd64) printf 'x86_64\n' ;;
-                aarch64 | arm64) printf 'aarch64\n' ;;
-                *)
-                    io_debug "chrome: unsupported host arch '$m'"
-                    return 1
-                    ;;
-            esac
-            return 0
-            ;;
+    x86_64 | amd64)
+        printf 'x86_64\n'
+        return 0
+        ;;
+    aarch64 | arm64)
+        printf 'aarch64\n'
+        return 0
+        ;;
+    "")
+        m="$(uname -m)"
+        case "$m" in
+        x86_64 | amd64) printf 'x86_64\n' ;;
+        aarch64 | arm64) printf 'aarch64\n' ;;
         *)
-            io_debug "chrome: unsupported FS_CHROME_ARCH '$m'"
+            io_debug "chrome: unsupported host arch '$m'"
             return 1
             ;;
+        esac
+        return 0
+        ;;
+    *)
+        io_debug "chrome: unsupported FS_CHROME_ARCH '$m'"
+        return 1
+        ;;
     esac
 }
 
 _chrome_deb_arch() {
     case "$1" in
-        x86_64) printf 'amd64\n' ;;
-        aarch64) printf 'arm64\n' ;;
-        *) return 1 ;;
+    x86_64) printf 'amd64\n' ;;
+    aarch64) printf 'arm64\n' ;;
+    *) return 1 ;;
     esac
 }
 
 _chrome_rpm_arch() {
     case "$1" in
-        x86_64 | aarch64) printf '%s\n' "$1" ;;
-        *) return 1 ;;
+    x86_64 | aarch64) printf '%s\n' "$1" ;;
+    *) return 1 ;;
     esac
 }
 
 _chrome_index_url() {
     case "$1" in
-        deb) printf '%s/dists/stable/main/binary-%s/Packages\n' "$_CHROME_DEB_BASE" "$2" ;;
-        rpm) printf '%s/%s/repodata/primary.xml.gz\n' "$_CHROME_RPM_BASE" "$2" ;;
-        *) return 1 ;;
+    deb) printf '%s/dists/stable/main/binary-%s/Packages\n' "$_CHROME_DEB_BASE" "$2" ;;
+    rpm) printf '%s/%s/repodata/primary.xml.gz\n' "$_CHROME_RPM_BASE" "$2" ;;
+    *) return 1 ;;
     esac
 }
 
@@ -162,7 +162,7 @@ _chrome_path_ok() {
         return 1
     fi
     case "/$p/" in
-        */../* | */./*) return 1 ;;
+    */../* | */./*) return 1 ;;
     esac
     while [[ "$p" == */* ]]; do
         seg="${p%%/*}"
@@ -192,7 +192,7 @@ _chrome_parse_deb() {
     local file="$1" line="" fn="" sha="" inside=0
     while IFS= read -r line || [[ -n "$line" ]]; do
         if [[ "$line" == 'Package: '* ]]; then
-            if (( inside == 1 )); then
+            if ((inside == 1)); then
                 break
             fi
             if [[ "${line#Package: }" == "$_CHROME_PKG" ]]; then
@@ -200,15 +200,15 @@ _chrome_parse_deb() {
             fi
             continue
         fi
-        if (( inside != 1 )); then
+        if ((inside != 1)); then
             continue
         fi
         case "$line" in
-            Filename:\ *) fn="${line#Filename: }" ;;
-            SHA256:\ *) sha="${line#SHA256: }" ;;
+        Filename:\ *) fn="${line#Filename: }" ;;
+        SHA256:\ *) sha="${line#SHA256: }" ;;
         esac
     done <"$file"
-    if (( inside != 1 )); then
+    if ((inside != 1)); then
         io_error "chrome: no $_CHROME_PKG stanza in the deb index"
         return 1
     fi
@@ -245,7 +245,7 @@ _chrome_parse_rpm() {
             inside=1
             continue
         fi
-        if (( inside != 1 )); then
+        if ((inside != 1)); then
             continue
         fi
         if [[ "$line" == *'<checksum type="sha256"'* ]]; then
@@ -310,7 +310,7 @@ run() {
         ext=rpm
     fi
     idx="$(_chrome_index_url "$family" "$arch")" || return 1
-    if (( FS_DRY_RUN == 1 )); then
+    if ((FS_DRY_RUN == 1)); then
         tmp="${TMPDIR:-/tmp}/${_CHROME_TMP_PREFIX}.XXXXXX"
         stage="$tmp/$_CHROME_PKG.$ext"
         run_cmd "fetch chrome metadata" --stop -- wget -q --timeout=300 --tries=2 -O "$tmp/index" "$idx" || return 1
@@ -380,7 +380,7 @@ run() {
 
 verify() {
     local dir="" f="" alt=""
-    if (( FS_DRY_RUN == 1 )); then
+    if ((FS_DRY_RUN == 1)); then
         io_info "chrome: verify is read-only; runs only in real mode"
         return 0
     fi

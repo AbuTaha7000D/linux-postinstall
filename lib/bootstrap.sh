@@ -35,7 +35,7 @@ _fs_root() {
 _fs_check_bash() {
     local major="${BASH_VERSINFO[0]}"
     local minor="${BASH_VERSINFO[1]}"
-    if (( major < FS_MIN_BASH_MAJOR )) || { (( major == FS_MIN_BASH_MAJOR )) && (( minor < FS_MIN_BASH_MINOR )); }; then
+    if ((major < FS_MIN_BASH_MAJOR)) || { ((major == FS_MIN_BASH_MAJOR)) && ((minor < FS_MIN_BASH_MINOR)); }; then
         _fs_die "Bash ${FS_MIN_BASH_MAJOR}.${FS_MIN_BASH_MINOR}+ required (found ${BASH_VERSION})"
     fi
 }
@@ -98,7 +98,7 @@ _cli_update_sources() {
 _cli_update_impl() {
     local root="$1"
     [[ -n "$root" ]] || _fs_die "update requires the repository root"
-    if (( ${#FS_CMD_ARGS[@]} > 0 )); then
+    if ((${#FS_CMD_ARGS[@]} > 0)); then
         io_error "update takes no arguments; got: ${FS_CMD_ARGS[*]}"
         return 1
     fi
@@ -199,15 +199,15 @@ _cli_write_defaults() {
         io_error "cannot create defaults temp in: ${sel%/*}"
         return 1
     }
-    if (( $# > 0 )); then
+    if (($# > 0)); then
         printf '%s\n' "$@" >"$tmp" 2>/dev/null || rc=1
     else
         : >"$tmp" 2>/dev/null || rc=1
     fi
-    if (( rc == 0 )); then
+    if ((rc == 0)); then
         mv -fT -- "$tmp" "$sel" 2>/dev/null || rc=1
     fi
-    if (( rc != 0 )); then
+    if ((rc != 0)); then
         rm -f -- "$tmp" 2>/dev/null || :
         io_error "cannot write defaults to: $sel"
         return 1
@@ -260,11 +260,14 @@ _cli_install_impl() {
         family="${FS_DISTRO_FAMILY:-}"
     fi
     case "$family" in
-        rpm | deb | arch) ;;
-        *) io_error "unsupported family: $family"; return 1 ;;
+    rpm | deb | arch) ;;
+    *)
+        io_error "unsupported family: $family"
+        return 1
+        ;;
     esac
     if [[ -n "${FS_MANIFEST:-}" ]]; then
-        if (( ${FS_PROFILE_SET:-0} != 1 )); then
+        if ((${FS_PROFILE_SET:-0} != 1)); then
             name="$(_cli_manifest_profile "$FS_MANIFEST")" || return 1
         fi
         _cli_manifest_check "$FS_MANIFEST" "$name" || return 1
@@ -297,18 +300,24 @@ _cli_install_impl() {
     fi
     cli_ids=(${FS_CMD_ARGS[@]+"${FS_CMD_ARGS[@]}"})
     for id in ${cli_ids[@]+"${cli_ids[@]}"}; do
-        module_valid_id "$id" || { io_error "invalid module id: $id"; return 1; }
-        [[ -d "$mdir/$id" ]] || { io_error "module not found: $id"; return 1; }
+        module_valid_id "$id" || {
+            io_error "invalid module id: $id"
+            return 1
+        }
+        [[ -d "$mdir/$id" ]] || {
+            io_error "module not found: $id"
+            return 1
+        }
         have=0
-        for (( i = 0; i < ${#defaults[@]}; i++ )); do
+        for ((i = 0; i < ${#defaults[@]}; i++)); do
             if [[ "${defaults[i]}" == "$id" ]]; then
                 have=1
             fi
         done
-        (( have == 1 )) || defaults+=("$id")
+        ((have == 1)) || defaults+=("$id")
     done
     local scratch=""
-    if (( FS_DRY_RUN == 1 )); then
+    if ((FS_DRY_RUN == 1)); then
         scratch="$(mktemp -d "${TMPDIR:-/tmp}/fs-install.XXXXXX")" || {
             io_error "cannot create install scratch"
             return 1
@@ -338,23 +347,23 @@ _cli_install_impl() {
     for id in ${defaults[@]+"${defaults[@]}"}; do
         module_load "$mdir/$id" || return 1
         have=0
-        for (( i = 0; i < ${#cli_ids[@]}; i++ )); do
+        for ((i = 0; i < ${#cli_ids[@]}; i++)); do
             if [[ "${cli_ids[i]}" == "$id" ]]; then
                 have=1
             fi
         done
         case "$MODULE_RISK" in
-            high | destructive)
-                if (( have == 0 )); then
-                    held+=("$id")
-                else
-                    safe+=("$id")
-                fi
-                ;;
-            *) safe+=("$id") ;;
+        high | destructive)
+            if ((have == 0)); then
+                held+=("$id")
+            else
+                safe+=("$id")
+            fi
+            ;;
+        *) safe+=("$id") ;;
         esac
     done
-    if (( ${#held[@]} > 0 )); then
+    if ((${#held[@]} > 0)); then
         htxt=""
         for id in ${held[@]+"${held[@]}"}; do
             htxt="$htxt $id"
@@ -362,7 +371,7 @@ _cli_install_impl() {
         io_alert "high-risk module(s) not selected:$htxt; name one on the command line to run it"
     fi
     _cli_write_defaults "$sel" ${safe[@]+"${safe[@]}"} || return 1
-    if (( FS_YES != 1 )); then
+    if ((FS_YES != 1)); then
         ui_multiselect "Select modules for profile '$name'" "$entries" "$sel" || return 1
     fi
     if [[ -f "$sel" ]]; then
@@ -374,10 +383,10 @@ _cli_install_impl() {
     for id in ${final[@]+"${final[@]}"}; do
         module_load "$mdir/$id" || return 1
         case "$MODULE_RISK" in
-            high | destructive) hruns+=("$id") ;;
+        high | destructive) hruns+=("$id") ;;
         esac
     done
-    if (( ${#hruns[@]} > 0 )); then
+    if ((${#hruns[@]} > 0)); then
         htxt=""
         for hid in ${hruns[@]+"${hruns[@]}"}; do
             htxt="$htxt $hid"
@@ -387,11 +396,11 @@ _cli_install_impl() {
             return 1
         fi
     fi
-    if (( FS_DRY_RUN != 1 )) && [[ "${FS_PKG_BACKEND:-}" != mock ]]; then
+    if ((FS_DRY_RUN != 1)) && [[ "${FS_PKG_BACKEND:-}" != mock ]]; then
         . "$root/lib/sudo.sh"
         sudo_detect
     fi
-    if (( ${#cli_ids[@]} > 0 )); then
+    if ((${#cli_ids[@]} > 0)); then
         exact=0
     else
         local fsrt="" csrt=""
@@ -401,7 +410,7 @@ _cli_install_impl() {
             exact=0
         fi
     fi
-    if (( exact == 1 )); then
+    if ((exact == 1)); then
         runner_run "$mdir" "$pdir" "$name" "$family"
     else
         runner_run "$mdir" "$pdir" "selection" "$family" ${final[@]+"${final[@]}"}
@@ -413,8 +422,8 @@ _cli_install_impl() {
 
 _cli_list_family() {
     case "${FS_DISTRO_FAMILY:-}" in
-        rpm | deb | arch) printf '%s' "$FS_DISTRO_FAMILY" ;;
-        *) printf '%s' "" ;;
+    rpm | deb | arch) printf '%s' "$FS_DISTRO_FAMILY" ;;
+    *) printf '%s' "" ;;
     esac
 }
 
@@ -436,7 +445,7 @@ _cli_list_impl() {
     for dir in "${dirs[@]}"; do
         module_validate "$dir" "$family" || rc=1
     done
-    if (( rc != 0 )); then
+    if ((rc != 0)); then
         return 1
     fi
     module_validate_set "${dirs[@]}" || return 1
@@ -472,46 +481,46 @@ main() {
         exit 1
     fi
     case "$FS_CMD" in
-        version)
-            printf 'fedora-setup %s\n' "$FS_VERSION"
-            ;;
-        help)
-            cli_help
-            ;;
-        check)
-            _cli_check_impl "$root"
-            ;;
-        list)
-            . "$root/lib/modules.sh"
-            . "$root/lib/state.sh"
-            if ! state_init; then
-                rc=1
-            else
-                if [[ -z "${FS_DISTRO_FAMILY:-}" ]]; then
-                    . "$root/lib/distro.sh"
-                    distro_detect || rc=1
-                fi
-                if (( rc == 0 )); then
-                    _cli_list_impl "${FS_MODULES_DIR:-$root/modules}" "$(_cli_list_family)" || rc=1
-                fi
-            fi
-            ;;
-        install)
-            _cli_install_impl "$root" || rc=1
-            ;;
-        verify)
-            _cli_verify_impl "$root"
-            ;;
-        export)
-            _cli_export_impl "$root" || rc=1
-            ;;
-        update)
-            _cli_update_impl "$root" || rc=1
-            ;;
-        *)
-            io_error "command '$FS_CMD' is not wired into the dispatcher"
+    version)
+        printf 'fedora-setup %s\n' "$FS_VERSION"
+        ;;
+    help)
+        cli_help
+        ;;
+    check)
+        _cli_check_impl "$root"
+        ;;
+    list)
+        . "$root/lib/modules.sh"
+        . "$root/lib/state.sh"
+        if ! state_init; then
             rc=1
-            ;;
+        else
+            if [[ -z "${FS_DISTRO_FAMILY:-}" ]]; then
+                . "$root/lib/distro.sh"
+                distro_detect || rc=1
+            fi
+            if ((rc == 0)); then
+                _cli_list_impl "${FS_MODULES_DIR:-$root/modules}" "$(_cli_list_family)" || rc=1
+            fi
+        fi
+        ;;
+    install)
+        _cli_install_impl "$root" || rc=1
+        ;;
+    verify)
+        _cli_verify_impl "$root"
+        ;;
+    export)
+        _cli_export_impl "$root" || rc=1
+        ;;
+    update)
+        _cli_update_impl "$root" || rc=1
+        ;;
+    *)
+        io_error "command '$FS_CMD' is not wired into the dispatcher"
+        rc=1
+        ;;
     esac
     exit "$rc"
 }

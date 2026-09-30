@@ -29,13 +29,13 @@ _sudo_render() {
 
 sudo_detect() {
     local euid="${FS_EUID:-$EUID}"
-    if (( euid == 0 )); then
+    if ((euid == 0)); then
         FS_RUNNING_AS_ROOT=1
         FS_SUDO_AVAILABLE=0
         io_warn "running as root (euid $euid); proceeding without sudo"
         return 0
     fi
-    if (( FS_DRY_RUN == 1 )); then
+    if ((FS_DRY_RUN == 1)); then
         return 0
     fi
     FS_RUNNING_AS_ROOT=0
@@ -53,17 +53,17 @@ sudo_detect() {
 }
 
 sudo_refresh() {
-    if (( FS_DRY_RUN == 1 )); then
+    if ((FS_DRY_RUN == 1)); then
         return 0
     fi
-    if (( FS_RUNNING_AS_ROOT == 1 )); then
+    if ((FS_RUNNING_AS_ROOT == 1)); then
         return 0
     fi
-    if (( FS_SUDO_AVAILABLE != 1 )); then
+    if ((FS_SUDO_AVAILABLE != 1)); then
         io_warn "sudo unavailable; skipping credential refresh"
         return 0
     fi
-    if (( FS_VERBOSE == 1 )); then
+    if ((FS_VERBOSE == 1)); then
         sudo -v 2>/dev/null || io_warn "sudo credential refresh failed"
     fi
     return 0
@@ -72,23 +72,23 @@ sudo_refresh() {
 sudo_exec() {
     local IFS=' '
     local -a cmd=("$@")
-    if (( ${#cmd[@]} == 0 )) || [[ -z "${cmd[0]}" ]]; then
+    if ((${#cmd[@]} == 0)) || [[ -z "${cmd[0]}" ]]; then
         io_error "sudo_exec requires a command"
         return 1
     fi
-    if (( FS_DRY_RUN == 1 )); then
-        if (( FS_RUNNING_AS_ROOT == 1 )); then
+    if ((FS_DRY_RUN == 1)); then
+        if ((FS_RUNNING_AS_ROOT == 1)); then
             printf '# would run: %s\n' "$(_sudo_render "${cmd[@]}")"
         else
             printf '# would run: %s\n' "$(_sudo_render sudo "${cmd[@]}")"
         fi
         return 0
     fi
-    if (( FS_RUNNING_AS_ROOT == 1 )); then
+    if ((FS_RUNNING_AS_ROOT == 1)); then
         "${cmd[@]}" || return $?
         return 0
     fi
-    if (( FS_SUDO_AVAILABLE != 1 )); then
+    if ((FS_SUDO_AVAILABLE != 1)); then
         io_error "sudo unavailable; cannot escalate: $(_sudo_render "${cmd[@]}")"
         return 1
     fi

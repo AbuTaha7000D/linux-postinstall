@@ -50,8 +50,11 @@ _pkg_backend_name() {
     local name
     name="$(pkg_backend)" || return $?
     case "$name" in
-        rpm|deb|arch|flatpak|mock) ;;
-        *) io_error "unknown package backend: $name"; return 1 ;;
+    rpm | deb | arch | flatpak | mock) ;;
+    *)
+        io_error "unknown package backend: $name"
+        return 1
+        ;;
     esac
     printf '%s' "$name"
 }
@@ -68,7 +71,7 @@ _pkg_load() {
         . "$file"
         local op
         for op in supported query_installed list_installed install_batch \
-                update_metadata install_local add_repo; do
+            update_metadata install_local add_repo; do
             if ! declare -F "${name}_${op}" >/dev/null 2>&1; then
                 io_error "package backend not implemented: $name"
                 return 1

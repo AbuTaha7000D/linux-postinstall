@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2209  # data file: MODULE_* values are strings, not commands
 # modules/dev/module.sh - metadata for the developer-toolchains module.
 # Pure system-package module (P7.3): no flatpaks.list, no hooks.sh, no
 # verify() hook (system-row verification belongs to P9.2 `setup verify`,
@@ -18,7 +19,7 @@
 # RPM Fusion / no AUR). The runner batches the merged per-family set through
 # the active family backend in a single transaction.
 MODULE_ID=dev
-MODULE_TITLE=Dev toolchains
-MODULE_DESCRIPTION=Compiler toolchain, node, python pip and jupyter-notebook
+MODULE_TITLE="Dev toolchains"
+MODULE_DESCRIPTION="Compiler toolchain, node, python pip and jupyter-notebook"
 MODULE_RISK=none
 MODULE_DEFAULT=on

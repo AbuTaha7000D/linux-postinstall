@@ -78,22 +78,23 @@ verify() {
     source "$root/lib/gnome.sh"
     source "$root/lib/lists.sh"
     gnome_require_capable gnome-base || return 0
-    if (( FS_DRY_RUN == 1 )); then
+    if ((FS_DRY_RUN == 1)); then
         io_info "gnome-base: verify is read-only; runs only in real mode"
         return 0
     fi
     _gnome_base_verify_favs "$root" || rc=1
     _gnome_base_verify_shortcuts "$root" || rc=1
     _gnome_base_verify_wallpaper "$root" || rc=1
-    if (( rc == 0 )); then
+    if ((rc == 0)); then
         io_info "gnome-base: verify passed"
     fi
     return "$rc"
 }
 
 _gnome_base_verify_favs() {
-    local root="$1" dir="$root/modules/gnome-base" fav="" e=""
-    local rc=0 n=0 seen=0 out=""
+    local root="$1"
+    local dir="$root/modules/gnome-base" fav="" e=""
+    local rc=0 n=0 seen_flag=0 out=""
     local -a want=() cur=()
     out="$(list_parse "$dir/favorites.list")" || return 1
     if [[ -n "$out" ]]; then
@@ -101,7 +102,7 @@ _gnome_base_verify_favs() {
             want+=("$fav")
         done <<<"$out"
     fi
-    if (( ${#want[@]} == 0 )); then
+    if ((${#want[@]} == 0)); then
         io_info "gnome-base: verify: favorites.list empty; nothing to verify"
         return 0
     fi
@@ -111,16 +112,16 @@ _gnome_base_verify_favs() {
             cur+=("$e")
         done <<<"$(gnome_strv_parse "$out")"
     fi
-    for (( n = 0; n < ${#want[@]}; n++ )); do
+    for ((n = 0; n < ${#want[@]}; n++)); do
         fav="${want[$n]}"
-        seen=0
+        seen_flag=0
         for e in "${cur[@]}"; do
             if [[ "$e" == "$fav" ]]; then
-                seen=1
+                seen_flag=1
                 break
             fi
         done
-        if (( seen == 0 )); then
+        if ((seen_flag == 0)); then
             io_error "gnome-base: verify FAILED: dock favorite not applied: $fav"
             rc=1
         else
@@ -131,7 +132,8 @@ _gnome_base_verify_favs() {
 }
 
 _gnome_base_verify_shortcuts() {
-    local root="$1" dir="$root/modules/gnome-base"
+    local root="$1"
+    local dir="$root/modules/gnome-base"
     local base="org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:"
     local array_path="/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings"
     local array_schema="org.gnome.settings-daemon.plugins.media-keys"
@@ -143,7 +145,7 @@ _gnome_base_verify_shortcuts() {
         line="${line#"${line%%[![:space:]]*}"}"
         line="${line%"${line##*[![:space:]]}"}"
         case "$line" in
-            "" | \#*) continue ;;
+        "" | \#*) continue ;;
         esac
         name="${line%%|*}"
         command="${line#*|}"
@@ -155,7 +157,7 @@ _gnome_base_verify_shortcuts() {
         fi
         want+=("${command//\'/}")
     done <"$dir/shortcuts.list"
-    if (( ${#want[@]} == 0 )); then
+    if ((${#want[@]} == 0)); then
         io_info "gnome-base: verify: shortcuts.list empty; nothing to verify"
         return 0
     fi
@@ -165,18 +167,18 @@ _gnome_base_verify_shortcuts() {
         if [[ -n "$parsed" ]]; then
             while IFS= read -r p; do
                 case "$p" in
-                    "$array_path"/custom[0-9]*/)
-                        i=0
-                        cmd="$(gnome_gsettings_get "$base$p" command)" || i=$?
-                        if (( i == 0 )); then
-                            seen["${cmd//\'/}"]=1
-                        fi
-                        ;;
+                "$array_path"/custom[0-9]*/)
+                    i=0
+                    cmd="$(gnome_gsettings_get "$base$p" command)" || i=$?
+                    if ((i == 0)); then
+                        seen["${cmd//\'/}"]=1
+                    fi
+                    ;;
                 esac
             done <<<"$parsed"
         fi
     fi
-    for (( n = 0; n < ${#want[@]}; n++ )); do
+    for ((n = 0; n < ${#want[@]}; n++)); do
         sig="${want[$n]}"
         if [[ -n "${seen[$sig]:-}" ]]; then
             io_info "gnome-base: verify ok: shortcut registered: $sig"
@@ -189,16 +191,20 @@ _gnome_base_verify_shortcuts() {
 }
 
 _gnome_base_verify_wallpaper() {
-    local root="$1" dir="${FS_WALLPAPER_ASSETS_DIR:-$root/assets/wallpaper}" img="" f="" uri="" cur="" rc=0
+    local root="$1"
+    local dir="${FS_WALLPAPER_ASSETS_DIR:-$root/assets/wallpaper}" img="" f="" uri="" cur_uri="" rc=0
     if [[ ! -d "$dir" ]]; then
         io_info "gnome-base: verify: no wallpaper asset dir; nothing to verify"
         return 0
     fi
     for f in "$dir"/*; do
         case "$f" in
-            *.jpg|*.jpeg|*.png|*.webp)
-                [[ -f "$f" ]] && { img="$f"; break; }
-                ;;
+        *.jpg | *.jpeg | *.png | *.webp)
+            [[ -f "$f" ]] && {
+                img="$f"
+                break
+            }
+            ;;
         esac
     done
     if [[ -z "$img" ]]; then
@@ -206,21 +212,21 @@ _gnome_base_verify_wallpaper() {
         return 0
     fi
     uri="file://$img"
-    cur="$(gnome_gsettings_get org.gnome.desktop.background picture-uri)" || rc=1
-    if (( rc == 0 )); then
-        if [[ "$cur" == "$uri" || "$cur" == "'$uri'" ]]; then
+    cur_uri="$(gnome_gsettings_get org.gnome.desktop.background picture-uri)" || rc=1
+    if ((rc == 0)); then
+        if [[ "$cur_uri" == "$uri" || "$cur_uri" == "'$uri'" ]]; then
             io_info "gnome-base: verify ok: wallpaper picture-uri set"
         else
-            io_error "gnome-base: verify FAILED: wallpaper picture-uri ($cur != $uri)"
+            io_error "gnome-base: verify FAILED: wallpaper picture-uri ($cur_uri != $uri)"
             rc=1
         fi
     fi
-    cur="$(gnome_gsettings_get org.gnome.desktop.background picture-uri-dark)" || rc=1
-    if (( rc == 0 )); then
-        if [[ "$cur" == "$uri" || "$cur" == "'$uri'" ]]; then
+    cur_uri="$(gnome_gsettings_get org.gnome.desktop.background picture-uri-dark)" || rc=1
+    if ((rc == 0)); then
+        if [[ "$cur_uri" == "$uri" || "$cur_uri" == "'$uri'" ]]; then
             io_info "gnome-base: verify ok: wallpaper picture-uri-dark set"
         else
-            io_error "gnome-base: verify FAILED: wallpaper picture-uri-dark ($cur != $uri)"
+            io_error "gnome-base: verify FAILED: wallpaper picture-uri-dark ($cur_uri != $uri)"
             rc=1
         fi
     fi
@@ -228,14 +234,15 @@ _gnome_base_verify_wallpaper() {
 }
 
 _gnome_base_favorites() {
-    local root="$1" dir="$root/modules/gnome-base" favs=() fav="" out=""
+    local root="$1"
+    local dir="$root/modules/gnome-base" favs=() fav="" out=""
     out="$(list_parse "$dir/favorites.list")" || return 1
     if [[ -n "$out" ]]; then
         while IFS= read -r fav; do
             favs+=("$fav")
         done <<<"$out"
     fi
-    if (( ${#favs[@]} == 0 )); then
+    if ((${#favs[@]} == 0)); then
         io_info "gnome-base: favorites.list has no entries; dock untouched"
         return 0
     fi
@@ -243,7 +250,8 @@ _gnome_base_favorites() {
 }
 
 _gnome_base_shortcuts() {
-    local root="$1" dir="$root/modules/gnome-base"
+    local root="$1"
+    local dir="$root/modules/gnome-base"
     local base="org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:"
     local array_path="/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings"
     local array_schema="org.gnome.settings-daemon.plugins.media-keys"
@@ -255,7 +263,7 @@ _gnome_base_shortcuts() {
         line="${line#"${line%%[![:space:]]*}"}"
         line="${line%"${line##*[![:space:]]}"}"
         case "$line" in
-            "" | \#*) continue ;;
+        "" | \#*) continue ;;
         esac
         name="${line%%|*}"
         command="${line#*|}"
@@ -275,15 +283,15 @@ _gnome_base_shortcuts() {
         dcmd+=("$command")
         dbind+=("$binding")
     done <"$dir/shortcuts.list"
-    if (( FS_DRY_RUN == 1 )); then
-        for (( n = 0; n < ${#dname[@]}; n++ )); do
+    if ((FS_DRY_RUN == 1)); then
+        for ((n = 0; n < ${#dname[@]}; n++)); do
             idx="$array_path/custom$n/"
             paths+=("$idx")
             gnome_gsettings_set "$base$idx" name "'${dname[$n]}'" || return 1
             gnome_gsettings_set "$base$idx" command "'${dcmd[$n]}'" || return 1
             gnome_gsettings_set "$base$idx" binding "'${dbind[$n]}'" || return 1
         done
-        if (( ${#paths[@]} > 0 )); then
+        if ((${#paths[@]} > 0)); then
             gnome_custom_keybindings_merge_add "${paths[@]}" || return 1
         fi
         return 0
@@ -296,24 +304,24 @@ _gnome_base_shortcuts() {
         if [[ -n "$parsed" ]]; then
             while IFS= read -r p; do
                 case "$p" in
-                    "$array_path"/custom[0-9]*/)
-                        idx="${p#$array_path/custom}"
-                        idx="${idx%/}"
-                        case "$idx" in
-                            *[!0-9]*) continue ;;
-                        esac
-                        taken[$idx]=1
-                        rc=0
-                        cmd="$(gnome_gsettings_get "$base$p" command)" || rc=$?
-                        if (( rc == 0 )); then
-                            seen["${cmd//\'/}"]=1
-                        fi
-                        ;;
+                "$array_path"/custom[0-9]*/)
+                    idx="${p#$array_path/custom}"
+                    idx="${idx%/}"
+                    case "$idx" in
+                    *[!0-9]*) continue ;;
+                    esac
+                    taken[$idx]=1
+                    rc=0
+                    cmd="$(gnome_gsettings_get "$base$p" command)" || rc=$?
+                    if ((rc == 0)); then
+                        seen["${cmd//\'/}"]=1
+                    fi
+                    ;;
                 esac
             done <<<"$parsed"
         fi
     fi
-    for (( n = 0; n < ${#dname[@]}; n++ )); do
+    for ((n = 0; n < ${#dname[@]}; n++)); do
         if [[ -n "${seen[${dcmd[$n]//\'/}]:-}" ]]; then
             io_info "gnome-base: shortcut already registered (${dcmd[$n]}); skipping"
             continue
@@ -330,23 +338,27 @@ _gnome_base_shortcuts() {
         gnome_gsettings_set "$base$idx" command "'${dcmd[$n]}'" || return 1
         gnome_gsettings_set "$base$idx" binding "'${dbind[$n]}'" || return 1
     done
-    if (( ${#paths[@]} > 0 )); then
+    if ((${#paths[@]} > 0)); then
         gnome_custom_keybindings_merge_add "${paths[@]}" || return 1
     fi
     return 0
 }
 
 _gnome_base_wallpaper() {
-    local root="$1" dir="${FS_WALLPAPER_ASSETS_DIR:-$root/assets/wallpaper}" img="" uri="" f=""
+    local root="$1"
+    local dir="${FS_WALLPAPER_ASSETS_DIR:-$root/assets/wallpaper}" img="" uri="" f=""
     if [[ ! -d "$dir" ]]; then
         io_info "gnome-base: no wallpaper asset dir; wallpaper untouched"
         return 0
     fi
     for f in "$dir"/*; do
         case "$f" in
-            *.jpg|*.jpeg|*.png|*.webp)
-                [[ -f "$f" ]] && { img="$f"; break; }
-                ;;
+        *.jpg | *.jpeg | *.png | *.webp)
+            [[ -f "$f" ]] && {
+                img="$f"
+                break
+            }
+            ;;
         esac
     done
     if [[ -z "$img" ]]; then

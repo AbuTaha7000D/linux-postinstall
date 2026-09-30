@@ -39,8 +39,8 @@ _git_body() {
     GIT_BODY+=$'\n[color]'
     GIT_BODY+=$'\n\tui = auto'
     if [[ -n "$name" && -n "$email" ]]; then
-        if [[ "$name" == *$'\n'* || "$name" == *$'\r'* || "$email" == *$'\n'* || "$email" == *$'\r'* ]] \
-            || [[ "${name: -1}" == '\' || "${email: -1}" == '\' ]]; then
+        if [[ "$name" == *$'\n'* || "$name" == *$'\r'* || "$email" == *$'\n'* || "$email" == *$'\r'* ]] ||
+            [[ "${name: -1}" == '\' || "${email: -1}" == '\' ]]; then
             _GIT_SKIP_USER=1
         else
             GIT_BODY+=$'\n[user]'
@@ -64,11 +64,11 @@ run() {
         fi
     fi
     _git_body
-    if (( _GIT_SKIP_USER == 1 )); then
+    if ((_GIT_SKIP_USER == 1)); then
         io_warn "git identity values must not contain CR/LF or a trailing backslash; skipping [user]"
     fi
     want="$GIT_BODY"
-    if (( FS_DRY_RUN == 1 )); then
+    if ((FS_DRY_RUN == 1)); then
         printf '# would run: merge fedora-setup git block into %q\n' "$cfg"
         return 0
     fi
@@ -102,7 +102,7 @@ verify() {
     local -a got=() want=()
     root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)" || return 1
     declare -F io_error >/dev/null 2>&1 || source "$root/lib/io.sh"
-    if (( ${FS_DRY_RUN:-0} == 1 )); then
+    if ((${FS_DRY_RUN:-0} == 1)); then
         io_info "git: verify skipped in dry-run (no probing)"
         return 0
     fi
@@ -159,7 +159,7 @@ verify() {
             rc=1
         fi
     done
-    if (( rc != 0 )); then
+    if ((rc != 0)); then
         return 1
     fi
     io_info "git: verify passed (managed block in $cfg)"

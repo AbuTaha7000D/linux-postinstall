@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2209  # data file: MODULE_* values are strings, not commands
 # modules/flatpak/module.sh - metadata for the base-apps flatpak module.
 # Installs a curated small set of GUI apps from Flathub. The flathub remote is
 # ensured (--if-not-exists) ahead of every install transaction by the flatpak
@@ -10,7 +11,7 @@
 # before any app install. Evidenced by tests/fixtures/{install_profiles,
 # mod_flatpak,runner}.sh (mock + stateful fake flatpak).
 MODULE_ID=flatpak
-MODULE_TITLE=Flatpak apps
-MODULE_DESCRIPTION=Flathub plus a curated base set of GUI applications
+MODULE_TITLE="Flatpak apps"
+MODULE_DESCRIPTION="Flathub plus a curated base set of GUI applications"
 MODULE_RISK=none
 MODULE_DEFAULT=on

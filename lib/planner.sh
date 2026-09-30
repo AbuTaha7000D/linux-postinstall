@@ -39,7 +39,7 @@ plan_dedupe() {
         _plan_seen[$_plan_x]=1
         _plan_out+=("$_plan_x")
     done
-    if (( ${#_plan_out[@]} > 0 )); then
+    if ((${#_plan_out[@]} > 0)); then
         printf '%s\n' "${_plan_out[@]}"
     fi
 }
@@ -50,13 +50,13 @@ plan_pending() {
     while IFS= read -r _plan_x; do
         _plan_pkgs+=("$_plan_x")
     done < <(plan_dedupe "$@")
-    if (( ${#_plan_pkgs[@]} == 0 )); then
+    if ((${#_plan_pkgs[@]} == 0)); then
         return 0
     fi
     local -a _plan_pending=()
     local _plan_pkg
     for _plan_pkg in "${_plan_pkgs[@]}"; do
-        if (( ${FS_DRY_RUN:-0} == 1 )); then
+        if ((${FS_DRY_RUN:-0} == 1)); then
             _plan_pending+=("$_plan_pkg")
             continue
         fi
@@ -65,7 +65,7 @@ plan_pending() {
         fi
         _plan_pending+=("$_plan_pkg")
     done
-    if (( ${#_plan_pending[@]} > 0 )); then
+    if ((${#_plan_pending[@]} > 0)); then
         printf '%s\n' "${_plan_pending[@]}"
     fi
 }
@@ -76,7 +76,7 @@ plan_install() {
     while IFS= read -r _plan_x; do
         _plan_pending+=("$_plan_x")
     done < <(plan_pending "$@")
-    if (( ${#_plan_pending[@]} == 0 )); then
+    if ((${#_plan_pending[@]} == 0)); then
         return 0
     fi
     pkg_install_batch "${_plan_pending[@]}"

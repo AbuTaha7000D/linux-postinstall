@@ -58,3 +58,6 @@ tests/.scratch/
 ROADMAP.md
 # Vendored bats (downloaded by tests/install-bats.sh, never committed)
 tests/bats/
+
+# Vendored lint tools (downloaded by scripts/install-tools.sh, never committed)
+tools/

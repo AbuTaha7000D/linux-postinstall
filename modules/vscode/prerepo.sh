@@ -82,7 +82,7 @@ _vscode_pinned_fingerprint() {
     while IFS= read -r line || [[ -n "$line" ]]; do
         line="${line#"${line%%[![:space:]]*}"}"
         case "$line" in
-            "" | \#*) continue ;;
+        "" | \#*) continue ;;
         esac
         fp="$line"
         break
@@ -108,20 +108,20 @@ _vscode_key_fingerprint() {
     fi
     while IFS= read -r line; do
         case "$line" in
-            pub:*) keys+=1 ;;
-            fpr:*)
-                if (( keys == 1 )) && [[ -z "$fp" ]]; then
-                    fp="${line#fpr:::::::::}"
-                    fp="${fp%%:*}"
-                fi
-                ;;
+        pub:*) keys+=1 ;;
+        fpr:*)
+            if ((keys == 1)) && [[ -z "$fp" ]]; then
+                fp="${line#fpr:::::::::}"
+                fp="${fp%%:*}"
+            fi
+            ;;
         esac
     done <<<"$out"
     if [[ ! "$fp" =~ ^[0-9A-Fa-f]{40}$ ]]; then
         io_error "vscode: gpg reported no primary-key fingerprint for the downloaded key"
         return 1
     fi
-    if (( keys != 1 )); then
+    if ((keys != 1)); then
         io_error "vscode: downloaded key holds $keys keys, expected exactly 1 (fingerprint $fp) -- refusing to import a bundle"
         return 1
     fi
@@ -131,9 +131,9 @@ _vscode_key_fingerprint() {
 
 _vscode_repo_file() {
     case "${1:-}" in
-        rpm) printf '%s\n' "${FS_REPOS_DIR:-/etc/yum.repos.d}/vscode.repo" ;;
-        deb) printf '%s\n' "${FS_SOURCES_DIR:-/etc/apt/sources.list.d}/vscode.list" ;;
-        *) return 1 ;;
+    rpm) printf '%s\n' "${FS_REPOS_DIR:-/etc/yum.repos.d}/vscode.repo" ;;
+    deb) printf '%s\n' "${FS_SOURCES_DIR:-/etc/apt/sources.list.d}/vscode.list" ;;
+    *) return 1 ;;
     esac
     return 0
 }
@@ -177,7 +177,7 @@ _vscode_prerepo_real() {
     keyfile="$(mktemp "${TMPDIR:-/tmp}/fedora-setup-vscode-key.XXXXXX")" || return 1
     run_cmd "vscode: fetch repository key" --stop -- \
         curl -fsSL --proto '=https' --tlsv1.2 -o "$keyfile" "$_VSCODE_KEY_URL" || rc=$?
-    if (( rc != 0 )); then
+    if ((rc != 0)); then
         _vscode_cleanup "$keyfile"
         return 1
     fi
@@ -230,17 +230,17 @@ prerepo() {
         return 1
     fi
     case "$family" in
-        rpm | deb) ;;
-        arch)
-            io_warn "vscode: no official Arch package (AUR visual-studio-code-bin needs an AUR helper); use FS_VSCODE_FLATPAK=1 for the flatpak build"
-            return 0
-            ;;
-        *)
-            io_error "vscode: unsupported family '$family'"
-            return 1
-            ;;
+    rpm | deb) ;;
+    arch)
+        io_warn "vscode: no official Arch package (AUR visual-studio-code-bin needs an AUR helper); use FS_VSCODE_FLATPAK=1 for the flatpak build"
+        return 0
+        ;;
+    *)
+        io_error "vscode: unsupported family '$family'"
+        return 1
+        ;;
     esac
-    if (( FS_DRY_RUN == 1 )); then
+    if ((FS_DRY_RUN == 1)); then
         _vscode_prerepo_dry "$family"
         return $?
     fi

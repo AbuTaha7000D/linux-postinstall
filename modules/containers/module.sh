@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2209  # data file: MODULE_* values are strings, not commands
 # modules/containers/module.sh - metadata for the container-tooling module.
 # Pure system-package module (P7.4): no flatpaks.list, no hooks.sh, no
 # run() step and no verify() hook. Two reasons for the absent hooks:
@@ -50,7 +51,7 @@
 #
 # Because nothing here is privileged, MODULE_RISK stays `none`.
 MODULE_ID=containers
-MODULE_TITLE=Container tooling
-MODULE_DESCRIPTION=Rootless podman, buildah, skopeo and podman-compose
+MODULE_TITLE="Container tooling"
+MODULE_DESCRIPTION="Rootless podman, buildah, skopeo and podman-compose"
 MODULE_RISK=none
 MODULE_DEFAULT=on

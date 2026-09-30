@@ -90,7 +90,7 @@ run() {
             io_error "dns: invalid FS_DNS_CONNECTION: $name"
             return 1
         fi
-    elif (( FS_DRY_RUN != 1 )); then
+    elif ((FS_DRY_RUN != 1)); then
         if ! _dns_nm_running; then
             io_info "dns: NetworkManager is not running; skipping"
             return 0
@@ -114,7 +114,7 @@ run() {
 
 verify() {
     local name="" want="" want_csv="" cur="" host="" rc=0
-    if (( FS_DRY_RUN == 1 )); then
+    if ((FS_DRY_RUN == 1)); then
         io_info "dns: verify skipped in dry-run (no probing)"
         return 0
     fi
@@ -157,7 +157,7 @@ verify() {
     host="${FS_DNS_CHECK_HOST:-flathub.org}"
     rc=0
     _dns_resolve "$host" || rc=$?
-    if (( rc != 0 )); then
+    if ((rc != 0)); then
         io_error "dns: name resolution failed for $host"
         return 1
     fi
@@ -167,7 +167,7 @@ verify() {
 
 _dns_truthy() {
     case "${1:-}" in
-        1 | true | TRUE | True | yes | YES | Yes | on | ON | On) return 0 ;;
+    1 | true | TRUE | True | yes | YES | Yes | on | ON | On) return 0 ;;
     esac
     return 1
 }
@@ -175,7 +175,7 @@ _dns_truthy() {
 _dns_ok_connection() {
     local name="${1:-}"
     case "$name" in
-        "" | -* | *[[:cntrl:]]* | *"|"*) return 1 ;;
+    "" | -* | *[[:cntrl:]]* | *"|"*) return 1 ;;
     esac
     return 0
 }
@@ -185,16 +185,16 @@ _dns_ok_ipv4() {
     local -i i=0
     local -a parts=()
     case "$ip" in
-        *[!0-9.]*) return 1 ;;
+    *[!0-9.]*) return 1 ;;
     esac
     IFS='.' read -r a b c d extra <<<"$ip"
     [[ -n "$a" && -n "$b" && -n "$c" && -n "$d" && -z "${extra:-}" ]] || return 1
     parts=("$a" "$b" "$c" "$d")
     for ((i = 0; i < 4; i++)); do
         part="${parts[i]}"
-        (( ${#part} <= 3 )) || return 1
-        v=$(( 10#$part ))
-        (( v <= 255 )) || return 1
+        ((${#part} <= 3)) || return 1
+        v=$((10#$part))
+        ((v <= 255)) || return 1
     done
     return 0
 }
@@ -204,7 +204,7 @@ _dns_normalize_servers() {
     local -a toks=()
     read -r -a toks <<<"$in"
     for tok in ${toks[@]+"${toks[@]}"}; do
-        if (( first == 1 )); then
+        if ((first == 1)); then
             out="$tok"
             first=0
         else
@@ -266,7 +266,7 @@ _dns_active_connection() {
     local -a cname=() cdev=()
     rc=0
     raw="$(nmcli -t -f NAME,DEVICE,STATE connection show --active 2>/dev/null)" || rc=$?
-    if (( rc != 0 )); then
+    if ((rc != 0)); then
         io_error "dns: cannot list active NetworkManager connections"
         return 1
     fi
@@ -282,7 +282,7 @@ _dns_active_connection() {
         cname+=("${name//\\:/:}")
         cdev+=("${device//\\:/:}")
     done <<<"$raw"
-    if (( ${#cname[@]} == 0 )); then
+    if ((${#cname[@]} == 0)); then
         return 0
     fi
     if [[ -n "$dev" ]]; then
@@ -290,18 +290,18 @@ _dns_active_connection() {
         first=""
         for ((i = 0; i < ${#cname[@]}; i++)); do
             if [[ "${cdev[i]}" == "$dev" ]]; then
-                n=$(( n + 1 ))
+                n=$((n + 1))
                 if [[ -z "$first" ]]; then
                     first="${cname[i]}"
                 fi
             fi
         done
-        if (( n == 1 )); then
+        if ((n == 1)); then
             printf '%s' "$first"
             return 0
         fi
     fi
-    if (( ${#cname[@]} == 1 )); then
+    if ((${#cname[@]} == 1)); then
         printf '%s' "${cname[0]}"
         return 0
     fi
@@ -316,7 +316,7 @@ _dns_prop() {
     fi
     rc=0
     out="$(nmcli -g "$prop" connection show "$name" 2>/dev/null)" || rc=$?
-    if (( rc != 0 )); then
+    if ((rc != 0)); then
         io_error "dns: cannot read $prop of connection: $name"
         return 1
     fi
@@ -337,10 +337,10 @@ _dns_resolve() {
     local -i i=0
     max="${FS_DNS_RESOLVE_ATTEMPTS:-3}"
     case "$max" in
-        '' | *[!0-9]*) max=3 ;;
+    '' | *[!0-9]*) max=3 ;;
     esac
-    (( max >= 1 )) || max=1
-    (( max <= 5 )) || max=5
+    ((max >= 1)) || max=1
+    ((max <= 5)) || max=5
     if ! command -v getent >/dev/null 2>&1; then
         io_warn "dns: getent not found; skipping the name-resolution check"
         return 0
@@ -354,12 +354,12 @@ _dns_resolve() {
         run_cmd "dns: check name resolution ($host)" --stop -- getent hosts "$host" >"$tmp" 2>/dev/null || rc=$?
         out="$(cat -- "$tmp" 2>/dev/null)" || out=""
         : >"$tmp" 2>/dev/null || :
-        attempts=$(( attempts + 1 ))
-        if (( rc == 0 )) && [[ -n "${out//[[:space:]]/}" ]]; then
+        attempts=$((attempts + 1))
+        if ((rc == 0)) && [[ -n "${out//[[:space:]]/}" ]]; then
             rm -f -- "$tmp" 2>/dev/null || :
             return 0
         fi
-        if (( i + 1 < max )); then
+        if ((i + 1 < max)); then
             sleep 1
         fi
     done
@@ -374,7 +374,7 @@ _dns_reactivate() {
     fi
     rc=0
     run_sudo "dns: reactivate connection" --stop -- nmcli connection up "$name" || rc=$?
-    if (( rc != 0 )); then
+    if ((rc != 0)); then
         io_warn "dns: could not reactivate $name; run: nmcli connection up $name"
     fi
     return 0
@@ -383,7 +383,7 @@ _dns_reactivate() {
 _dns_revert() {
     local name="${1:-}" rec="" recname="" rest="" prior_ignore="" prior_dns=""
     local cur="" host="${FS_DNS_CHECK_HOST:-flathub.org}" rc=0
-    if (( FS_DRY_RUN == 1 )); then
+    if ((FS_DRY_RUN == 1)); then
         run_sudo "dns: restore DNS settings [DESTROY]" -- \
             nmcli connection modify "$(_dns_plan_name "$name")" \
             ipv4.ignore-auto-dns "<recorded>" ipv4.dns "<recorded>"
@@ -392,7 +392,7 @@ _dns_revert() {
     fi
     rc=0
     rec="$(state_note_get "$_DNS_NOTE_KEY")" || rc=$?
-    if (( rc != 0 )); then
+    if ((rc != 0)); then
         io_info "dns: no recorded change; nothing to revert"
         return 0
     fi
@@ -417,11 +417,11 @@ _dns_revert() {
         name="$recname"
     fi
     case "$prior_ignore" in
-        yes | no) ;;
-        *)
-            io_error "dns: malformed record ignore-auto-dns: $prior_ignore"
-            return 1
-            ;;
+    yes | no) ;;
+    *)
+        io_error "dns: malformed record ignore-auto-dns: $prior_ignore"
+        return 1
+        ;;
     esac
     if [[ -n "$prior_dns" ]] && ! _dns_ok_servers "$(_dns_servers_to_words "$prior_dns")"; then
         io_error "dns: malformed record dns list: $prior_dns"
@@ -435,7 +435,7 @@ _dns_revert() {
     rc=0
     run_sudo "dns: restore DNS settings [DESTROY]" --stop -- \
         nmcli connection modify "$name" ipv4.ignore-auto-dns "$prior_ignore" ipv4.dns "$prior_dns" || rc=$?
-    if (( rc != 0 )); then
+    if ((rc != 0)); then
         return 1
     fi
     cur="$(_dns_prop "$name" ipv4.ignore-auto-dns)" || return 1
@@ -454,7 +454,7 @@ _dns_revert() {
     _dns_reactivate "$name"
     rc=0
     _dns_resolve "$host" || rc=$?
-    if (( rc != 0 )); then
+    if ((rc != 0)); then
         io_error "dns: name resolution for $host failed after the revert"
         io_error "dns: the record is kept; retry with FS_DNS_REVERT=1 ./setup install --yes dns"
         return 1
@@ -476,7 +476,7 @@ _dns_apply() {
         return 1
     fi
     want_csv="$(_dns_normalize_servers "$want")"
-    if (( FS_DRY_RUN == 1 )); then
+    if ((FS_DRY_RUN == 1)); then
         run_sudo "dns: set DNS servers [DESTROY]" -- \
             nmcli connection modify "$(_dns_plan_name "$name")" ipv4.dns "$want_csv" ipv4.ignore-auto-dns yes
         if [[ "${FS_DNS_REACTIVATE:-1}" != 0 ]]; then
@@ -494,11 +494,11 @@ _dns_apply() {
         prior_ignore="no"
     fi
     case "$prior_ignore" in
-        yes | no) ;;
-        *)
-            io_error "dns: unexpected ipv4.ignore-auto-dns value: $prior_ignore"
-            return 1
-            ;;
+    yes | no) ;;
+    *)
+        io_error "dns: unexpected ipv4.ignore-auto-dns value: $prior_ignore"
+        return 1
+        ;;
     esac
     prior_dns="$(_dns_prop "$name" ipv4.dns)" || return 1
     if [[ -n "$prior_dns" ]] && ! _dns_ok_servers "$(_dns_servers_to_words "$prior_dns")"; then
@@ -518,7 +518,7 @@ _dns_apply() {
     rc=0
     run_sudo "dns: set DNS servers [DESTROY]" --stop -- \
         nmcli connection modify "$name" ipv4.dns "$want_csv" ipv4.ignore-auto-dns yes || rc=$?
-    if (( rc != 0 )); then
+    if ((rc != 0)); then
         return 1
     fi
     cur="$(_dns_prop "$name" ipv4.ignore-auto-dns)" || return 1
@@ -538,7 +538,7 @@ _dns_apply() {
     io_info "dns: $name now uses $want_csv (ignore-auto-dns=yes)"
     rc=0
     _dns_resolve "$host" || rc=$?
-    if (( rc != 0 )); then
+    if ((rc != 0)); then
         io_error "dns: name resolution for $host failed after the change"
         io_error "dns: revert with FS_DNS_REVERT=1 ./setup install --yes dns"
         return 1

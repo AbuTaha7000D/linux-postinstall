@@ -33,7 +33,7 @@ run() {
 
 verify() {
     local root="" out="" app="" rc=0 n=0
-    if (( FS_DRY_RUN == 1 )); then
+    if ((FS_DRY_RUN == 1)); then
         io_info "apps: verify is read-only; runs only in real mode"
         return 0
     fi
@@ -50,11 +50,11 @@ verify() {
             want+=("$app")
         done <<<"$out"
     fi
-    if (( ${#want[@]} == 0 )); then
+    if ((${#want[@]} == 0)); then
         io_info "apps: verify: flatpaks.list empty; nothing to verify"
         return 0
     fi
-    for (( n = 0; n < ${#want[@]}; n++ )); do
+    for ((n = 0; n < ${#want[@]}; n++)); do
         app="${want[$n]}"
         if flatpak info --user "$app" >/dev/null 2>&1; then
             io_info "apps: verify ok: flatpak present: $app"
@@ -65,7 +65,7 @@ verify() {
             rc=1
         fi
     done
-    if (( rc == 0 )); then
+    if ((rc == 0)); then
         io_info "apps: verify passed"
     fi
     return "$rc"
