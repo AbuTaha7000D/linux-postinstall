@@ -1,0 +1,155 @@
+# .github/workflows/ci.yml - P10.3 CI.
+#
+# Three jobs:
+#   lint      - shellcheck + shfmt via scripts/lint (P10.2)
+#   unit      - bats + every fixture suite via tests/run (P10.1)
+#   container - the [REAL] matrix: fedora:latest, fedora:41,
+#               debian:stable, archlinux:latest, each a root container
+#               running tests/containers/smoke.sh against the REAL package
+#               backends of that distro.
+#
+# The container job is the only place the [REAL] container criterion is
+# met. A green run here is a claim about GitHub Actions; a green
+# tests/containers/smoke.sh run on a developer machine with podman is a
+# DIFFERENT claim (local container execution) and is recorded separately
+# in the ROADMAP P10.3 ledger row. Never conflate them.
+#
+# Why podman and not the `container:` job key: `container:` requires a
+# node-compatible image and cannot express a matrix of four distro images
+# that each run a shell suite as root. podman is preinstalled on
+# ubuntu-latest runners and needs no privileged daemon.
+#
+# The repo is bind-mounted READ-ONLY into each container. That is a
+# deliberate safety property, not an optimization: a container test that
+# could write into the checkout could destroy the very tree CI is
+# verifying (and the real install must not need to write there anyway --
+# state lives off-repo under $HOME).
+
+name: ci
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: install shellcheck + shfmt
+        run: bash scripts/install-tools.sh
+      - name: lint
+        run: make lint
+
+  unit:
+    name: unit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: install bats
+        run: bash tests/install-bats.sh
+      - name: unit + fixture suites
+        run: bash tests/run
+
+  container:
+    name: container (${{ matrix.image }})
+    runs-on: ubuntu-latest
+    strategy:
+      # One distro failing must not hide the state of the others, and a
+      # second failure of the same image is usually the same root cause.
+      fail-fast: false
+      matrix:
+        include:
+          # `slug` exists because a container name may not contain a colon
+          # (`ctr-fedora:latest` is rejected by podman with "names must
+          # match [a-zA-Z0-9][a-zA-Z0-9_.-]*"), and the image tag is exactly
+          # what carries the colon. `family` is asserted by the smoke script
+          # against `setup check`'s own output, so a distro-detection
+          # regression fails in the job that covers it.
+          - image: fedora:latest
+            slug: fedora-latest
+            family: rpm
+          - image: fedora:41
+            slug: fedora-41
+            family: rpm
+          - image: debian:stable
+            slug: debian-stable
+            family: deb
+          - image: archlinux:latest
+            slug: archlinux-latest
+            family: arch
+    steps:
+      - uses: actions/checkout@v4
+      - name: pull image
+        run: podman pull "docker.io/library/${{ matrix.image }}"
+      - name: container smoke (real backends, as root)
+        # -v "$PWD:/repo:ro"  read-only checkout (see header)
+        # --privileged NOT used: nothing here needs it, and a container
+        #   that can mount the host block device is not worth the risk.
+        # FS_CTR_REAL: attempt the real install. The script's own
+        #   no-flatpak SKIP path is unreachable from CI on purpose --
+        #   provisioning below hard-fails if flatpak is missing, because a
+        #   green job that silently skipped the [REAL] install would report
+        #   coverage it did not deliver. The skip exists for hand-runs on a
+        #   bare image, and prints its reason when it is used.
+        # FS_CTR_TIMEOUT: an ENVIRONMENT deadline, not a verdict on the
+        #   tool. Measured: the system+flatpak install of `minimal` pulls
+        #   >2GB from Flathub, and that CDN varies ~10x -- an earlier
+        #   Fedora run here exceeded 5400s, while a warm run finished in
+        #   ~480-1000s. There is no headroom factor that makes this
+        #   reliable; Flathub is a third party. On timeout the script
+        #   reports INCONCLUSIVE and exits NON-ZERO rather than passing on
+        #   unrun assertions, so a slow CDN fails the job loudly instead of
+        #   quietly testing less than it reports. Raise this only with
+        #   evidence; do not lower it to "stop the flakiness".
+        run: |
+          podman run --rm \
+            --name "ctr-${{ matrix.slug }}" \
+            -v "$PWD:/repo:ro" \
+            -w /repo \
+            -e HOME=/root \
+            -e FS_CTR_FAMILY="${{ matrix.family }}" \
+            -e FS_CTR_REAL=1 \
+            -e FS_CTR_TIMEOUT=5400 \
+            -i "docker.io/library/${{ matrix.image }}" \
+            bash -c '
+              set -u
+              # Install flatpak where the image ships it as a package, so the
+              # real-install path is actually exercised instead of skipped.
+              #
+              # NOTE the ID values, measured against these exact images:
+              #   fedora:latest  -> ID=fedora
+              #   fedora:41      -> ID=fedora
+              #   debian:stable  -> ID=debian
+              #   archlinux:latest -> ID=arch   (NOT "archlinux" -- the image
+              #     is named archlinux but /etc/os-release says arch; an
+              #     arm keyed on the image name matches NOTHING, and a case
+              #     with no matching arm runs no command and still exits 0)
+              # So the default arm reports loudly instead of doing nothing.
+              ctr_id="$( . /etc/os-release 2>/dev/null && printf %s "${ID:-}" )"
+              echo "container ID=$ctr_id"
+              case "$ctr_id" in
+                fedora) dnf install -y flatpak ;;
+                debian|ubuntu) export DEBIAN_FRONTEND=noninteractive
+                              apt-get update -qq
+                              apt-get install -y -qq flatpak ;;
+                arch) pacman -Sy --noconfirm flatpak ;;
+                *) echo "::error::unhandled container ID=$ctr_id; no provisioning attempted" >&2
+                   exit 1 ;;
+              esac || { rc=$?
+                        echo "::error::flatpak provisioning failed (rc $rc) on ID=$ctr_id; the [REAL] minimal install cannot run, so this matrix entry would silently deliver less coverage than it reports" >&2
+                        exit "$rc"; }
+              if command -v flatpak >/dev/null 2>&1; then
+                echo "provisioned: flatpak $(flatpak --version)"
+              else
+                echo "::error::flatpak still absent after provisioning on ID=$ctr_id; the [REAL] minimal install cannot run" >&2
+                exit 1
+              fi
+              bash tests/containers/smoke.sh
+            '
