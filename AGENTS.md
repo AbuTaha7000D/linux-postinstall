@@ -370,19 +370,24 @@ is a "module"; modules are grouped into profiles; everything runs through the co
   (`install|list|check|verify|export|update|help|version`) is functional and tested. P9.1
   shipped owner-approved WITHOUT a Senior Review (a known process gap, recorded in its ledger
   row); P9.2–P9.5 each reached Senior Review PASS.
-  **P10 is IMPLEMENTATION-COMPLETE and awaiting owner phase-approval.** All five tasks
+  **P10 is CLOSED (implementation-complete and phase-approved by owner).** All five tasks
   (P10.1 bats harness, P10.2 static analysis, P10.4 mock-backend integration suite, P10.3
   container smoke + Actions matrix, P10.5 prototype-bug regressions) are DONE and committed
   (`fb42b43`/`6b92281`, `2d792cc`/`70727b3`, `7c83d77`/`f046f05`, `4607d5f`/`fe70695`+
   `ff96536`, `2e95428`/`2c430e0` — implementation then ledger, in that order). P10.3 and
   P10.5 reached genuine fresh-context Senior Review PASS; P10.1 and P10.4 each took three
-  review rounds; P10.2 passed on round 1. **P10's §5 "CI green" criterion is UNVERIFIED:**
+  review rounds; P10.2 passed on round 1. **At the phase close the owner chose option (b):
+  the §5/§8 GitHub Actions criterion is formally RECLASSIFIED as `UNVERIFIED-and-ACCEPTED`,
+  and the real workflow run moves to follow-up ticket T-P10-1 (post-P11, owner-gated).**
   `.github/workflows/ci.yml` has NEVER been executed on a GitHub runner — there is no run id
-  and no status URL, and none may be invented (P10.3 row). What is verified is local: `make
-  lint` OK, smoke 169/0, `bash tests/run` rc 0 (`1..59`, 59 ok / 0 not ok), 44 fixture
-  suites / 3676 fixture asserts, and a full-battery digest byte-identical across 3 runs.
-  **Next: P11 needs owner approval, and it is BLOCKED on an owner decision about the
-  Actions run** — see the P10 phase report and the P10.3 ledger row.
+  and no status URL, and none may be invented (P10.3 row, P10 §9). No complete four-distro
+  matrix run was ever green. The shipped `FS_CTR_TIMEOUT=5400` has already gone red on the
+  Flathub CDN, so a first run must be read as a sample, not a verdict. What is verified is
+  strictly LOCAL: `make lint` OK, smoke 169/0 (stderr empty), `bash tests/run` rc 0
+  (`1..59`, 59 ok / 0 not ok), 44 fixture suites / 3676 fixture asserts, and a full-battery
+  digest byte-identical across 3 runs (`f844c619d560cf2c`). Local Podman `[REAL]` evidence
+  and GitHub Actions evidence are DIFFERENT claims and are never added together.
+  **Next: P11 needs owner approval.** P11 is NOT started; do not begin it without approval.
 - Version: `FS_VERSION="0.1.0-dev"` (see `lib/bootstrap.sh`).
 
 ## 2. Repository structure
