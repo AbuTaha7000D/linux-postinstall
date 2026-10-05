@@ -44,7 +44,9 @@ usage() {
 }
 
 do_packages() {
-    install_packages $(package_files)
+    local -a files=()
+    mapfile -t files < <(package_files)
+    install_packages "${files[@]}" || return 1
     if [[ -f "$FS_ROOT/config/flatpak.txt" ]]; then
         install_flatpaks "$FS_ROOT/config/flatpak.txt"
     fi

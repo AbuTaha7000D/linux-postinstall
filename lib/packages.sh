@@ -104,16 +104,17 @@ package_files() {
 # install_packages <file>... -- install every package listed in the given files.
 # A package already installed is skipped, so re-running is cheap and safe.
 install_packages() {
-    local file pkg wanted=() missing=()
+    local file pkg entries wanted=() missing=()
     local -A seen=()
 
     for file in "$@"; do
+        entries="$(read_list "$file")" || return 1
         while IFS= read -r pkg; do
             [[ -n "$pkg" ]] || continue
             [[ -n "${seen[$pkg]:-}" ]] && continue
             seen[$pkg]=1
             wanted+=("$pkg")
-        done < <(read_list "$file")
+        done <<<"$entries"
     done
 
     if ((${#wanted[@]} == 0)); then
