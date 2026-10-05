@@ -155,12 +155,23 @@ t_package_files() {
 
     FS_ROOT="$(TMP root)"
 
+    # Pinned, so the list does not depend on the desktop running the checks.
+    unset XDG_CURRENT_DESKTOP
+
     FS_FAMILY=deb
     check_eq "package_files includes the deb list" "2" "$(package_files | wc -l)"
     check_contains "package_files includes the shared list" "config/packages.txt" "$(package_files)"
 
     FS_FAMILY=rpm
     check_eq "package_files skips an absent family list" "1" "$(package_files | wc -l)"
+
+    XDG_CURRENT_DESKTOP=GNOME
+    FS_FAMILY=rpm
+    check_eq "package_files adds the gnome list on gnome" "2" "$(package_files | wc -l)"
+    check_contains "package_files names the gnome list" "config/packages-gnome.txt" "$(package_files)"
+
+    XDG_CURRENT_DESKTOP=KDE
+    check_eq "package_files skips the gnome list elsewhere" "1" "$(package_files | wc -l)"
 
     FS_ROOT="$ROOT"
     teardown_tmp

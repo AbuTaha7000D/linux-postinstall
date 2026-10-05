@@ -88,12 +88,16 @@ pkg_installed() {
     esac
 }
 
-# package_files -- the list files to read: the shared one, plus this family's
-# one when it exists. Both are plain text, one package name per line.
+# package_files -- the list files to read: the shared one, this family's one
+# when it exists, and the GNOME one when GNOME is the desktop. All are plain
+# text, one package name per line.
 package_files() {
     printf '%s\n' "$FS_ROOT/config/packages.txt"
     local family_file="$FS_ROOT/config/packages-$FS_FAMILY.txt"
     [[ -f "$family_file" ]] && printf '%s\n' "$family_file"
+    if [[ "${XDG_CURRENT_DESKTOP:-}" == *GNOME* ]]; then
+        printf '%s\n' "$FS_ROOT/config/packages-gnome.txt"
+    fi
     return 0
 }
 
