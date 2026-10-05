@@ -46,10 +46,7 @@ install_dns() {
         current="$(_dns_servers "$name")"
         log_info "$name current DNS: ${current:-none}"
         if [[ ! -f "$backup" ]]; then
-            printf '%s\n%s\n' "$name" "$current" >"$backup" || {
-                log_error "cannot write $backup"
-                return 1
-            }
+            printf '%s\n%s\n' "$name" "$current" | write_atomic "$backup"
         fi
     fi
 
@@ -62,6 +59,8 @@ install_dns() {
     run_root "set DNS on $name" nmcli connection modify "$name" \
         ipv4.dns "$csv" ipv4.ignore-auto-dns yes ipv6.ignore-auto-dns yes
     run_root "reapply $name" nmcli connection up "$name"
+
+    ((FS_DRY_RUN)) && return 0
 
     if [[ "$(_dns_servers "$name")" != "$want" ]]; then
         log_error "nmcli reported success but $name still resolves via $(_dns_servers "$name")"
