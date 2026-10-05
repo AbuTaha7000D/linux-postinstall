@@ -9,7 +9,8 @@
 #   FS_DNS_REVERT=1     put the previously recorded servers back
 #
 # The previous value is written to .dns-backup next to the module on the first
-# run, so the revert needs no state from this script.
+# run, so the revert needs no state from this script. The name is on the
+# first line and the servers on the second, because names contain spaces.
 
 install_dns() {
     have nmcli || {
@@ -34,13 +35,18 @@ install_dns() {
             log_error "no $backup to revert from"
             return 1
         }
-        read -r name want <"$backup"
+        # Two reads, not `read -r name want`: only the line boundary
+        # separates the fields, and connection names contain spaces.
+        {
+            read -r name
+            read -r want
+        } <"$backup"
         log_info "reverting $name to $want"
     else
         current="$(_dns_servers "$name")"
         log_info "$name current DNS: ${current:-none}"
         if [[ ! -f "$backup" ]]; then
-            printf '%s %s\n' "$name" "$current" >"$backup" || {
+            printf '%s\n%s\n' "$name" "$current" >"$backup" || {
                 log_error "cannot write $backup"
                 return 1
             }
