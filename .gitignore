@@ -15,3 +15,7 @@ downloads/
 # the gnome module has somewhere to look.
 assets/wallpaper/*
 !assets/wallpaper/.gitkeep
+
+# Runtime backups written by the locale and dns modules
+.dns-backup
+.locale-backup
