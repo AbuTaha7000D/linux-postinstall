@@ -1,0 +1,5 @@
+# .desktop ids appended to the GNOME dock, in this order.
+# Ids that are not installed are simply not pinned.
+
+org.gnome.Nautilus.desktop
+firefox.desktop

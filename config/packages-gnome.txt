@@ -1,0 +1,4 @@
+# Packages that provide the GNOME extensions listed in extensions.txt.
+# Installed by ./setup packages when the host runs GNOME.
+
+gnome-shell-extensions

@@ -1,8 +1,0 @@
-# Curated media flatpaks (Flatpak-first for GUI apps, P5.7 owner rule).
-# OBS itself is covered by the distro package where available
-# (packages.*.list); on rpm-family hosts without native obs-studio, install
-# com.obsproject.Studio via flatpak manually (see module.sh). Curation order
-# is pinned by the fixture's exact-batch assert. 
-org.kde.kdenlive
-io.mpv.Mpv
-org.audacityteam.Audacity

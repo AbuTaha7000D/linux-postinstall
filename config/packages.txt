@@ -1,0 +1,17 @@
+# System packages installed by ./setup, one per line.
+# Lines starting with # are ignored; so are blank lines.
+# Per-family additions go in packages-rpm.txt, packages-deb.txt or
+# packages-arch.txt. A package already installed is skipped, so re-running
+# ./setup installs nothing twice.
+
+git
+curl
+wget
+vim
+fzf
+bat
+tmux
+unzip
+zip
+e2fsprogs
+flatpak

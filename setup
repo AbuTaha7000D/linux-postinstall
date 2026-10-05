@@ -1,34 +1,143 @@
 #!/usr/bin/env bash
+# setup - personal post-install script.
+#
+#   ./setup                     install packages, then run every module
+#   ./setup install             same
+#   ./setup install terminal    install packages, then run only these modules
+#   ./setup packages            install packages and Flatpaks only
+#   ./setup modules             run every module, install no packages
+#   ./setup list                list available modules
+#   ./setup help                this text
+#
+# Options:
+#   --dry-run    print every command instead of running it; change nothing
+#   -h --help    this text
+#
+# Order of work: detect the distro, install config/packages.txt (plus
+# config/packages-<family>.txt when present) and config/flatpak.txt, then run
+# each module named on the command line, or the ones in config/modules.txt.
+#
+# A failing module is reported and the rest still run; the exit status is 1 if
+# any step failed.
+
 set -euo pipefail
 
-_setup_check_tools() {
-    local cmd
-    for cmd in dirname; do
-        if ! command -v "$cmd" >/dev/null 2>&1; then
-            printf 'error: required tool %s not found in PATH\n' "$cmd" >&2
-            exit 1
-        fi
+FS_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+export FS_ROOT
+
+source "$FS_ROOT/lib/common.sh"
+source "$FS_ROOT/lib/packages.sh"
+source "$FS_ROOT/lib/config.sh"
+source "$FS_ROOT/lib/modules.sh"
+
+_tmpdirs=()
+cleanup() {
+    local d
+    for d in "${_tmpdirs[@]+"${_tmpdirs[@]}"}"; do
+        rm -rf -- "$d"
     done
 }
+trap cleanup EXIT
 
-_self="${BASH_SOURCE[0]}"
-if [[ "$_self" != */* ]]; then
-    if [[ -f "$PWD/$_self" ]]; then
-        _self="$PWD/$_self"
-    elif command -v -- "$_self" >/dev/null 2>&1; then
-        _self="$(command -v -- "$_self")"
+usage() {
+    sed -n '2,14p' "$0" | sed 's/^#\{1,\} \{0,1\}//'
+}
+
+do_packages() {
+    install_packages $(package_files)
+    if [[ -f "$FS_ROOT/config/flatpak.txt" ]]; then
+        install_flatpaks "$FS_ROOT/config/flatpak.txt"
     fi
-fi
-if [[ -z "$_self" ]]; then
-    printf 'error: cannot locate the setup script\n' >&2
-    exit 1
-fi
+}
 
-_setup_check_tools
+do_modules() {
+    if (($# > 0)); then
+        run_modules "$@"
+        return
+    fi
+    local -a ids=()
+    mapfile -t ids < <(default_modules)
+    ((${#ids[@]} > 0)) || die "no modules configured in config/modules.txt"
+    run_modules "${ids[@]}"
+}
 
-if command -v readlink >/dev/null 2>&1; then
-    _self="$(readlink -f -- "$_self" 2>/dev/null || printf '%s' "$_self")"
-fi
+main() {
+    local cmd="all"
+    local -a ids=()
 
-_dir="$(cd -- "$(dirname -- "$_self")" && pwd)"
-exec "$_dir/lib/bootstrap.sh" "$@"
+    while (($# > 0)); do
+        case "$1" in
+        -h | --help)
+            usage
+            return 0
+            ;;
+        --dry-run)
+            FS_DRY_RUN=1
+            ;;
+        -*)
+            usage >&2
+            die "unknown option: $1"
+            ;;
+        *)
+            cmd="$1"
+            shift
+            ids+=("$@")
+            break
+            ;;
+        esac
+        shift
+    done
+
+    case "$cmd" in
+    list)
+        ((${#ids[@]} == 0)) || die "list takes no module names"
+        list_modules
+        return 0
+        ;;
+    help | "")
+        ((${#ids[@]} == 0)) || die "help takes no arguments"
+        usage
+        return 0
+        ;;
+    install | all | modules)
+        if ((${#ids[@]} > 0)); then
+            validate_modules "${ids[@]}"
+        fi
+        ;;
+    packages)
+        ((${#ids[@]} == 0)) || die "packages takes no module names"
+        ;;
+    *)
+        usage >&2
+        die "unknown command: $cmd"
+        ;;
+    esac
+
+    if ((FS_DRY_RUN)); then
+        log_info "DRY RUN: nothing will be changed"
+    fi
+    detect_distro
+
+    local rc=0
+    case "$cmd" in
+    install | all)
+        do_packages || rc=1
+        do_modules "${ids[@]+"${ids[@]}"}" || rc=1
+        ;;
+    packages)
+        do_packages || rc=1
+        ;;
+    modules)
+        do_modules "${ids[@]+"${ids[@]}"}" || rc=1
+        ;;
+    esac
+
+    if ((rc == 0)); then
+        log_info "done"
+    else
+        log_error "finished with errors (rc=$rc)"
+    fi
+    return "$rc"
+}
+
+main "$@"

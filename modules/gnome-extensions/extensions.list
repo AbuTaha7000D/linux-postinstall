@@ -1,9 +1,0 @@
-# Curated extensions to ENABLE for the gnome-extensions module (P6.3).
-# Each line is one extension uuid (or its packaged .desktop id must not be
-# here -- this file is only the enable set). Uuids are validated to
-# [A-Za-z0-9._@-] and deduped first-seen by the shared list grammar.
-# Only uuids already installed on the system are enabled: a uuid that is not
-# installed is reported and skipped (install its distro package first via
-# packages.<family>.list). Re-runs are no-ops for already-enabled uuids.
-dash-to-dock@micxgx.gmail.com
-user-theme@gnome-shell-extensions.gcampax.github.com

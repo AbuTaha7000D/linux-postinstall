@@ -1,0 +1,11 @@
+# Applied as a managed block in ~/.gitconfig; nothing else in that file is
+# touched. Set FS_GIT_USER_NAME and FS_GIT_USER_EMAIL to add a [user] section.
+
+[init]
+	defaultBranch = main
+[merge]
+	conflictstyle = zdiff3
+[diff]
+	colorMoved = zebra
+[color]
+	ui = auto

@@ -1,63 +1,17 @@
-# Logs and temporary files
-*.log
-*.tmp
-
-# Build files and caches
-*.bin
-*.o
-*.out
-
-# Downloaded Packages
-*.deb
-*.rpm
-
-# System files
+# Editor and OS noise
 .DS_Store
-.Thumbs.db
-.Trash-*
-.Spotlight-V100
-.fseventsd
-
-# Ignore IDE-specific directories
+*~
+*.swp
 .vscode/
 .idea/
 
-# IDE
-*.swp
-*~
-*.pyc
-__pycache__/
-
-# Optionally supplied user assets (wallpaper, icons, fonts). Content is
-# gitignored and skipped when absent; only the directory .gitkeep is tracked.
-assets/wallpaper/*
-assets/icons/*
-assets/fonts/*
-!assets/wallpaper/.gitkeep
-!assets/icons/.gitkeep
-!assets/fonts/.gitkeep
-assets/omp/*
-!assets/omp/.gitkeep
-assets/atuin/*
-!assets/atuin/.gitkeep
-
-# Local runtime state and logs (per-user state lives outside the repo under
-# $XDG_STATE_HOME; ignore any in-repo caches)
-.state/
-logs/
-
-# Runtime downloads (archives fetched into the repo during setup)
+# Scratch space
+*.log
+*.tmp
 downloads/
 .cache/
 
-# Mock/test scratch (generated at test time)
-tests/scratch/
-tests/.scratch/
-
-# Internal execution plan (development only, never committed)
-ROADMAP.md
-# Vendored bats (downloaded by tests/install-bats.sh, never committed)
-tests/bats/
-
-# Vendored lint tools (downloaded by scripts/install-tools.sh, never committed)
-tools/
+# Wallpaper images are personal and not shared; the directory is tracked so
+# the gnome module has somewhere to look.
+assets/wallpaper/*
+!assets/wallpaper/.gitkeep

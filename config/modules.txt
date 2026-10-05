@@ -1,0 +1,11 @@
+# Modules run by ./setup, in this order. One id per line; the id is the
+# filename in modules/ without the .sh extension.
+#
+# dns and locale change system-wide settings, so they are deliberately not
+# listed here. Run them on purpose: ./setup install dns
+
+git
+terminal
+fonts
+gnome
+dev

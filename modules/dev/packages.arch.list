@@ -1,5 +1,0 @@
-# Family-divergent name (dev only): pip. Arch dropped the python- prefix, so
-# the package is python-pip here (archlinux.org package search: python-pip in
-# extra, and NO python3-pip anywhere). jupyter-notebook keeps the same name on
-# arch, rpm and deb, so it stays in the common packages.list.
-python-pip

@@ -1,115 +1,161 @@
-# Linux System Setup Script
+# linux-postinstall
 
-## Overview
+A small post-install script for my own Linux machines. One entry point, plain
+text config, no state files. Run it on a fresh machine, or run it again on an
+old one, and it works out what is still missing.
 
-This script automates the initial setup and configuration of a Linux system, streamlining the process of installing common applications, configuring system settings, and customizing the desktop environment. It supports multiple distributions (Fedora-based, Debian-based, and Arch-based) and provides options for installing a wide range of tools and customizing the user experience.
+```
+./setup                 # packages, then every module in config/modules.txt
+./setup modules git     # just the git module
+./setup --dry-run       # print every command, change nothing
+```
 
-<p align="center">
-  <img src="https://img.shields.io/github/license/abutaha7000d/linux-postinstall?label=license" alt="License"/>
-  <img src="https://img.shields.io/badge/release-v2.1.1-blue" alt="Release"/>
-  <img src="https://img.shields.io/github/repo-size/abutaha7000d/linux-postinstall?label=code%20size" alt="Code Size"/>
-</p>
+Supported: Fedora and other RHEL-like systems, Debian/Ubuntu and other
+Debian-like systems, and Arch.
 
-## Features
+## How it works
 
-- **Distribution Detection:** Automatically identifies the Linux distribution based on `/etc/os-release`.
-- **Application Installation:**
-  - Installs a set of essential applications (git, nano, btop, etc.).
-  - Installs distribution-specific applications (VS Code, Chrome).
-  - Installs flatpak applications (Brave Browser, Discord, etc.).
-- **System Configuration:**
-  - Configures Google DNS for improved DNS resolution.
-  - Sets the system language to English (US).
-  - Installs fonts for improved visual appearance.
-  - Configures terminal (Fish shell and Oh My Posh).
-  - Sets up aliases for common commands.
-  - Configures custom keyboard shortcuts.
-  - Sets favorite applications in the GNOME Shell dock (if applicable).
-  - Installs GNOME themes for a customized desktop experience (if applicable).
-  - Sets up user icons and cursor themes, with Adwaita fallback and sidebar integration (if applicable).
-- **Modular Design:** The script is organized into functions for easy maintenance and extensibility.
-- **Error Handling:** Includes basic error handling and provides informative messages to the user.
-- **Interactive Prompts:** Asks the user for confirmation and input during certain steps.
+`setup` detects the distro, installs the package lists for it, then runs each
+module in `config/modules.txt`. Every step checks the current state before
+acting, so a second run reports `already installed` and `unchanged` and touches
+nothing.
 
-## Requirements
+Two rules the modules follow:
 
-- A Linux system (Fedora-based, Debian-based, or Arch-based).
-- Internet connection.
-- GNOME desktop environment for certain GNOME-specific features.
+- **Idempotent.** Rerunning is always safe. A version that already matches is
+  left alone.
+- **Refuses to guess.** Downloaded binaries are checked against a pinned
+  SHA-256 in `config/fonts.sha256` before being installed. A mismatch stops that
+  module with an error rather than installing something unverified.
 
-## Usage
+There is no database, ledger, or import/export step. State is the machine
+itself.
 
-1.  **Download the script:**
+## Layout
 
-    ```bash
-    git clone https://github.com/AbuTaha7000D/linux-postinstall.git
-    cd linux-postinstall
-    ```
+```
+setup              entry point and CLI
+check.sh           validation; ./check.sh
+lib/
+  common.sh        logging, run/run_root, read_list, write_atomic
+  packages.sh      distro detection, package and Flatpak install
+  config.sh        managed blocks in config files, with backups
+  modules.sh       module discovery and execution
+config/            plain text, one item per line
+modules/           one file per module, defines install_<id>
+assets/wallpaper/  optional, used by the gnome module
+```
 
-2.  **Make the script executable:**
+## Config files
 
-    ```bash
-    chmod +x setup.sh
-    ```
+Every file in `config/` is plain text, one item per line, with `#` for comments.
+Edit them and rerun; there is nothing else to regenerate.
 
-3.  **Run the script:**
+| File | Purpose |
+| --- | --- |
+| `packages.txt` | packages for every distro |
+| `packages-rpm.txt` | extra packages for RHEL-like |
+| `packages-deb.txt` | extra packages for Debian-like |
+| `packages-arch.txt` | extra packages for Arch |
+| `packages-gnome.txt` | GNOME-specific packages, added when GNOME is present |
+| `flatpak.txt` | Flatpak applications |
+| `modules.txt` | which modules run by default, and in what order |
+| `aliases.txt` | shell aliases written to a sourced file |
+| `fonts.txt` / `fonts.sha256` | Nerd Fonts and their pinned digests |
+| `gitconfig.txt` | settings added to `~/.gitconfig` |
+| `favorites.txt`, `shortcuts.txt`, `extensions.txt` | GNOME settings |
 
-    ```bash
-    ./setup.sh <option>
-    ```
+## Modules
 
+| Module | Does |
+| --- | --- |
+| `git` | sets git aliases and options in a managed block in `~/.gitconfig` |
+| `terminal` | oh-my-posh and atuin, aliases, prompt setup in `~/.bashrc` |
+| `fonts` | pinned Nerd Fonts into `~/.local/share/fonts`, then `fc-cache` |
+| `gnome` | favourites, keyboard shortcuts, extensions, theme, wallpaper |
+| `dev` | VS Code from Microsoft's repo, verified by GPG key fingerprint |
+| `dns` | DNS resolver; **opt-in**, changes system settings |
+| `locale` | system locale; **opt-in**, changes system settings |
 
-  Replace `<option>` with one of the following installation options (each runs a modular script):
+`dns` and `locale` change system-wide settings and are not in
+`config/modules.txt`. Run them deliberately:
 
-  - `all`                   : Run all setup steps (recommended)
-  - `add_custom_shortcut`   : Add custom GNOME keyboard shortcuts
-  - `add_google_dns`        : Add Google DNS to your system
-  - `gnome_extensions`      : Open recommended GNOME extensions in your browser
-  - `change_language`       : Set system language (English/Arabic)
-  - `install_apps`          : Install system, Flatpak, and AUR applications
-  - `install_atuin`         : Install and configure Atuin shell history manager
-  - `install_fonts`         : Install user fonts from additions/fonts
-  - `set_aliases`           : Overwrite .bashrc with dynamic aliases (with backup)
-  - `set_favorite_apps`     : Set favorite apps in the GNOME dock
-  - `themes`                : Install and configure icons, cursors, terminal, and GNOME themes
-  - `help`                  : Show this help message
-  - `version`               : Show version
+```
+./setup install dns
+./setup install locale
+```
 
-  **Some Examples:**
+## Managed blocks
 
-  ```bash
-  ./setup.sh all
-  ./setup.sh help
-  ./setup.sh install_apps
-  ./setup.sh themes
-  ```
+When a module edits a file you also own, like `~/.bashrc` or `~/.gitconfig`, it
+writes a single block between markers and leaves the rest of the file alone:
 
-    **Some Examples:**
+```bash
+# BEGIN postinstall terminal
+...
+# END postinstall terminal
+```
 
-    ```bash
-    ./setup.sh all
-    ./setup.sh help
-    ./setup.sh apps terminal
-    ```
+On the next run the block is replaced, not appended, so it cannot grow. Your own
+lines outside the markers are preserved. The first time a file is touched, a
+timestamped backup is written next to it.
 
+## Sudo
 
-## Sudo Password Prompt Suppression
+Packages and anything else that needs root go through `sudo` only when needed.
+If you are not root and have no `sudo`, the script says so and stops instead of
+half-installing.
 
-To avoid being prompted for your password multiple times, the script temporarily sets `sudo`'s `timestamp_timeout` to `-1` for the duration of the setup. This is reverted at the end if possible.
+## Dry run
 
-## Additions Directory
+`--dry-run` prints every command it would run, including the `sudo` calls, and
+changes nothing: no packages, no downloads, no edits. Use it to see what a run
+would do.
 
-The `additions` directory should contain the following:
+```
+./setup --dry-run
+./setup --dry-run install terminal
+```
 
-- **`additions/fonts/`** — Place your `.ttf` or `.otf` font files here.
-- **`additions/icons/`** — Place any custom icon files (e.g., `folder-github.svg`) here.
-- **`additions/shell_conf`** — Bash aliases and shell configuration (sourced into `.bashrc`).
-- **`additions/wallpaper.jpg`** — Your preferred wallpaper image.
+## Validation
 
-## Contributing
+```
+./check.sh          # everything
+./check.sh syntax   # bash -n over every script
+./check.sh unit     # the unit checks
+```
 
-Contributions to this project are welcome! Feel free to submit bug reports, feature requests, or pull requests.
+`check.sh` uses temporary directories and fake package managers, so it touches
+neither this machine nor the network. It covers distro detection, config list
+parsing, package and Flatpak install, module selection and failure propagation,
+managed blocks, verified binary install, dry-run non-mutation, and CLI parsing.
 
-## License
+## Adding a module
 
-This project is licensed under the MIT License. See the [LICENSE](./LICENSE) file for details.
+Create `modules/<id>.sh` defining a single function named after the file:
+
+```bash
+install_<id>() {
+    read_list "$FS_ROOT/config/<id>.txt" | while IFS= read -r item; do
+        [[ -n "$item" ]] || continue
+        run "do something with $item" some-command -- "$item"
+    done
+}
+```
+
+Add `id` to `config/modules.txt` to include it in the default run, or leave it
+out and call it directly with `./setup modules <id>`. A module that fails is
+reported and the run exits non-zero, but the modules after it still run.
+
+Useful pieces from `lib/common.sh`:
+
+- `run "label" cmd ...` — log the command, run it, fail loudly on error
+- `run_root "label" cmd ...` — the same, under `sudo` when needed
+- `read_list path` — read a config file, dropping blanks and `#` comments
+- `write_atomic path` — write to a temp file and rename, so readers never see a
+  half-written file
+- `write_block path id` — replace a `# BEGIN`/`# END postinstall <id>` block
+- `log_info`, `log_warn`, `log_error`, `die`
+
+Use `run` rather than calling commands directly. It is what makes the output
+readable and `--dry-run` work.

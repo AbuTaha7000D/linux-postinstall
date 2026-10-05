@@ -1,0 +1,6 @@
+# Digests for the pinned Nerd Font release archives named in fonts.txt.
+# Format: "<sha256>  <asset>@<version>".
+# Add the digest published by the upstream release when you bump a version.
+
+89978e6f870d044286a339161d5ed961569744b1cd2afee62337fa140cd0b397  FiraCode@v3.3.0
+2d83782a350b604bfa70fce880604a41a7f77c3eec8f922f9cdc3c20952ddbe4  JetBrainsMono@v3.3.0

@@ -1,0 +1,3 @@
+# Extra packages on Fedora/RHEL-likes.
+gnupg2
+fastfetch

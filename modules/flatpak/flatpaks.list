@@ -1,8 +1,0 @@
-# Curated base flatpaks (P5.2). Curation order is pinned by the fixture's
-# exact-batch assert; first-seen dedupe applies.
-# Extension Manager - GNOME extension management UI
-com.mattjakeman.ExtensionManager
-# Bitwarden - password manager client
-com.bitwarden.desktop
-# Resources - system monitor / resource usage viewer
-net.nokyan.Resources

@@ -1,0 +1,6 @@
+# Nerd Fonts: "<label> <asset> <version>", one per line.
+# The asset names must match the upstream release zip names, and each
+# <asset>@<version> must have a digest in fonts.sha256.
+
+FiraCode FiraCode v3.3.0
+JetBrainsMono JetBrainsMono v3.3.0

@@ -1,0 +1,6 @@
+# GNOME custom keyboard shortcuts: "<name>|<command>|<accelerator>".
+# An entry whose command is already bound is left alone.
+
+Resources|flatpak run net.nokyan.Resources|<Ctrl><Shift>Escape
+Settings|gnome-control-center|<Super>I
+Terminal|gnome-terminal|<Alt>T

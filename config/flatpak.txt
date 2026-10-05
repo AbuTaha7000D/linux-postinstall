@@ -1,0 +1,8 @@
+# Flatpaks installed by ./setup, one application id per line.
+# An app already installed is skipped.
+
+com.mattjakeman.ExtensionManager
+com.bitwarden.desktop
+org.mozilla.Firefox
+org.kde.kdenlive
+org.gimp.GIMP

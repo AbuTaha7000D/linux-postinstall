@@ -1,0 +1,8 @@
+# Shell aliases, written to ~/.config/postinstall/aliases and sourced from
+# ~/.bashrc. These are plain shell lines.
+
+alias ll='ls -la'
+alias la='ls -A'
+alias grep='grep --color=auto'
+alias egrep='egrep --color=auto'
+alias less='less -R'

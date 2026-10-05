@@ -1,0 +1,4 @@
+# Extra packages on Arch-likes.
+gnupg
+fastfetch
+python-pip

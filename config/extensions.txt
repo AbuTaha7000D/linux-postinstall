@@ -1,0 +1,5 @@
+# GNOME extension uuids to enable. Each must already be installed; this
+# module enables what is there and warns about what is not.
+
+dash-to-dock@micxgx.gmail.com
+user-theme@gnome-shell-extensions.gcampax.github.com
