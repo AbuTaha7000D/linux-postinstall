@@ -30,10 +30,7 @@ install_locale() {
         current="$(_locale_current)"
         log_info "current locale: ${current:-none}"
         if [[ ! -f "$backup" ]]; then
-            printf '%s\n' "$current" >"$backup" || {
-                log_error "cannot write $backup"
-                return 1
-            }
+            printf '%s\n' "$current" | write_atomic "$backup"
         fi
     fi
 
@@ -43,6 +40,8 @@ install_locale() {
     }
 
     run_root "set locale" localectl set-locale "LANG=$want"
+
+    ((FS_DRY_RUN)) && return 0
 
     if [[ "$(_locale_current)" != "$want" ]]; then
         log_error "localectl reported success but the locale is still ${current:-unknown}"
