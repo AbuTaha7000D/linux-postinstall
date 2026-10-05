@@ -19,6 +19,58 @@
 # that each run a shell suite as root. podman is preinstalled on
 # ubuntu-latest runners and needs no privileged daemon.
 #
+# The lint job and the runner distro (P11-R D1, ROADMAP finding F2):
+# the lint job stays on ubuntu-latest DELIBERATELY. Static analysis is
+# shellcheck + shfmt only -- the project's code is never run here -- and after
+# D1 both tools are pinned, SHA-256-verified static release binaries, so the
+# lint RESULT is independent of the runner OS and identical to a Fedora
+# workstation's. Moving this job to a Fedora image would add a container pull
+# and a node-in-container dependency without changing a single lint outcome,
+# and none of it could be verified without a real hosted run.
+#
+# This job was RED and unfixable before D1. scripts/install-tools.sh fetched
+# shfmt with `dnf download shfmt` + `rpm2cpio | cpio`, which exist only on
+# rpm-family hosts, so on this ubuntu runner the provisioning step always
+# failed -- and failed SILENTLY, because `set -e` aborted the subshell before
+# its "shfmt download failed" guard could print. It now provisions both tools
+# from pinned upstream release assets and reports every failure explicitly.
+# Do not "simplify" this step back into a package-manager install: that is the
+# exact defect D1 fixed, and it is invisible until CI runs.
+#
+# Action pinning and job timeouts (P11-R D3, ROADMAP finding F4b):
+# every action reference below is pinned to a full 40-hex commit SHA with the release
+# version kept in a trailing comment -- the standard supply-chain practice,
+# because a floating tag means the code CI executes can change underneath a
+# green build with no diff in this repository. The SHA is the one
+# refs/tags/v4 resolved to at pin time, verified 2026-10-04 with
+# `git ls-remote --tags https://github.com/actions/checkout`, which reported
+# refs/tags/v4 = refs/tags/v4.4.0 = 11d5960a326750d5838078e36cf38b85af677262.
+# Pinning that exact commit is therefore a no-op for the first run and a
+# freeze for every run after it. To move the pin: resolve the tag again,
+# update all three call sites together, and say so in the D3 ledger row.
+#
+# Every job declares `timeout-minutes`, so a hung step cannot hold a hosted
+# runner indefinitely. The values are measured, not guessed (host, 2026-10-04):
+#   lint      20.9s locally (`make lint`), plus two pinned tool downloads
+#             -> 15 min is ~40x headroom.
+#   unit     208.3s locally for the whole `tests/run` battery
+#             -> 30 min is ~9x headroom for a slower runner plus the bats
+#                download.
+#   container 150 min, and the relationship is load-bearing: FS_CTR_TIMEOUT is
+#             5400s (90 min), and on that deadline the smoke script reports
+#             INCONCLUSIVE and exits NON-ZERO. The job cap must stay ABOVE it,
+#             or GitHub kills the step with a bare "exceeded timeout" and the
+#             diagnosable failure this deadline exists to produce never happens.
+#             The headroom above 90 min covers `podman pull` of the image plus
+#             the in-container flatpak provisioning. Do NOT lower the job cap
+#             to below FS_CTR_TIMEOUT, and do not raise either without evidence.
+#
+# This workflow has STILL NEVER EXECUTED on a GitHub runner: there is no run
+# id and no status URL, and none may be invented (P10.3 row, P10 §9). Every
+# number above is a LOCAL measurement. A first run must be read as a sample,
+# not a verdict -- the shipped FS_CTR_TIMEOUT has already gone red on the
+# Flathub CDN (see the container job comment).
+#
 # The repo is bind-mounted READ-ONLY into each container. That is a
 # deliberate safety property, not an optimization: a container test that
 # could write into the checkout could destroy the very tree CI is
@@ -40,9 +92,14 @@ jobs:
   lint:
     name: lint
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - name: install shellcheck + shfmt
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: provision pinned shellcheck + shfmt
+        # Digest-verified static release binaries; no package manager, no
+        # Fedora-only tooling, no `|| true` -- a provisioning failure fails
+        # the job (scripts/install-tools.sh explains exactly which step and
+        # which tool). See the D1 header note above.
         run: bash scripts/install-tools.sh
       - name: lint
         run: make lint
@@ -50,8 +107,9 @@ jobs:
   unit:
     name: unit
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: install bats
         run: bash tests/install-bats.sh
       - name: unit + fixture suites
@@ -60,6 +118,7 @@ jobs:
   container:
     name: container (${{ matrix.image }})
     runs-on: ubuntu-latest
+    timeout-minutes: 150
     strategy:
       # One distro failing must not hide the state of the others, and a
       # second failure of the same image is usually the same root cause.
@@ -85,7 +144,7 @@ jobs:
             slug: archlinux-latest
             family: arch
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: pull image
         run: podman pull "docker.io/library/${{ matrix.image }}"
       - name: container smoke (real backends, as root)

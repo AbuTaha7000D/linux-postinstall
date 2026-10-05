@@ -96,7 +96,10 @@ guard_fake() {
 # $FP_REMOTES. Anything else exits 97, so a mutation slipping into verify is
 # caught by the verb allowlist rather than silently succeeding.
 farm_flatpak() {
-    local remotes="${1:-flathub}"
+    local remotes="${1-__DEFAULT__}"
+    if [[ "$remotes" == "__DEFAULT__" ]]; then
+        remotes="flathub"
+    fi
     : >"$FAKE_LOG"
     setfake flatpak "case \"\$1 \$2\" in
   'info --user'|'info --system')
@@ -178,6 +181,14 @@ agree() {
         else
             fx_bad "$label: WARN rows present but verdict/rc disagree (want $want, got $FX_BLOCK_RC)"
         fi
+    elif grep -q '^  - SKIP ' "$FX_OUT" 2>/dev/null; then
+        local skips
+        skips="$(grep -c '^  - SKIP ' "$FX_OUT")"
+        if (( want == 0 )) && grep -qx "  - verify OK with $skips check(s) skipped" "$FX_OUT"; then
+            fx_ok
+        else
+            fx_bad "$label: SKIP rows present but verdict/rc disagree (want $want, got $FX_BLOCK_RC, skips=$skips)"
+        fi
     else
         if (( want == 0 )) && grep -qx '  - verify OK' "$FX_OUT"; then
             fx_ok
@@ -216,7 +227,7 @@ guard_fake flatpak "half-installed"
 fx_out 'FAIL m1:packages: missing: curl'
 fx_out_not 'missing: wget'
 fx_out_not 'missing: vim'
-fx_out 'WARN m1:hook: module has no verify() hook'
+fx_out 'SKIP m1:hook: module has no verify() hook'
 agree 1 "half-installed"
 
 # --- 2. fully present -> PASS, and an all-PASS table -> "verify OK" ------
@@ -244,7 +255,7 @@ run_verify 0 "no lists" PATH="$FARM" FS_MODULES_DIR="$SYNTH" \
     HOME="$FX_TMP/h" "$SETUP" verify m1
 fx_out_not 'm1:packages'
 fx_out_not 'm1:flatpaks'
-fx_out 'WARN m1: nothing to verify (no list files, no verify() hook)'
+fx_out 'SKIP m1: nothing to verify (no list files, no verify() hook)'
 fx_out_not 'm1:hook'
 agree 0 "no lists"
 
@@ -272,14 +283,19 @@ fx_out 'PASS m1:flatpaks: all 2 present'
 only_readonly_verbs "flatpak all"
 agree 0 "flatpak all"
 
-# --- 6. no flatpak CLI -> WARN (cannot check), not FAIL -----------------
-
+# --- 6. no flatpak CLI -> SKIP (cannot check), not FAIL -----------------
+#
+# The repo row is asserted POSITIVELY as a skip: before A2 this check returned
+# NO row at all when the flatpak CLI was missing, which is the defect F5 names
+# -- an audit that could not run rendered an incomplete table indistinguishable
+# from a complete one. `fx_out_not 'repo:flathub'` was the pin for that silence,
+# so it is now the pin for its replacement.
 rm -f -- "$FARM/flatpak"
 run_verify 0 "no flatpak cli" PATH="$FARM" FS_MODULES_DIR="$SYNTH" \
     FS_PKG_BACKEND=mock FS_MOCK_INSTALLED="$INSTALLED" FS_DISTRO_FAMILY=rpm \
     HOME="$FX_TMP/h" "$SETUP" verify m1
-fx_out 'WARN m1:flatpaks: cannot check 2 app(s): flatpak CLI not in PATH'
-fx_out_not 'repo:flathub'
+fx_out 'SKIP m1:flatpaks: cannot check 2 app(s): flatpak CLI not in PATH'
+fx_out 'SKIP repo:flathub: cannot check the flathub remote: flatpak CLI not in PATH'
 fx_out_not '^  - FAIL '
 agree 0 "no flatpak cli"
 
@@ -332,7 +348,7 @@ EOS
 run_verify 0 "no verify fn" PATH="$FARM" FS_MODULES_DIR="$SYNTH" \
     FS_PKG_BACKEND=mock FS_MOCK_INSTALLED="$INSTALLED" FS_DISTRO_FAMILY=rpm \
     HOME="$FX_TMP/h" "$SETUP" verify m1
-fx_out 'WARN m1:hook: hooks.sh defines no verify()'
+fx_out 'SKIP m1:hook: hooks.sh defines no verify()'
 fx_out_not 'PASS m1:hook'
 agree 0 "no verify fn"
 
@@ -360,7 +376,7 @@ agree 0 "own metadata"
 run_verify 0 "dry run hook" PATH="$FARM" FS_MODULES_DIR="$SYNTH" \
     FS_PKG_BACKEND=mock FS_MOCK_INSTALLED="$INSTALLED" FS_DISTRO_FAMILY=rpm \
     FS_DRY_RUN=1 HOME="$FX_TMP/h" "$SETUP" verify m1
-fx_out 'WARN m1:hook: skipped (dry run; the hook refuses to probe)'
+fx_out 'SKIP m1:hook: skipped (dry run; the hook refuses to probe)'
 fx_out_not 'PASS m1:hook'
 agree 0 "dry run hook"
 
@@ -435,7 +451,7 @@ run_verify 0 "explicit ids" PATH="$FARM" FS_MODULES_DIR="$SYNTH" \
     HOME="$FX_TMP/h" "$SETUP" verify m2
 fx_out 'm2:packages'
 fx_out_not 'm1:'
-fx_out 'WARN m2:hook: module has no verify() hook'
+fx_out 'SKIP m2:hook: module has no verify() hook'
 agree 0 "explicit ids"
 
 # --- 16. selection: the P4.6 registry gates the default ----------------
@@ -545,7 +561,7 @@ run_verify 0 "real dev module" PATH="$FARM" FS_MODULES_DIR="$REAL_MODULES" \
     HOME="$FX_TMP/h" "$SETUP" verify dev
 guard_fake flatpak "real dev module"
 fx_out 'PASS dev:packages: all 7 present'
-fx_out 'WARN dev:hook: module has no verify() hook'
+fx_out 'SKIP dev:hook: module has no verify() hook'
 only_readonly_verbs "real dev module"
 agree 0 "real dev module"
 
@@ -680,22 +696,71 @@ for _rc in 2 3; do
     agree 1 "hook rc $_rc is a failure"
 done
 
-# 90/91 are the reserved "not applicable" signals. This cell pins BOTH
-# directions: a module with no hooks.sh yields 90 legitimately, and a hook that
-# RETURNS 90 collides with it. That residual collision is documented as failing
-# LOUD (a WARN saying there is no hook) rather than silently -- and the row is
-# asserted POSITIVELY, because asserting only negatives would stay green if the
-# row were any other WARN or absent entirely.
-mkm h90
-printf 'wget\n' >"$SYNTH/h90/packages.list"
-printf 'run() { :; }\nverify() { return 90; }\n' >"$SYNTH/h90/hooks.sh"
-run_verify 0 "hook returning reserved 90" PATH="$FARM" FS_MODULES_DIR="$SYNTH" \
-    FS_PKG_BACKEND=mock FS_MOCK_INSTALLED="$INSTALLED" FS_DISTRO_FAMILY=rpm \
-    HOME="$FX_TMP/h" "$SETUP" verify h90
-fx_out 'WARN h90:hook: module has no verify() hook'
-fx_out_not 'PASS h90:hook'
-fx_out_not 'verify() reported problems'
-fx_out_not 'verify() passed'
+# 90/91 are the reserved "not applicable" signals. A module with no hooks.sh
+# yields 90 LEGITIMATELY, so that case is a SKIP (A2). A hook that RETURNS 90
+# collides with it, and that collision must stay LOUD rather than being absorbed
+# into the new SKIP: _verify_hook remaps a sentinel that came back FROM verify()
+# to its own reserved values (90+100 / 91+100), so the row is reported as a WARN
+# naming the signal the hook actually returned instead of quietly becoming a
+# skip. Asserted POSITIVELY, because asserting only negatives would stay green if
+# the row were any other WARN or absent entirely -- and `fx_out_not SKIP` is the
+# load-bearing half, since a SKIP here is exactly the regression this cell exists
+# to catch.
+for _rc in 90 91; do
+    mkm "h$_rc"
+    printf 'wget\n' >"$SYNTH/h$_rc/packages.list"
+    printf 'run() { :; }\nverify() { return %s; }\n' "$_rc" >"$SYNTH/h$_rc/hooks.sh"
+    run_verify 0 "hook returning reserved $_rc" PATH="$FARM" FS_MODULES_DIR="$SYNTH" \
+        FS_PKG_BACKEND=mock FS_MOCK_INSTALLED="$INSTALLED" FS_DISTRO_FAMILY=rpm \
+        HOME="$FX_TMP/h" "$SETUP" verify "h$_rc"
+    fx_out "WARN h$_rc:hook: verify() returned the reserved audit signal $_rc; reported, not treated as absent"
+    fx_out_not "SKIP h$_rc:hook"
+    fx_out_not "PASS h$_rc:hook"
+    fx_out_not 'verify() passed'
+    fx_out_not "no verify() hook"
+    agree 0 "hook returning reserved $_rc"
+done
+
+# The same two signals, but reaching the harness as `exit` instead of `return`.
+# The hook protocol is written with `return`, but nothing enforces it, and the
+# two spellings are NOT equivalent inside the harness: a `return` comes back
+# through the remap and a `exit` used to terminate the hook subshell before the
+# remap could run, at which point its 90/91 is indistinguishable from the
+# harness's own sentinels and renders as the SKIP "module has no verify() hook"
+# -- a false statement about a hook that demonstrably ran and answered. Pinned
+# here because the fix is an extra subshell level, which is exactly the kind of
+# "one extra brace" a future refactor removes without noticing why it is there.
+for _rc in 90 91; do
+    mkm "hx$_rc"
+    printf 'wget\n' >"$SYNTH/hx$_rc/packages.list"
+    printf 'run() { :; }\nverify() { exit %s; }\n' "$_rc" >"$SYNTH/hx$_rc/hooks.sh"
+    run_verify 0 "hook exiting reserved $_rc" PATH="$FARM" FS_MODULES_DIR="$SYNTH" \
+        FS_PKG_BACKEND=mock FS_MOCK_INSTALLED="$INSTALLED" FS_DISTRO_FAMILY=rpm \
+        HOME="$FX_TMP/h" "$SETUP" verify "hx$_rc"
+    fx_out "WARN hx$_rc:hook: verify() returned the reserved audit signal $_rc; reported, not treated as absent"
+    fx_out_not "SKIP hx$_rc:hook"
+    fx_out_not "no verify() hook"
+    agree 0 "hook exiting reserved $_rc"
+done
+
+# And a hook that adopts the harness's own internal remap values must not be
+# able to impersonate it: 190/191 are the audit's private codes, so a hook that
+# returns one is just a hook returning an uninterpretable verdict, and the
+# `*` arm FAILs it. This is the "can the remap be spoofed" direction, and it is
+# why the remap carries the original rc instead of collapsing both signals onto
+# one shared sentinel (a single shared value would have been adoptable).
+for _rc in 190 191; do
+    mkm "hz$_rc"
+    printf 'wget\n' >"$SYNTH/hz$_rc/packages.list"
+    printf 'run() { :; }\nverify() { return %s; }\n' "$_rc" >"$SYNTH/hz$_rc/hooks.sh"
+    run_verify 1 "hook returning harness-internal $_rc" PATH="$FARM" \
+        FS_MODULES_DIR="$SYNTH" \
+        FS_PKG_BACKEND=mock FS_MOCK_INSTALLED="$INSTALLED" FS_DISTRO_FAMILY=rpm \
+        HOME="$FX_TMP/h" "$SETUP" verify "hz$_rc"
+    fx_out "FAIL hz$_rc:hook: verify() reported problems (rc $_rc)"
+    fx_out_not "reserved audit signal"
+    agree 1 "hook returning harness-internal $_rc"
+done
 
 # and the no-hooks.sh case is the same sentinel reached legitimately
 mkm hnohook
@@ -703,7 +768,7 @@ printf 'wget\n' >"$SYNTH/hnohook/packages.list"
 run_verify 0 "no hooks.sh at all" PATH="$FARM" FS_MODULES_DIR="$SYNTH" \
     FS_PKG_BACKEND=mock FS_MOCK_INSTALLED="$INSTALLED" FS_DISTRO_FAMILY=rpm \
     HOME="$FX_TMP/h" "$SETUP" verify hnohook
-fx_out 'WARN hnohook:hook: module has no verify() hook'
+fx_out 'SKIP hnohook:hook: module has no verify() hook'
 agree 0 "no hooks.sh at all"
 
 # --- 24c. a stale registry entry FAILs but never hides the rest ---------
@@ -1032,9 +1097,9 @@ fx_out 'verify OK'
 ) >"$FX_OUT" 2>"$FX_ERR"
 FX_BLOCK_RC=$?
 fx_block_rc "dry-run hooks rc" 0
-fx_out 'WARN git:hook: skipped (dry run; the hook refuses to probe)'
-fx_out 'WARN fonts:hook: skipped (dry run; the hook refuses to probe)'
-fx_out 'WARN terminal:hook: skipped (dry run; the hook refuses to probe)'
+fx_out 'SKIP git:hook: skipped (dry run; the hook refuses to probe)'
+fx_out 'SKIP fonts:hook: skipped (dry run; the hook refuses to probe)'
+fx_out 'SKIP terminal:hook: skipped (dry run; the hook refuses to probe)'
 fx_out_not 'FAIL '
 only_readonly_verbs "dry-run hooks"
 
@@ -1051,5 +1116,204 @@ else
 fi
 FARM="$FX_TMP/farm"
 guard_fake flatpak "real" 0
+
+# --- 27. one cell per SKIPPED cause, on the REAL shipped modules ---------
+#
+# Each cause is a different arm of lib/gnome.sh's gnome_require_capable, so
+# pinning only one of them would leave the other two untested: the gate has four
+# reasons plus an override, and every one of them used to arrive at the audit as
+# PASS. `gnome-base` is used because it ships NO list files at all, so the table
+# is one hook row and the SKIP is the only thing in it -- a mixed table would let
+# a wrong rc hide inside PASS rows. The gate refuses BEFORE any probe, so the
+# fake gsettings is never invoked in cells b/c (asserted below), and no gsettings
+# exists at all in cell a.
+#
+# The farm has no gsettings unless one is added, which is why cell a is the
+# missing-tool case with no extra work: the whitelist deliberately omits it.
+farm_flatpak
+run_verify 0 "skip cause: missing gsettings" PATH="$FARM" FS_MODULES_DIR="$REAL_MODULES" \
+    FS_PKG_BACKEND=mock FS_DISTRO_FAMILY=rpm FS_DRY_RUN=0 XDG_CURRENT_DESKTOP=GNOME \
+    HOME="$FX_TMP/h" "$SETUP" verify gnome-base
+fx_out 'SKIP gnome-base:hook: verify() reported not applicable on this host (reserved rc 93)'
+fx_out_not 'PASS gnome-base:hook'
+fx_out_not '^  - FAIL '
+fx_out 'gnome-base: skipped (not GNOME) (gsettings not found)'
+agree 0 "skip cause: missing gsettings"
+
+setfake gsettings "printf '%s\\n' \"\$*\" >>'$FX_TMP/gs.calls'
+exit 0"
+: >"$FX_TMP/gs.calls"
+run_verify 0 "skip cause: non-GNOME session" PATH="$FARM" FS_MODULES_DIR="$REAL_MODULES" \
+    FS_PKG_BACKEND=mock FS_DISTRO_FAMILY=rpm FS_DRY_RUN=0 XDG_CURRENT_DESKTOP=KDE \
+    HOME="$FX_TMP/h" "$SETUP" verify gnome-base
+fx_out 'SKIP gnome-base:hook: verify() reported not applicable on this host (reserved rc 93)'
+fx_out_not 'PASS gnome-base:hook'
+fx_out_not '^  - FAIL '
+fx_out "gnome-base: skipped (not GNOME) (not a GNOME session (XDG_CURRENT_DESKTOP='KDE'))"
+[[ -s "$FX_TMP/gs.calls" ]] && fx_bad "non-GNOME cell invoked gsettings" || fx_ok
+agree 0 "skip cause: non-GNOME session"
+
+: >"$FX_TMP/gs.calls"
+run_verify 0 "skip cause: headless SSH session" PATH="$FARM" FS_MODULES_DIR="$REAL_MODULES" \
+    FS_PKG_BACKEND=mock FS_DISTRO_FAMILY=rpm FS_DRY_RUN=0 XDG_CURRENT_DESKTOP=GNOME \
+    SSH_CONNECTION='10.0.0.1 51000 10.0.0.2 22' \
+    HOME="$FX_TMP/h" "$SETUP" verify gnome-base
+fx_out 'SKIP gnome-base:hook: verify() reported not applicable on this host (reserved rc 93)'
+fx_out_not 'PASS gnome-base:hook'
+fx_out_not '^  - FAIL '
+fx_out 'gnome-base: skipped (not GNOME) (SSH session)'
+[[ -s "$FX_TMP/gs.calls" ]] && fx_bad "headless cell invoked gsettings" || fx_ok
+agree 0 "skip cause: headless SSH session"
+rm -f -- "$FARM/gsettings"
+
+# --- 27b. no package backend -> SKIP (cannot check), not FAIL -------------
+#
+# The flatpak twin of cell 6, and it needed its own cell: every other cell in
+# this suite passes FS_PKG_BACKEND=mock, so the no-backend arm was reachable
+# from no test at all and mutation M07 (the row reverted to WARN) escaped.
+# A backend name lib/pkg.sh does not implement is the hermetic way in: it makes
+# pkg_supported fail exactly the way an unimplemented or absent backend does,
+# without depending on what this machine happens to have installed.
+mkm nobackend
+printf 'wget\n' >"$SYNTH/nobackend/packages.list"
+seed wget
+run_verify 0 "no package backend" PATH="$FARM" FS_MODULES_DIR="$SYNTH" \
+    FS_PKG_BACKEND=nosuchbackend FS_MOCK_INSTALLED="$INSTALLED" FS_DISTRO_FAMILY=rpm \
+    HOME="$FX_TMP/h" "$SETUP" verify nobackend
+fx_out 'SKIP nobackend:packages: cannot check 1 package(s): no package backend available'
+fx_out_not 'PASS nobackend:packages'
+fx_out_not 'FAIL nobackend:packages'
+agree 0 "no package backend"
+
+# --- 28. the exit code is one derivation over PASS + SKIP + WARN + FAIL ----
+#
+# Three shapes, because "SKIP is non-blocking" and "SKIP is non-blocking" are
+# one fact with three different ways to be wrong: a skip-only table that exited
+# 1, a mixed table where the skip masked a PASS-driven rc, and a skip that
+# downgraded a genuine failure. The third is the one that would matter to a user:
+# a half-installed module plus an unauditable hook must still fail the run.
+mkm bare
+run_verify 0 "skip only" PATH="$FARM" FS_MODULES_DIR="$SYNTH" \
+    FS_PKG_BACKEND=mock FS_MOCK_INSTALLED="$INSTALLED" FS_DISTRO_FAMILY=rpm \
+    HOME="$FX_TMP/h" "$SETUP" verify bare
+fx_out 'PASS repo:flathub: remote present'
+fx_out 'SKIP bare: nothing to verify (no list files, no verify() hook)'
+# Exact per-level counts rather than negatives. `grep -c '^  - '` would also
+# count the verdict line, which is indented the same way; the row pattern is
+# anchored on the label instead. A negative pin alone would pass on a table that
+# had lost its skip row entirely, which is the failure this cell exists for.
+if [[ "$(grep -c '^  - PASS ' "$FX_OUT")" == 1 ]] &&
+    [[ "$(grep -c '^  - SKIP ' "$FX_OUT")" == 1 ]] &&
+    [[ "$(grep -c '^  - WARN ' "$FX_OUT")" == 0 ]] &&
+    [[ "$(grep -c '^  - FAIL ' "$FX_OUT")" == 0 ]]; then
+    fx_ok
+else
+    fx_bad "skip only: expected 1 PASS + 1 SKIP + 0 WARN + 0 FAIL rows, got PASS=$(grep -c '^  - PASS ' "$FX_OUT") SKIP=$(grep -c '^  - SKIP ' "$FX_OUT") WARN=$(grep -c '^  - WARN ' "$FX_OUT") FAIL=$(grep -c '^  - FAIL ' "$FX_OUT")"
+fi
+agree 0 "skip only"
+
+mkm mixed
+printf 'wget\n' >"$SYNTH/mixed/packages.list"
+seed wget
+run_verify 0 "PASS and SKIP together" PATH="$FARM" FS_MODULES_DIR="$SYNTH" \
+    FS_PKG_BACKEND=mock FS_MOCK_INSTALLED="$INSTALLED" FS_DISTRO_FAMILY=rpm \
+    HOME="$FX_TMP/h" "$SETUP" verify mixed
+fx_out 'PASS mixed:packages: all 1 present'
+fx_out 'SKIP mixed:hook: module has no verify() hook'
+agree 0 "PASS and SKIP together"
+
+seed
+run_verify 1 "FAIL and SKIP together" PATH="$FARM" FS_MODULES_DIR="$SYNTH" \
+    FS_PKG_BACKEND=mock FS_MOCK_INSTALLED="$INSTALLED" FS_DISTRO_FAMILY=rpm \
+    HOME="$FX_TMP/h" "$SETUP" verify mixed
+fx_out 'FAIL mixed:packages: missing: wget'
+fx_out 'SKIP mixed:hook: module has no verify() hook'
+fx_out 'verify FAILED'
+fx_out_not 'verify OK'
+agree 1 "FAIL and SKIP together"
+
+# The fourth combination, and the one no single-level table can reach: a WARN
+# row AND a SKIP row together. It needed its own cell because the two verdicts
+# are reached through two different arms of lib/status.sh's status_verdict, and
+# with only PASS+SKIP, SKIP-only and FAIL+SKIP covered, SWAPPING those two arms
+# was invisible to the whole battery (measured: swapping them left verify 322/0,
+# check 131/0 and smoke 169/0 byte-for-byte). The decided policy is that the
+# verdict names the WORST level only -- so a table that warns says nothing about
+# the skips in its verdict sentence, and the skip rows carry that fact. Pinned
+# here so the policy is a recorded decision rather than an accident of arm
+# order, and so `_status_skip_count`'s "the skip count is named" claim stays
+# scoped to the SKIP-worst case exactly as lib/status.sh's header states.
+farm_flatpak "" # a flatpak CLI that answers, but reports no remotes -> WARN
+mkm warnskip
+run_verify 0 "WARN and SKIP together" PATH="$FARM" FS_MODULES_DIR="$SYNTH" \
+    FS_PKG_BACKEND=mock FS_MOCK_INSTALLED="$INSTALLED" FS_DISTRO_FAMILY=rpm \
+    HOME="$FX_TMP/h" "$SETUP" verify warnskip
+farm_flatpak
+fx_out 'WARN repo:flathub: remote flathub is not configured; every flatpak install will fail'
+fx_out 'SKIP warnskip: nothing to verify (no list files, no verify() hook)'
+if [[ "$(grep -c '^  - WARN ' "$FX_OUT")" == 1 ]] &&
+    [[ "$(grep -c '^  - SKIP ' "$FX_OUT")" == 1 ]] &&
+    [[ "$(grep -c '^  - FAIL ' "$FX_OUT")" == 0 ]]; then
+    fx_ok
+else
+    fx_bad "WARN+SKIP: expected 1 WARN + 1 SKIP + 0 FAIL rows, got WARN=$(grep -c '^  - WARN ' "$FX_OUT") SKIP=$(grep -c '^  - SKIP ' "$FX_OUT") FAIL=$(grep -c '^  - FAIL ' "$FX_OUT")"
+fi
+if grep -qx '  - verify OK with warnings' "$FX_OUT"; then
+    fx_ok
+else
+    fx_bad "WARN+SKIP: verdict is not exactly 'verify OK with warnings' (the worst level is the WARN, not the skip)"
+fi
+fx_out_not 'check(s) skipped'
+agree 0 "WARN and SKIP together"
+
+# --- 29. the reserved status codes stay distinct -------------------------
+#
+# _VERIFY_HOOK_SKIP=93 is only unambiguous while it is neither 90 nor 91 nor 92.
+# 92 belongs to lib/modules.sh's run() protocol (MODULE_HOOK_SKIP), so reusing it
+# here would make "the hook had nothing to do" mean two different things in two
+# different consumers of the same rc, and _VERIFY_HOOK_RESERVED_NONE /
+# _VERIFY_HOOK_RESERVED_UNDEFINED are the audit's own private remap values (the
+# protocol codes plus 110), which no hook may adopt -- a cell above pins what
+# happens when one does. Pinned as literals AND as distinctness, because a
+# distinctness-only check would still pass if all of them moved together into a
+# colliding block, and a literals-only check would not name the property.
+(
+    set -uo pipefail
+    . "$ROOT/lib/modules.sh"
+    . "$ROOT/lib/verify.sh"
+    printf '%s %s %s %s %s %s\n' "$_VERIFY_HOOK_NONE" "$_VERIFY_HOOK_UNDEFINED" \
+        "$_VERIFY_HOOK_SKIP" "$_VERIFY_HOOK_RESERVED_NONE" \
+        "$_VERIFY_HOOK_RESERVED_UNDEFINED" "$MODULE_HOOK_SKIP"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_out '90 91 93 200 201 92'
+if [[ "$(tr ' ' '\n' <"$FX_OUT" | grep -c .)" == 6 ]] &&
+    [[ "$(tr ' ' '\n' <"$FX_OUT" | sort -u | grep -c .)" == 6 ]]; then
+    fx_ok
+else
+    fx_bad "reserved status codes are not six distinct values: $(cat "$FX_OUT")"
+fi
+# The remap must also stay OUT of every exit-code-representable range a hook
+# could plausibly return as a verdict, and stay above the protocol band, so it
+# can never be mistaken for one of the signals it is remapping. Only the remap
+# codes (200/201) are checked here; the protocol codes (90/91/93/92) are
+# intentionally in the low range.
+for _v in 200 201; do
+    if ((_v <= 100)); then
+        fx_bad "a remap status code is inside the verdict range: $_v"
+        break
+    fi
+done
+# and none of them may collide with the small verdicts, or a hook returning 1
+# would be read as "no verify() hook" again
+small=0
+for _v in $(cat "$FX_OUT"); do
+    ((_v <= 9)) && small=1
+done
+if ((small == 0)); then
+    fx_ok
+else
+    fx_bad "a reserved status code collides with a small verdict rc: $(cat "$FX_OUT")"
+fi
 
 fx_summary

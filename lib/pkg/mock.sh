@@ -73,6 +73,10 @@ mock_install_batch() {
         run_cmd "mock install" "mock" "install" "$@"
         return 0
     fi
+    if [[ "${FS_MOCK_BATCH_FAIL:-0}" == 1 ]]; then
+        _mock_record "mock install FAIL ${*}" || return 1
+        return 1
+    fi
     local missing=()
     local pkg
     for pkg in "$@"; do

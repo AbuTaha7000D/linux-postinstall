@@ -25,9 +25,13 @@
 # WHAT IS REPORTED. One line carries every count the ROADMAP asks for --
 # "N modules ok . M skipped . K failed" plus where the run's artifacts are --
 # followed by one row per failed module and, when something failed, the
-# recovery action. `skipped` means the registry already had the module marked
-# done (state_module_check), so it counts as neither ok nor failed: the work is
-# finished, just not by this run.
+# recovery action. `skipped` has TWO distinct causes and both count as neither
+# ok nor failed: the registry already had the module marked done
+# (state_module_check -- the work is finished, just not by this run), or the
+# module's run() reported not-applicable IN THIS RUN (A1's MODULE_HOOK_SKIP --
+# there was no work to do here at all). A not-applicable skip is deliberately
+# not ok and not done: its registry state is `skipped`, so the next run asks
+# again.
 #
 # FAILED STEPS MUST BE ACTIONABLE, which needs three things a bare count does
 # not give: WHICH module, WHY (the hook's own exit status, as recorded by the
@@ -53,13 +57,20 @@
 # emitted. A dry run writes nothing to the SYSTEM; honouring a log path the user
 # chose is not fabrication, and claiming otherwise would be the lie.
 #
-# THE ABORT PATHS DELIBERATELY DO NOT REACH THIS FILE. All five fail with rc1
+# THE ABORT PATHS DELIBERATELY DO NOT REACH THIS FILE. All six fail with rc1
 # and NO summary:
 #   1. profile_resolve error            (lib/runner.sh, resolve stage)
 #   2. the P8.3 risk-gate refusal       (high/destructive pulled in by a dep)
 #   3. a prerepo() failure              (P7.5, fail-fast, pre-batch)
 #   4. a package/flatpak batch failure  (P5.7 batches)
 #   5. a state_module_mark failure      (the run cannot record its own result)
+#   6. a state_module_skip failure      (A1: same reason, on the not-applicable
+#                                        path -- the registry is authoritative
+#                                        for BOTH recorded states, so a skip
+#                                        that cannot be written stops the run
+#                                        exactly as a `done` that cannot be
+#                                        written does; it must not fall
+#                                        through to summary_module_skip)
 # The first two were unpinned until round 4, where a mutation that added
 # `summary_report` to either left all 3557 asserts green -- a reviewed
 # P4.6/P7.5/P8.3 contract that the fixture now pins with fx_out_not on each.

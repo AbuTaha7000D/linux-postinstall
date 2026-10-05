@@ -70,7 +70,7 @@ run() {
     root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)" || return 1
     source "$root/lib/gnome.sh"
     source "$root/lib/fs.sh"
-    gnome_require_capable gnome-theme || return 0
+    gnome_require_capable gnome-theme || return "$MODULE_HOOK_SKIP"
     _gnome_theme_preflight || return 1
     _gnome_theme_apply gtk-theme THEME "$root" || return 1
     _gnome_theme_apply cursor-theme CURSOR "$root" || return 1
@@ -85,12 +85,18 @@ run() {
 # bookmarks file holds no duplicate whole lines. Each check reports io_info on
 # success or io_error on mismatch; rc1 on any failure or probe error, else
 # io_info "verify passed". Read-only: never writes, never backs up.
+# The capability gate returns lib/verify.sh's _VERIFY_HOOK_SKIP, NOT 0: on a
+# non-GNOME / SSH / gsettings-less host this hook checked nothing, and a 0
+# there is the "verify() passed" the audit would have printed. lib/verify.sh is
+# sourced for that constant under the same guard the other hooks use for
+# lib/io.sh, so the contract is available when verify() is called directly too.
 verify() {
     local root rc=0
     root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)" || return 1
     source "$root/lib/gnome.sh"
     source "$root/lib/fs.sh"
-    gnome_require_capable gnome-theme || return 0
+    declare -F _verify_hook >/dev/null 2>&1 || source "$root/lib/verify.sh"
+    gnome_require_capable gnome-theme || return "$_VERIFY_HOOK_SKIP"
     if ((FS_DRY_RUN == 1)); then
         io_info "gnome-theme: verify is read-only; runs only in real mode"
         return 0

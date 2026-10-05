@@ -261,8 +261,9 @@ grep -Fqx "get org.gnome.desktop.interface gtk-theme" "$FAKE_LOG" && fx_ok || fx
     gnome_gsettings_set org.gnome.desktop.interface gtk-theme "'new'"
 ) >"$FX_OUT" 2>"$FX_ERR"
 FX_BLOCK_RC=$?
-fx_block_rc "failed set is graceful keep-going" 0
+fx_block_rc "failed set propagates non-zero (B2 fix)" 1
 fx_err "command failed (rc=1)"
+grep -Fqx "set org.gnome.desktop.interface gtk-theme 'new'" "$FAKE_LOG" && fx_ok || fx_bad "failed set still attempted write"
 
 : >"$FAKE_LOG"
 (
@@ -1099,5 +1100,103 @@ fx_err "unknown flag"
 FX_BLOCK_RC=$?
 fx_block_rc "extensions list empty" 0
 fx_empty "empty extensions list is empty stdout" "$FX_OUT"
+
+# --- B2: gsettings write failure propagation regression tests ---
+
+# B2.1: gnome_gsettings_set with FAKE_SET_RC=1 returns non-zero and logs the failed write
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH"
+    export FAKE_GET="'old'" FAKE_SET_RC=1 FAKE_LOG
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_gsettings_set org.gnome.desktop.interface gtk-theme "'new'"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "B2: gnome_gsettings_set propagates set failure" 1
+fx_err "command failed (rc=1)"
+grep -Fqx "set org.gnome.desktop.interface gtk-theme 'new'" "$FAKE_LOG" && fx_ok || fx_bad "failed set still attempted write"
+
+# B2.2: gnome_gsettings_set with successful set (idempotent) still returns 0
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH"
+    export FAKE_GET="'same'" FAKE_LOG
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_gsettings_set org.gnome.desktop.interface gtk-theme "'same'"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+: >"$FAKE_LOG"
+sync
+fx_block_rc "B2: idempotent set still returns 0" 0
+grep -q '^set ' "$FAKE_LOG" && fx_bad "idempotent set must not write" || fx_ok
+
+# B2.3: bare target matching quoted get is still a no-op (single-quote compare intact)
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH"
+    export FAKE_GET="'value'" FAKE_LOG
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_gsettings_set org.gnome.desktop.interface gtk-theme value
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+: >"$FAKE_LOG"
+sync
+fx_block_rc "B2: bare target matching quoted get is no-op" 0
+grep -q '^set ' "$FAKE_LOG" && fx_bad "bare target matching quoted get must not write" || fx_ok
+
+# B2.4: mutation test - removing --stop from gnome_gsettings_set is caught
+# If --stop were removed, the fake set with FAKE_SET_RC=1 would return 0.
+# This test would fail (expecting 1, getting 0) if the --stop flag were removed.
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH"
+    export FAKE_GET="'old'" FAKE_SET_RC=1 FAKE_LOG
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_gsettings_set org.gnome.desktop.interface gtk-theme "'new'"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "B2-mut: gnome_gsettings_set mutation (--stop removed) caught" 1
+fx_err "command failed (rc=1)"
+grep -Fqx "set org.gnome.desktop.interface gtk-theme 'new'" "$FAKE_LOG" && fx_ok || fx_bad "failed set still attempted write"
+
+# B2.5: gnome_strv_merge_set propagates gsettings failure
+: >"$FAKE_LOG"
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH"
+    export FAKE_GET="@as []" FAKE_SET_RC=1 FAKE_LOG
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_strv_merge_set org.gnome.shell favorite-apps firefox.desktop
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "B2: gnome_strv_merge_set propagates set failure" 1
+fx_err "command failed (rc=1)"
+grep -Fqx "set org.gnome.shell favorite-apps ['firefox.desktop']" "$FAKE_LOG" && fx_ok || fx_bad "strv_merge_set failed write logged"
+
+# B2.6: gnome_custom_keybindings_merge_add propagates gsettings failure
+: >"$FAKE_LOG"
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH"
+    export FAKE_GET="@as []" FAKE_SET_RC=1 FAKE_LOG
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/gnome.sh"
+    gnome_custom_keybindings_merge_add "/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom0/"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "B2: gnome_custom_keybindings_merge_add propagates set failure" 1
+fx_err "command failed (rc=1)"
+grep -Fqx "set org.gnome.settings-daemon.plugins.media-keys custom-keybindings ['/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom0/']" "$FAKE_LOG" && fx_ok || fx_bad "keybindings merge failed write logged"
 
 fx_summary

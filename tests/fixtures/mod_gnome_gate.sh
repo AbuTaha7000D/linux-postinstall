@@ -277,8 +277,12 @@ echo "--- cell: verify gated (non-GNOME) and dry-run refuse"
     source "$ROOT/modules/gnome-base/hooks.sh"
     verify
 ) >"$FX_OUT" 2>"$FX_ERR"
+# rc is 93, lib/verify.sh's _VERIFY_HOOK_SKIP -- NOT 0. `verify() { return 0; }`
+# after a refused gate is what made an audit of a non-GNOME session report PASS:
+# the gate proved it checked nothing and the audit still counted it as verified.
+# The literal is pinned so a change to the protocol value is caught here.
 FX_BLOCK_RC=$?
-fx_block_rc "verify gated rc" 0
+fx_block_rc "verify gated rc" 93
 fx_out "gnome-base: skipped (not GNOME) (not a GNOME session"
 
 : >"$LOG"
@@ -501,6 +505,48 @@ FX_BLOCK_RC=$?
 fx_block_rc "theme verify dup rc" 1
 fx_err "verify FAILED: bookmarks hold 1 duplicate line(s)"
 [[ ! -s "$LOG" ]] && fx_ok || fx_bad "failing theme verify must never write gsettings"
+
+# --- 10b. every GNOME hook re-gates, and every gate returns the same rc ----
+#
+# Cell 6 pins gnome-base's gate. That left the other two GNOME modules'
+# capability gates and gnome-extensions' absent-binary arm with NO cell at all:
+# mutations M19 (extensions gate -> 0), M21 (theme gate -> 1) and M22 (theme gate
+# -> 0, measured through the verify fixture) all ESCAPED a full green battery
+# before this cell existed. One cell per module is the point -- a shared gate in
+# lib/gnome.sh is not a shared test.
+echo "--- cell: gnome-extensions verify gated (non-GNOME)"
+: >"$LOG"
+(   set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH"
+    export XDG_CURRENT_DESKTOP=KDE
+    export FS_DRY_RUN=0
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/modules/gnome-extensions/hooks.sh"
+    verify
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "extensions verify gated rc" 93
+fx_out "gnome-extensions: skipped (not GNOME) (not a GNOME session"
+[[ ! -s "$LOG" ]] && fx_ok || fx_bad "a gated extensions verify must never touch gsettings"
+
+echo "--- cell: gnome-theme verify gated (non-GNOME)"
+: >"$LOG"
+(   set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH"
+    export XDG_CURRENT_DESKTOP=KDE
+    export FS_THEME_NAME=Aurora FS_CURSOR_NAME=DMZ-Black
+    export FS_GTK_BOOKMARKS_FILE="$FX_TMP/bm_gate"
+    export FS_DRY_RUN=0
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/modules/gnome-theme/hooks.sh"
+    verify
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "theme verify gated rc" 93
+fx_out "gnome-theme: skipped (not GNOME) (not a GNOME session"
+[[ ! -s "$LOG" ]] && fx_ok || fx_bad "a gated theme verify must never touch gsettings"
 
 # --- 11. --force makes a drifty module run again; verify stays readonly ---
 echo "--- cell: help lists --force"

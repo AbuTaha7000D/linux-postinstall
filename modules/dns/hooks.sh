@@ -69,6 +69,16 @@
 # time, so the plan lines carry the literal marker RESOLVED-AT-RUN-TIME (the
 # P7.6 chrome convention). The name-resolution check is reported in an info
 # line, not executed. No record is written.
+#
+# verify() (A2): the absent-nmcli arm returns lib/verify.sh's
+# _VERIFY_HOOK_SKIP rather than 0 or 1. On a host that is not a NetworkManager
+# host this hook cannot ask its question at all, so 0 would be the
+# "verify() passed" the audit prints and 1 would report a missing OPTIONAL
+# tool as a broken install -- the false-PASS and false-FAIL halves of the same
+# defect. The remaining arms stay FAIL: an nmcli that answers but reports the
+# wrong DNS settings IS a finding, and so is a connection name this module
+# cannot use. lib/verify.sh is sourced for the constant under the same
+# declare -F guard the other hooks use.
 # Bash >= 4.3 safe. No comments inside function bodies by house rule.
 
 _DNS_NOTE_KEY="dns"
@@ -119,8 +129,9 @@ verify() {
         return 0
     fi
     if ! command -v nmcli >/dev/null 2>&1; then
-        io_error "dns: nmcli not found on PATH"
-        return 1
+        io_info "dns: nmcli not found on PATH; cannot verify"
+        declare -F _verify_hook >/dev/null 2>&1 || source "${BASH_SOURCE[0]%/*}/../../lib/verify.sh"
+        return "$_VERIFY_HOOK_SKIP"
     fi
     name="${FS_DNS_CONNECTION:-}"
     if [[ -n "$name" ]]; then

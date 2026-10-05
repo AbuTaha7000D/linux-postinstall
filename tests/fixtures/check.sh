@@ -221,7 +221,7 @@ setfake sudo "printf '%s\\n' \"\$*\" >>'$FX_TMP/sudo.calls'
 exit 1"
 chk 0 "sudo needs password" HOME="$FX_TMP/h4" FS_CHECK_MIN_FREE_MB=1 "$SETUP" check
 guard_fake sudo "needs password"
-fx_out 'WARN privileges: non-root; sudo needs a password, so unattended runs will prompt'
+fx_out 'WARN privileges: non-root; sudo requires a password, so privileged steps prompt for one'
 fx_out_not '^  - FAIL privileges'
 agree 0 "sudo needs password"
 no_sudo_escalation "needs password"
@@ -456,5 +456,112 @@ else
 fi
 farm_reset
 guard_fake curl "real" 0
+
+# --- 25. A2 byte identity: the preflight table must not change at all -----
+#
+# A2 adds a SKIP severity to lib/status.sh, which `check` shares. `check` has no
+# skip-shaped rows, so the whole table must come out BYTE-IDENTICAL -- the three
+# goldens below were captured from the tree BEFORE A2 and are pasted verbatim,
+# including the rc line, so this is an oracle captured outside the change rather
+# than a pin derived from the tree that is being pinned (which would certify
+# nothing). A `check` that started emitting SKIP, or that reordered/relabelled a
+# row, or that changed its verdict wording, fails here on the bytes.
+#
+# `cmp` is used, not `diff`, and the two normalizations are the ONLY edits: the
+# fixture's own temp dir (it appears in the state row's base name) and the free
+# disk figure, which is a property of the machine rather than of the code.
+chk_norm() {
+    sed -E "s#$FX_TMP#FX_TMP#g; s#[0-9]+ MB free on /#N MB free on /#g"
+}
+
+GOLDEN_PASS='== preflight check ==
+  - PASS distro: fedora (family rpm, pkgmgr dnf5)
+  - PASS pkgmgr: dnf5 present in PATH
+  - PASS privileges: running as root (euid 0); no sudo needed
+  - PASS flatpak: present in PATH
+  - PASS network:flathub: reachable (https://dl.flathub.org/repo/flathub.flatpakrepo)
+  - PASS network:github: reachable (https://github.com)
+  - PASS disk: N MB free on / (need 1 MB)
+  - PASS modules: no state dir yet; nothing recorded as installed
+  - preflight OK
+rc=0'
+
+GOLDEN_WARN='== preflight check ==
+  - PASS distro: fedora (family rpm, pkgmgr dnf5)
+  - WARN pkgmgr: not checked (FS_PKG_BACKEND=mock)
+  - PASS privileges: running as root (euid 0); no sudo needed
+  - PASS flatpak: present in PATH
+  - WARN network:flathub: unreachable (https://dl.flathub.org/repo/flathub.flatpakrepo); downloads and remotes will fail
+  - WARN network:github: unreachable (https://github.com); downloads and remotes will fail
+  - PASS disk: N MB free on / (need 1 MB)
+  - PASS modules: no state dir yet; nothing recorded as installed
+  - preflight OK with warnings
+rc=0'
+
+GOLDEN_FAIL='== preflight check ==
+  - PASS distro: fedora (family rpm, pkgmgr dnf5)
+  - WARN pkgmgr: not checked (FS_PKG_BACKEND=mock)
+  - PASS privileges: running as root (euid 0); no sudo needed
+  - PASS flatpak: present in PATH
+  - WARN network:flathub: unreachable (https://dl.flathub.org/repo/flathub.flatpakrepo); downloads and remotes will fail
+  - WARN network:github: unreachable (https://github.com); downloads and remotes will fail
+  - PASS disk: N MB free on / (need 1 MB)
+  - FAIL state: no state base: set HOME, XDG_STATE_HOME or FS_HOME, or installs cannot record progress
+  - preflight FAILED: fix the FAIL rows above before installing
+rc=1'
+
+# A table plus its rc, normalized, compared against a pasted golden. On any
+# mismatch the diff is printed: a byte-identity failure that only says "differ"
+# teaches nothing about which byte moved.
+byte_identical() {
+    local label="$1" got="$2" want="$3"
+    { cat "$got"; printf 'rc=%s\n' "$FX_BLOCK_RC"; } | chk_norm >"$FX_TMP/got.$label"
+    if cmp -s -- "$FX_TMP/got.$label" <(printf '%s\n' "$want"); then
+        fx_ok
+    else
+        fx_bad "$label: check output is NOT byte-identical to the pre-A2 golden:"
+        diff -u <(printf '%s\n' "$want") "$FX_TMP/got.$label" 2>/dev/null | sed 's/^/    /' >&2
+    fi
+    return 0
+}
+
+farm_reset
+setfake dnf5 'exit 0'
+CHK_BACKEND=""
+chk 0 "golden pass" HOME="$FX_TMP/g25a" FS_EUID=0 FS_CHECK_MIN_FREE_MB=1 "$SETUP" check
+byte_identical "golden pass" "$FX_OUT" "$GOLDEN_PASS"
+
+CHK_BACKEND="mock"
+farm_reset
+setfake dnf5 'exit 0'
+setfake curl "printf '%s\\n' \"\$*\" >>'$CALLS'
+exit 7"
+chk 0 "golden warn" HOME="$FX_TMP/g25b" FS_EUID=0 FS_CHECK_MIN_FREE_MB=1 "$SETUP" check
+byte_identical "golden warn" "$FX_OUT" "$GOLDEN_WARN"
+
+CHK_BACKEND="mock"
+farm_reset
+setfake dnf5 'exit 0'
+setfake curl "printf '%s\\n' \"\$*\" >>'$CALLS'
+exit 7"
+chk 1 "golden fail" FS_EUID=0 FS_CHECK_MIN_FREE_MB=1 "$SETUP" check
+byte_identical "golden fail" "$FX_OUT" "$GOLDEN_FAIL"
+
+# The explicit half of the same claim: no shape of the preflight table emits a
+# SKIP row. The byte comparison above would already catch a new row, but it
+# reports as a diff; this one names the defect.
+farm_reset
+setfake dnf5 'exit 0'
+chk 0 "no skip rows" HOME="$FX_TMP/g25d" FS_EUID=0 FS_CHECK_MIN_FREE_MB=1 "$SETUP" check
+fx_out_not '^  - SKIP '
+grep -q '^  - SKIP ' "$FX_OUT" && fx_bad "check emitted a SKIP row" || fx_ok
+
+# And the verdict must never offer the skip wording, which is the other half of
+# "check has no skip states": a check run cannot print a skip count even if the
+# severity existed.
+farm_reset
+setfake dnf5 'exit 0'
+chk 0 "no skip verdict" HOME="$FX_TMP/g25e" FS_EUID=0 FS_CHECK_MIN_FREE_MB=1 "$SETUP" check
+fx_out_not 'check(s) skipped'
 
 fx_summary

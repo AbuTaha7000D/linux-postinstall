@@ -275,7 +275,12 @@ fx_out_not "apps: verify passed"
 if [[ "$(grep -c 'apps: verify ok:' "$FX_OUT")" == 3 ]]; then fx_ok; else fx_bad "verify fail ok lines (got $(grep -c 'apps: verify ok:' "$FX_OUT"))"; fi
 log_only_info "failing verify read-only" "$VLOG"
 
-echo "--- cell: verify fails closed when the flatpak CLI is absent"
+echo "--- cell: verify SKIPS (rc 93) when the flatpak CLI is absent"
+# rc is 93, lib/verify.sh's _VERIFY_HOOK_SKIP, and the reason is io_info not
+# io_error: this arm did not look at the install, so reporting it as a failure
+# would be a FAIL row for an audit that never ran -- the same false-PASS shape
+# inverted. The literal 93 is pinned; the distinctness of the reserved values
+# is pinned in tests/fixtures/verify.sh.
 (   set -euo pipefail
     export PATH="$NOTOOLS"
     export FS_DRY_RUN=0
@@ -286,8 +291,9 @@ echo "--- cell: verify fails closed when the flatpak CLI is absent"
     verify
 ) >"$FX_OUT" 2>"$FX_ERR"
 FX_BLOCK_RC=$?
-fx_block_rc "verify no-flatpak rc" 1
-fx_err "apps: verify: flatpak CLI not found; cannot verify"
+fx_block_rc "verify no-flatpak rc" 93
+fx_out "apps: verify: flatpak CLI not found; cannot verify"
+fx_err_not "apps: verify: flatpak CLI not found; cannot verify"
 
 # `setup list` row (hermetic, matches modules_list.sh convention)
 (   set -euo pipefail

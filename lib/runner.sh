@@ -166,6 +166,21 @@
 #                            registry is authoritative, so a module that
 #                            cannot be recorded stops the run without a
 #                            summary (the batch has already committed).
+#                       5b. NOT-APPLICABLE (A1). A hook whose run() returns
+#                            the reserved MODULE_HOOK_SKIP status reports
+#                            "nothing to do on this host", not success and
+#                            not failure. The runner records the registry's
+#                            `skipped` state (state_module_skip) and
+#                            summary_module_skip, so the module is retried on
+#                            the next run. It is NOT marked done: that is
+#                            exactly the latch A1 removes, where a GNOME
+#                            module gated off on a headless host was recorded
+#                            complete and never retried. A skip is not a
+#                            failure -- it never changes summary_rc -- and it
+#                            never counts as ok. Every OTHER non-zero run()
+#                            status is still a failure, including a
+#                            destructive module's (which stops the run).
+#                            Dry-run writes nothing, exactly as for `done`.
 #                       <family> is the distro family (rpm|deb|arch) for
 #                       the P4.3 overlay + P4.2 gate; distro detection is
 #                       the caller/bootstrap's job (P2.3) -- the runner
@@ -177,14 +192,45 @@
 #                       side effects through run_cmd/run_sudo so dry-run
 #                       stays side-effect-free; raw shell writes in a hook
 #                       execute even under dry-run (module author error).
-#                       Privileged hooks must also account for sudo state:
-#                       run_sudo fails closed unless sudo_detect ran
-#                       (lib/sudo.sh); privilege detection is the caller's
-#                       job -- bootstrapped runs call it in P4.7. P5 hook
-#                       authors: call sudo_detect before relying on
-#                       run_sudo.
+#                       Privileged hooks need no sudo bookkeeping of their
+#                       own: the runner runs sudo_detect + sudo_refresh
+#                       itself (PRIVILEGE STAGE below) whenever the resolved
+#                       plan can escalate, so run_sudo already has policy.
+#                       A hook must still escalate through run_sudo rather
+#                       than a raw `sudo`, or it loses the fail-closed and
+#                       audit-trail guarantees.
 #                       Resolve/validate/plan errors print only io_error
 #                       lines and return rc1 -- no writes, no state.
+#
+# PRIVILEGE STAGE (C1). Between the dry-run alert and the PREREQ stage the
+# runner decides ONCE whether this run can escalate, and only then calls
+# sudo_detect + sudo_refresh (lib/sudo.sh). Two inputs, both read from the
+# plan this function has ALREADY resolved -- there is no second plan and no
+# static analysis of module sources: (1) the SYSTEM namespace is the very
+# `pkgs` array the batch below consumes (lib/pkg/flatpak.sh never
+# escalates), and (2) a resolved module's own MODULE_PRIVILEGED=1
+# declaration, which is how a hooks.sh/prerepo.sh says it needs privilege.
+# So need_priv==0 implies the run provably cannot escalate, and skipping
+# the refresh is then not a weaker guarantee but the correct one: a
+# flatpak-only selection, or a hooks-only selection like gnome-base whose
+# hooks touch only the user session, completes rc0 on a password-sudo host
+# instead of aborting with "privileged steps cannot run" for a run that
+# executes nothing privileged.
+# The module-side input is DECLARATIVE, not inferred from the presence of
+# hooks.sh/prerepo.sh. That inference was the first C1 revision's blocking
+# defect: most shipped hooks do not escalate (apps, git, gnome-base,
+# gnome-theme, terminal), so their privilege-free installs demanded a
+# credential and failed when `sudo -v` could not succeed. A file's
+# existence says nothing about what its run() does; only the module
+# author knows that. See lib/modules.sh for the field and its validation.
+# The decision deliberately stays HERE, in one place, rather than lazily at
+# first escalation: run_sudo is a keep-going seam (run_cmd returns 0 for a
+# failed command unless --stop), so a lazy refresh failure could be swallowed
+# at a call site that lacks --stop and the run would continue past a
+# credential it never obtained. One decision point makes fail-closed
+# structural instead of per-call-site. It sits after resolve/validate and the
+# RISK GATE, so a run refused for planning reasons never prompts, and before
+# PREREQ/BATCH/hooks, so a failing refresh aborts before any mutation.
 #
 # RISK GATE (P8.3). The curated set is what a human actually asked for: the
 # module args bootstrap passed (post-UI selection), or -- when it passed
@@ -246,12 +292,17 @@ runner_run() {
         curated[$cid]=1
     done
     local -a pulled=()
-    local sid="" pid="" dir="" out="" p="" alt=""
+    local sid="" pid="" dir="" out="" p="" alt="" priv=""
+    local need_priv=0
     for sid in ${ids[@]+"${ids[@]}"}; do
         dir="$modules_dir/$sid"
         module_validate "$dir" "$family" || return 1
         risks[$sid]="$MODULE_RISK"
+        priv="$MODULE_PRIVILEGED"
         io_info "module: $sid (${risks[$sid]})"
+        if [[ "$priv" == "1" ]]; then
+            need_priv=1
+        fi
         case "${risks[$sid]}" in
         high | destructive)
             [[ -n "${curated[$sid]:-}" ]] || pulled+=("$sid")
@@ -292,6 +343,19 @@ runner_run() {
                 ;;
             esac
         done
+    fi
+    if ((need_priv == 0)) && ((${#pkgs[@]} > 0)); then
+        need_priv=1
+    fi
+    if ((need_priv > 0)) && [[ "${FS_PKG_BACKEND:-}" != mock ]]; then
+        if ! declare -F sudo_detect >/dev/null 2>&1; then
+            io_error "sudo policy is not loaded; refusing privileged work"
+            return 1
+        fi
+        sudo_detect
+        if ! sudo_refresh; then
+            return 1
+        fi
     fi
     for sid in ${ids[@]+"${ids[@]}"}; do
         dir="$modules_dir/$sid"
@@ -345,6 +409,14 @@ runner_run() {
                 source "$dir/hooks.sh"
                 run
             ) || rc=$?
+            if ((rc == MODULE_HOOK_SKIP)); then
+                io_info "not applicable: $sid"
+                if ((FS_DRY_RUN != 1)); then
+                    state_module_skip "$sid" || return 1
+                fi
+                summary_module_skip "$sid"
+                continue
+            fi
             if ((rc != 0)); then
                 io_error "module failed: $sid"
                 if [[ "${risks[$sid]:-none}" == destructive ]]; then

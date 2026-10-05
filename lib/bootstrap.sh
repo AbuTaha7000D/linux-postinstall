@@ -396,9 +396,8 @@ _cli_install_impl() {
             return 1
         fi
     fi
-    if ((FS_DRY_RUN != 1)) && [[ "${FS_PKG_BACKEND:-}" != mock ]]; then
+    if [[ "${FS_PKG_BACKEND:-}" != mock ]]; then
         . "$root/lib/sudo.sh"
-        sudo_detect
     fi
     if ((${#cli_ids[@]} > 0)); then
         exact=0
@@ -428,7 +427,7 @@ _cli_list_family() {
 }
 
 _cli_list_impl() {
-    local mdir="$1" family="$2" dir id status rc=0
+    local mdir="$1" family="$2" dir id status mstate rc=0
     local -a dirs=()
     if [[ ! -d "$mdir" ]]; then
         io_error "modules directory not found: $mdir"
@@ -454,8 +453,8 @@ _cli_list_impl() {
     while IFS= read -r id; do
         dir="$mdir/$id"
         module_load "$dir" || return 1
-        if state_module_check "$id"; then
-            status="done"
+        if mstate="$(state_module_state "$id")"; then
+            status="$mstate"
         else
             status="-"
         fi

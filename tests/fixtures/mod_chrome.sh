@@ -908,9 +908,14 @@ rm -f "$FX_TMP/apps/google-chrome.desktop"
 ch_verify "verify finds compatibility name" 0 deb
 fx_out 'verify ok.*com\.google\.Chrome\.desktop'
 rm -f "$FX_TMP/apps/com.google.Chrome.desktop"
-ch_verify "verify flatpak alt no-op" 0 deb FS_CHROME_FLATPAK=1
+# Both arms below are rc 93, lib/verify.sh's _VERIFY_HOOK_SKIP: the flatpak
+# alternative and a family with no native bundle are hosts this hook deliberately
+# does not audit, so they are skips rather than PASS (nothing was looked at) and
+# rather than FAIL (nothing was found broken). The literal is pinned so a change
+# to the protocol value is caught here.
+ch_verify "verify flatpak alt no-op" 93 deb FS_CHROME_FLATPAK=1
 fx_out 'desktop-entry check covers the native bundle only'
-ch_verify "verify arch no-op" 0 arch
+ch_verify "verify arch no-op" 93 arch
 fx_out 'nothing to verify'
 (
     set -euo pipefail

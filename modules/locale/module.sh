@@ -16,3 +16,8 @@ MODULE_TITLE="System locale (systemd)"
 MODULE_DESCRIPTION="Set the system language via localectl (opt-in)"
 MODULE_RISK=destructive
 MODULE_DEFAULT=off
+# WHY MODULE_PRIVILEGED=1: run() escalates to localectl via run_sudo. Only a
+# module can know its own run() escalates -- the runner must not infer it
+# from this file existing, or every hooks-only module would demand a
+# credential on a password-sudo host.
+MODULE_PRIVILEGED=1

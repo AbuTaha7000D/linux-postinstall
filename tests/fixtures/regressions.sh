@@ -320,6 +320,42 @@ grep -q '^UNSCANNABLE' <<<"$s1" && fx_bad "cell1: some production file was UNSCA
 grep -qE '^[^#]*-- sudo -- ' "$ROOT/lib/run.sh" && fx_ok || \
     fx_bad "cell1 sanity: lib/run.sh must contain the real `sudo --` escalation"
 
+# C1 widened this cell rather than opening a parallel one. C1 added a NEW
+# sudo invocation (`sudo -v`, the credential refresh), so the invariant now
+# also covers the ways a tool persists privilege WITHOUT necessarily
+# spelling "sudoers": `visudo` on some other path, a NOPASSWD rule, and the
+# prototype's own timestamp_timeout mutation (which writes a file whose
+# contents never contain the word "sudoers"). Each pattern carries its own
+# positive control, because a "0 hits" assertion is satisfied just as
+# happily by a dead scanner as by clean code.
+printf '#!/usr/bin/env bash\nvisudo -f "$1" <<EOF\nroot ALL=(ALL) ALL\nEOF\n' \
+    >"$FX_TMP/ctrl1/visudo_write.sh"
+printf '#!/usr/bin/env bash\nprintf "%%user ALL=(ALL) NOPASSWD: ALL\\n" > /run/nopasswd.new\n' \
+    >"$FX_TMP/ctrl1/nopasswd_rule.sh"
+printf '#!/usr/bin/env bash\nsudo sed -i "s/^Defaults\\s\\+timestamp_timeout=.*/Defaults timestamp_timeout=-1/" /run/tmo.new\n' \
+    >"$FX_TMP/ctrl1/timestamp_timeout.sh"
+c1v="$(code_hits 'visudo' "$FX_TMP/ctrl1/visudo_write.sh" || true)"
+[[ -n "$c1v" ]] && fx_ok || fx_bad "cell1 control: a visudo write must be reported"
+c1n="$(code_hits 'NOPASSWD' "$FX_TMP/ctrl1/nopasswd_rule.sh" || true)"
+[[ -n "$c1n" ]] && fx_ok || fx_bad "cell1 control: a NOPASSWD rule must be reported"
+c1t="$(code_hits 'timestamp_timeout' "$FX_TMP/ctrl1/timestamp_timeout.sh" || true)"
+[[ -n "$c1t" ]] && fx_ok || fx_bad "cell1 control: a timestamp_timeout write must be reported"
+# A comment naming the mechanism is documentation, not a write: the
+# stripper must not report it, or a header would trip the scan.
+printf '# this comment mentions visudo, NOPASSWD and timestamp_timeout\n' \
+    >"$FX_TMP/ctrl1/only_comment.sh"
+c1z="$(code_hits 'visudo|NOPASSWD|timestamp_timeout' "$FX_TMP/ctrl1/only_comment.sh" || true)"
+[[ -z "$c1z" ]] && fx_ok || \
+    fx_bad "cell1 control: comment-only mentions must NOT be reported: $c1z"
+
+for pat in visudo NOPASSWD timestamp_timeout; do
+    hits="$(code_hits "$pat" "${CODE_ALL[@]}" 2>&1 || true)"
+    grep -q '^UNSCANNABLE' <<<"$hits" && \
+        fx_bad "cell1: some production file was UNSCANNABLE ($pat): $hits"
+    [[ -z "$hits" ]] && fx_ok || \
+        fx_bad "cell1: production references '$pat' (AGENTS §9 forbids read AND write; C1 forbids a persistent credential change): $hits"
+done
+
 # =====================================================================
 printf -- '--- cell 2: .bashrc gets a managed block, never a wholesale overwrite\n'
 # =====================================================================

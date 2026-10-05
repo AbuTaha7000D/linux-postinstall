@@ -15,10 +15,15 @@
 # probes -- io_info guard, rc0, nothing executed), then confirms every
 # curated app in flatpaks.list is actually installed. The dry-run and
 # flatpak-CLI-presence guards run FIRST -- before resolving the repo path
-# or parsing the list -- so a fail-closed verify works even with a broken
-# PATH or no tools (and dry-run never has to resolve anything). Presence
-# mirrors the P3.6 backend's flatpak_query_installed (per-user probe
-# first, system fallback) as a deliberate hook-local duplicate: calling
+# or parsing the list -- so a verify still reports its verdict even with a
+# broken PATH or no tools (and dry-run never has to resolve anything).
+# The no-flatpak arm returns lib/verify.sh's _VERIFY_HOOK_SKIP, NOT 1:
+# a missing optional tool means this hook checked nothing, so 1 would
+# report an audit that never ran as a broken install. The contract is
+# sourced here with a parameter-expansion path rather than `dirname`+`cd`,
+# because that guard is precisely the arm that must not depend on PATH.
+# Presence mirrors the P3.6 backend's flatpak_query_installed (per-user
+# probe first, system fallback) as a deliberate hook-local duplicate: calling
 # the pkg dispatcher from a hook would resolve the FAMILY backend for
 # system-package namespace -- the P5.7 NB-A trap -- unless wrapped in an
 # FS_PKG_BACKEND=flatpak subshell. The divergence risk is a recorded
@@ -38,8 +43,9 @@ verify() {
         return 0
     fi
     if ! command -v flatpak >/dev/null 2>&1; then
-        io_error "apps: verify: flatpak CLI not found; cannot verify"
-        return 1
+        declare -F _verify_hook >/dev/null 2>&1 || source "${BASH_SOURCE[0]%/*}/../../lib/verify.sh"
+        io_info "apps: verify: flatpak CLI not found; cannot verify"
+        return "$_VERIFY_HOOK_SKIP"
     fi
     root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)" || return 1
     source "$root/lib/lists.sh"

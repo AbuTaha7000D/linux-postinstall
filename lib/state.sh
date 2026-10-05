@@ -17,9 +17,40 @@
 #     the field encoding inside a value belongs to the caller.
 # Every write is atomic (temp+rename) and confined by _state_chain_ok /
 # _state_subdir_ok, exactly like the module and backup registries.
+#
+# THE MODULE REGISTRY HAS TWO STATES (A1). modules/<id> records ONE line,
+# "<state> <timestamp>" -- deliberately nothing more:
+#   done     - the module's work actually completed
+#   skipped  - the module had nothing to do here (its run() reported the
+#              reserved not-applicable status, e.g. the P6.5 GNOME capability
+#              gate on a non-GNOME/SSH host)
+# These are NOT interchangeable: `done` means "do not run me again", `skipped`
+# means "ask me again next time". Recording a gate skip as `done` latched a
+# permanently-uninstalled module, which is the defect A1 closes.
+# ONE relation answers "is this done?": state_module_check (rc0 ONLY for
+# `done`), implemented by calling state_module_state. state_module_state is the
+# ONLY reader that parses the line, so the runner's skip gate, `setup list`,
+# `setup check` and `verify`'s registry selection cannot disagree about what the
+# registry says. Do NOT add a second "does an entry exist" predicate: two tests
+# of one property that disagree is the AGENTS.md defect class this file avoids.
+# A pre-A1 entry is "done <ts>", which keeps meaning done; an unrecognized
+# state word is REFUSED (rc1, fail-closed), never treated as done.
 
 FS_STATE_BASE=""
 FS_STATE_DIR=""
+
+MODULE_STATE_DONE="done"
+MODULE_STATE_SKIPPED="skipped"
+
+# Why cut and not a bash read: the registry file is written by printf '%s'
+# with NO trailing newline, so `read` returns non-zero on a perfectly valid
+# entry. Slicing the first field is newline-agnostic and keeps the exit status
+# of "parse the file" out of the "what state is this" question.
+_state_field1() {
+    local file="$1"
+    [[ -f "$file" && -r "$file" ]] || return 1
+    cut -d' ' -f1 -- "$file" 2>/dev/null
+}
 
 _state_valid_name() {
     local name="$1"
@@ -197,11 +228,27 @@ state_module_mark() {
     _state_chain_ok "$FS_STATE_DIR/modules" || return 1
     _state_subdir_ok modules || return 1
     printf -v ts '%(%Y-%m-%dT%H:%M:%S)T' -1
-    _state_write "$FS_STATE_DIR/modules/$name" "done $ts"
+    _state_write "$FS_STATE_DIR/modules/$name" "$MODULE_STATE_DONE $ts"
 }
 
-state_module_check() {
-    local name="${1:-}"
+state_module_skip() {
+    local name="${1:-}" ts
+    if [[ -z "$FS_STATE_DIR" ]]; then
+        io_error "state not initialized (call state_init first)"
+        return 1
+    fi
+    if ! _state_valid_name "$name"; then
+        io_error "invalid module name"
+        return 1
+    fi
+    _state_chain_ok "$FS_STATE_DIR/modules" || return 1
+    _state_subdir_ok modules || return 1
+    printf -v ts '%(%Y-%m-%dT%H:%M:%S)T' -1
+    _state_write "$FS_STATE_DIR/modules/$name" "$MODULE_STATE_SKIPPED $ts"
+}
+
+state_module_state() {
+    local name="${1:-}" file="" word=""
     if [[ -z "$FS_STATE_DIR" ]]; then
         io_error "state not initialized (call state_init first)"
         return 1
@@ -209,10 +256,32 @@ state_module_check() {
     _state_valid_name "$name" || return 1
     _state_chain_ok "$FS_STATE_DIR/modules/$name" || return 1
     _state_subdir_ok modules || return 1
-    if [[ -L "$FS_STATE_DIR/modules/$name" ]]; then
+    file="$FS_STATE_DIR/modules/$name"
+    if [[ -L "$file" ]]; then
+        io_error "module registry entry is a symlink: $file"
         return 1
     fi
-    [[ -f "$FS_STATE_DIR/modules/$name" ]]
+    if [[ -e "$file" && ! -f "$file" ]]; then
+        io_error "module registry entry is not a regular file: $file"
+        return 1
+    fi
+    [[ -f "$file" && -r "$file" ]] || return 1
+    word="$(_state_field1 "$file")" || return 1
+    case "$word" in
+    "$MODULE_STATE_DONE" | "$MODULE_STATE_SKIPPED")
+        printf '%s\n' "$word"
+        ;;
+    *)
+        io_error "unrecognized module state in registry: $name"
+        return 1
+        ;;
+    esac
+}
+
+state_module_check() {
+    local name="${1:-}" word=""
+    word="$(state_module_state "$name")" || return 1
+    [[ "$word" == "$MODULE_STATE_DONE" ]]
 }
 
 state_module_unmark() {

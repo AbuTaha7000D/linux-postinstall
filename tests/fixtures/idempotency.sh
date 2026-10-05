@@ -18,6 +18,13 @@
 #     byte-identical.
 #   * shared-FS_HOME re-run: the runner-level "already completed" skip is the
 #     whole-run no-op gate (P6.6 sweep documents it; P6.5 NB2 behavioral note).
+#   * A1 capability-gate re-run: the same shared-FS_HOME sweep with the GNOME
+#     gate OFF. Both runs re-enter the gate (never "already completed") and
+#     both record `skipped`, never `done` -- so a gated module is retried
+#     rather than latched complete, and stays a zero-write no-op meanwhile.
+#     This is the cell where `already completed` (also rendered "1 skipped")
+#     and `not applicable` are told apart: only the registry can, so both runs
+#     assert the recorded state, not just the counts.
 # The fake gsettings models REAL gsettings faithfully: `set` PERSISTS the new
 # value into FAKE_KEY_FILE (in-place overwrite, so re-reads reflect applied
 # state exactly like dconf) and `get` returns string scalars single-quoted
@@ -316,5 +323,41 @@ fx_block_rc "shared run2 rc" 0
 fx_out 'already completed: gnome-base'
 fx_out '^  - 0 modules ok · 1 skipped · 0 failed ·'
 [[ $(grep -c '^set ' "$LOG") == 0 ]] && fx_ok || fx_bad "shared re-run: zero writes"
+
+# --- A1: a capability-gated module is retried, and stays a no-op ----------
+# The counterpart to the `done` cell above. On a host the GNOME capability gate
+# refuses, the module has no work to do -- but it is NOT complete, so it must
+# be recorded `skipped` (retried next run), never `done` (never retried again).
+# Both runs below are on the SAME state root, and both must re-enter the gate.
+echo "--- cell: A1 gated module retries and stays idempotent"
+A1STATE="$FX_TMP/s_a1gate"
+A1MODS="$A1STATE/.local/state/fedora-setup/modules"
+rm -rf "$A1STATE"
+for run in 1 2; do
+    : >"$LOG"
+    (   set -euo pipefail
+        export FS_HOME="$A1STATE"
+        export PATH="$FX_TMP/fakebin:$PATH"
+        export FS_PKG_BACKEND=mock FS_DISTRO_FAMILY=rpm
+        export FS_MODULES_DIR="$ROOT/modules" FS_PROFILES_DIR="$ROOT/profiles"
+        export XDG_CURRENT_DESKTOP=                      # gate off: not GNOME
+        export FS_WALLPAPER_ASSETS_DIR="$FX_TMP/wall"
+        export FAKE_LOG="$LOG" FAKE_KEY_FILE="$FX_TMP/keys-a1gate"
+        unset FS_YES FS_PROFILE FS_DISTRO_FILE FS_DRY_RUN FS_GNOME_FORCE 2>/dev/null || :
+        "$SETUP" install --yes gnome-base
+    ) >"$FX_OUT" 2>"$FX_ERR"
+    FX_BLOCK_RC=$?
+    fx_block_rc "A1 gated run$run rc0" 0
+    fx_out 'skipped (not GNOME)'
+    # The gate's decision is reported as skipped, and never as ok.
+    fx_out '^  - 0 modules ok · 1 skipped · 0 failed ·'
+    fx_out_not 'already completed: gnome-base'
+    [[ -s "$LOG" ]] && fx_bad "gated run$run must write nothing" || fx_ok
+    # Checked on EVERY run, because `already completed` and `not applicable`
+    # both render as 1 skipped -- only the registry distinguishes them, and
+    # `done` here is the A1 defect itself.
+    [[ "$(head -1 "$A1MODS/gnome-base" 2>/dev/null)" == skipped* ]] \
+        && fx_ok || fx_bad "gated run$run must record skipped, got: $(head -1 "$A1MODS/gnome-base" 2>/dev/null)"
+done
 
 fx_summary

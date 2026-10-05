@@ -355,7 +355,7 @@ fx_err 'refusing invalid repo id'
 ) >"$FX_OUT" 2>"$FX_ERR"
 FX_BLOCK_RC=$?
 fx_block_rc "add repo dry rc0" 0
-if [[ $(grep -c '^# would run: sudo install -m 0644 .*fedora-setup-repo-myother.dry .*drysources/myother.list$' "$FX_OUT" 2>/dev/null || :) == 1 ]]; then
+if [[ $(grep -c '^# would run: sudo -- install -m 0644 .*fedora-setup-repo-myother.dry .*drysources/myother.list$' "$FX_OUT" 2>/dev/null || :) == 1 ]]; then
     fx_ok
 else
     fx_bad "expected single dry repo-add line"
@@ -380,7 +380,7 @@ fi
 ) >"$FX_OUT" 2>"$FX_ERR"
 FX_BLOCK_RC=$?
 fx_block_rc "batch dry rc0" 0
-if [[ $(grep -c '^# would run: sudo apt-get install -y emacs git$' "$FX_OUT" 2>/dev/null || :) == 1 ]]; then
+if [[ $(grep -c '^# would run: sudo -- apt-get install -y emacs git$' "$FX_OUT" 2>/dev/null || :) == 1 ]]; then
     fx_ok
 else
     fx_bad "expected single dry apt transaction"
@@ -419,6 +419,323 @@ if [[ "$cnt" == 1 ]]; then
     fx_ok
 else
     fx_bad "expected one install transaction, got $cnt"
+fi
+
+# --- B1: package manager transaction failure propagation ---------------
+
+# B1.1: apt-get exits non-zero on install_batch -> backend returns non-zero
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH" FAKE_LOG="$FX_TMP/fake.log" FAKE_INSTALLED
+    cat >"$FX_TMP/fakebin/apt-get" <<'EOF'
+#!/usr/bin/env bash
+printf 'apt-get: %s\n' "$*" >>"$FAKE_LOG" 2>/dev/null || :
+exit 100
+EOF
+    chmod +x "$FX_TMP/fakebin/apt-get"
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/sudo.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/pkg.sh"
+    FS_RUNNING_AS_ROOT=1 FS_SUDO_AVAILABLE=1
+    export FS_PKG_BACKEND=deb
+    : >"$FAKE_LOG"
+    pkg_install_batch emacs git
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "B1: install_batch fails when apt-get exits non-zero" 1
+fx_err 'command failed (rc=100)'
+
+# B1.2: plan_install refuses to continue when backend fails
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH" FAKE_LOG="$FX_TMP/fake.log" FAKE_INSTALLED
+    cat >"$FX_TMP/fakebin/apt-get" <<'EOF'
+#!/usr/bin/env bash
+printf 'apt-get: %s\n' "$*" >>"$FAKE_LOG" 2>/dev/null || :
+exit 100
+EOF
+    chmod +x "$FX_TMP/fakebin/apt-get"
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/sudo.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/pkg.sh"
+    source "$ROOT/lib/planner.sh"
+    FS_RUNNING_AS_ROOT=1 FS_SUDO_AVAILABLE=1
+    export FS_PKG_BACKEND=deb
+    : >"$FAKE_LOG"
+    plan_install emacs git
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "B1: plan_install refuses when backend fails" 1
+
+# B1.3: apt-get exits non-zero on update_metadata -> backend returns non-zero
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH" FAKE_LOG="$FX_TMP/fake.log"
+    cat >"$FX_TMP/fakebin/apt-get" <<'EOF'
+#!/usr/bin/env bash
+printf 'apt-get: %s\n' "$*" >>"$FAKE_LOG" 2>/dev/null || :
+exit 100
+EOF
+    chmod +x "$FX_TMP/fakebin/apt-get"
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/sudo.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/pkg.sh"
+    FS_RUNNING_AS_ROOT=1 FS_SUDO_AVAILABLE=1
+    export FS_PKG_BACKEND=deb
+    : >"$FAKE_LOG"
+    pkg_update_metadata
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "B1: update_metadata fails when apt-get exits non-zero" 1
+fx_err 'command failed (rc=100)'
+
+# B1.4: install exits non-zero on add_repo -> backend returns non-zero
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH" FAKE_LOG="$FX_TMP/fake.log" FS_SOURCES_DIR="$FX_TMP/sources"
+    export TMPDIR="$FX_TMP/tmpdir"
+    # Clean up any existing repo from earlier tests
+    rm -f "$FX_TMP/sources/b1test.list"
+    cat >"$FX_TMP/fakebin/install" <<'EOF'
+#!/usr/bin/env bash
+printf 'install: %s\n' "$*" >>"$FAKE_LOG" 2>/dev/null || :
+exit 100
+EOF
+    chmod +x "$FX_TMP/fakebin/install"
+    # Also need apt-get for deb_supported check
+    cat >"$FX_TMP/fakebin/apt-get" <<'EOF'
+#!/usr/bin/env bash
+printf 'apt-get: %s\n' "$*" >>"$FAKE_LOG" 2>/dev/null || :
+exit 0
+EOF
+    chmod +x "$FX_TMP/fakebin/apt-get"
+    # Need dpkg-query for deb_supported check
+    cat >"$FX_TMP/fakebin/dpkg-query" <<'EOF'
+#!/usr/bin/env bash
+printf 'dpkg-query: %s\n' "$*" >>"$FAKE_LOG" 2>/dev/null || :
+exit 0
+EOF
+    chmod +x "$FX_TMP/fakebin/dpkg-query"
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/sudo.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/pkg.sh"
+    FS_RUNNING_AS_ROOT=1 FS_SUDO_AVAILABLE=1
+    export FS_PKG_BACKEND=deb
+    : >"$FAKE_LOG"
+    pkg_add_repo b1test "https://example.invalid/repo stable main"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "B1: add_repo fails when install exits non-zero" 1
+fx_err 'command failed (rc=100)'
+
+# B1.5: mutation test - removing --stop from install_batch is caught
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH" FAKE_LOG="$FX_TMP/fake.log" FAKE_INSTALLED="$FX_TMP/installed"
+    : >"$FAKE_INSTALLED"
+    cat >"$FX_TMP/fakebin/apt-get" <<'EOF'
+#!/usr/bin/env bash
+printf 'apt-get: %s\n' "$*" >>"$FAKE_LOG" 2>/dev/null || :
+exit 100
+EOF
+    chmod +x "$FX_TMP/fakebin/apt-get"
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/sudo.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/pkg.sh"
+    FS_RUNNING_AS_ROOT=1 FS_SUDO_AVAILABLE=1
+    export FS_PKG_BACKEND=deb
+    : >"$FAKE_LOG"
+    pkg_install_batch emacs
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "B1-mut: install_batch mutation (--stop removed) caught" 1
+
+# B1.6: postcondition test - command exits 0 but does no work
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH" FAKE_LOG="$FX_TMP/fake.log" FAKE_INSTALLED="$FX_TMP/installed"
+    : >"$FAKE_INSTALLED"
+    cat >"$FX_TMP/fakebin/apt-get" <<'EOF'
+#!/usr/bin/env bash
+printf 'apt-get: %s\n' "$*" >>"$FAKE_LOG" 2>/dev/null || :
+# exits 0 but does NOT add to FAKE_INSTALLED
+exit 0
+EOF
+    chmod +x "$FX_TMP/fakebin/apt-get"
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/sudo.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/pkg.sh"
+    FS_RUNNING_AS_ROOT=1 FS_SUDO_AVAILABLE=1
+    export FS_PKG_BACKEND=deb
+    : >"$FAKE_LOG"
+    pkg_install_batch emacs
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "B1-post: install_batch postcondition gap (no query after)" 0
+if ! grep -qxF emacs "$FAKE_INSTALLED" 2>/dev/null; then
+    fx_ok
+else
+    fx_bad "package was unexpectedly installed"
+fi
+
+# B1.7: install_local returns 0 even when PM fails (no --stop per postcondition rule)
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH" FAKE_LOG="$FX_TMP/fake.log"
+    cat >"$FX_TMP/fakebin/apt-get" <<'EOF'
+#!/usr/bin/env bash
+printf 'apt-get: %s\n' "$*" >>"$FAKE_LOG" 2>/dev/null || :
+exit 100
+EOF
+    chmod +x "$FX_TMP/fakebin/apt-get"
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/sudo.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/pkg.sh"
+    FS_RUNNING_AS_ROOT=1 FS_SUDO_AVAILABLE=1
+    export FS_PKG_BACKEND=deb
+    touch "$FX_TMP/example.deb"
+    : >"$FAKE_LOG"
+    pkg_install_local "$FX_TMP/example.deb"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "B1: install_local returns 0 despite PM failure (postcondition rule)" 0
+fx_err 'command failed (rc=100)'
+
+# B1.8: postcondition check catches the failure (pkg_query_installed returns 1)
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH" FAKE_LOG="$FX_TMP/fake.log" FAKE_INSTALLED="$FX_TMP/installed"
+    : >"$FAKE_INSTALLED"
+    cat >"$FX_TMP/fakebin/apt-get" <<'EOF'
+#!/usr/bin/env bash
+printf 'apt-get: %s\n' "$*" >>"$FAKE_LOG" 2>/dev/null || :
+exit 100
+EOF
+    chmod +x "$FX_TMP/fakebin/apt-get"
+    cat >"$FX_TMP/fakebin/dpkg-query" <<'EOF'
+#!/usr/bin/env bash
+printf 'dpkg-query: %s\n' "$*" >>"$FAKE_LOG" 2>/dev/null || :
+case "${1:-}" in
+    -W)
+        if [[ "${2:-}" == "-f="*'${db:Status-Status}'* ]]; then
+            grep -qxF -- "${3:-}" "$FAKE_INSTALLED" 2>/dev/null && echo "installed" || echo "not-installed"
+        elif [[ "${2:-}" == "-f="*'${Package}'* ]]; then
+            cat "$FAKE_INSTALLED" 2>/dev/null
+        fi
+        ;;
+    *) exit 0 ;;
+esac
+EOF
+    chmod +x "$FX_TMP/fakebin/apt-get" "$FX_TMP/fakebin/dpkg-query"
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/sudo.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/pkg.sh"
+    FS_RUNNING_AS_ROOT=1 FS_SUDO_AVAILABLE=1
+    export FS_PKG_BACKEND=deb
+    touch "$FX_TMP/example.deb"
+    : >"$FAKE_LOG"
+    pkg_install_local "$FX_TMP/example.deb" || rc=$?
+    pkg_query_installed example.deb
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "B1: postcondition query catches failed install_local" 1
+
+# B1.9: mutation test - removing postcondition check is caught
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH" FAKE_LOG="$FX_TMP/fake.log" FAKE_INSTALLED="$FX_TMP/installed"
+    : >"$FAKE_INSTALLED"
+    cat >"$FX_TMP/fakebin/apt-get" <<'EOF'
+#!/usr/bin/env bash
+printf 'apt-get: %s\n' "$*" >>"$FAKE_LOG" 2>/dev/null || :
+exit 100
+EOF
+    chmod +x "$FX_TMP/fakebin/apt-get"
+    cat >"$FX_TMP/fakebin/dpkg-query" <<'EOF'
+#!/usr/bin/env bash
+printf 'dpkg-query: %s\n' "$*" >>"$FAKE_LOG" 2>/dev/null || :
+case "${1:-}" in
+    -W)
+        if [[ "${2:-}" == "-f="*'${db:Status-Status}'* ]]; then
+            grep -qxF -- "${3:-}" "$FAKE_INSTALLED" 2>/dev/null && echo "installed" || echo "not-installed"
+        elif [[ "${2:-}" == "-f="*'${Package}'* ]]; then
+            cat "$FAKE_INSTALLED" 2>/dev/null
+        fi
+        ;;
+    *) exit 0 ;;
+esac
+EOF
+    chmod +x "$FX_TMP/fakebin/apt-get" "$FX_TMP/fakebin/dpkg-query"
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/sudo.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/pkg.sh"
+    FS_RUNNING_AS_ROOT=1 FS_SUDO_AVAILABLE=1
+    export FS_PKG_BACKEND=deb
+    touch "$FX_TMP/example.deb"
+    : >"$FAKE_LOG"
+    pkg_install_local "$FX_TMP/example.deb"  # NO postcondition check!
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "B1-mut: missing postcondition check not caught by backend" 0
+if ! pkg_query_installed example.deb >/dev/null 2>&1; then
+    fx_ok  # package correctly NOT installed (query would catch it if run)
+else
+    fx_bad "package should not be installed"
+fi
+
+# B1.10: postcondition test - install_local exits 0 but doesn't install, query catches it
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH" FAKE_LOG="$FX_TMP/fake.log" FAKE_INSTALLED="$FX_TMP/installed"
+    : >"$FAKE_INSTALLED"
+    cat >"$FX_TMP/fakebin/apt-get" <<'EOF'
+#!/usr/bin/env bash
+printf 'apt-get: %s\n' "$*" >>"$FAKE_LOG" 2>/dev/null || :
+# exits 0 but does NOT add to FAKE_INSTALLED
+exit 0
+EOF
+    chmod +x "$FX_TMP/fakebin/apt-get"
+    cat >"$FX_TMP/fakebin/dpkg-query" <<'EOF'
+#!/usr/bin/env bash
+printf 'dpkg-query: %s\n' "$*" >>"$FAKE_LOG" 2>/dev/null || :
+case "${1:-}" in
+    -W)
+        if [[ "${2:-}" == "-f="*'${db:Status-Status}'* ]]; then
+            grep -qxF -- "${3:-}" "$FAKE_INSTALLED" 2>/dev/null && echo "installed" || echo "not-installed"
+        elif [[ "${2:-}" == "-f="*'${Package}'* ]]; then
+            cat "$FAKE_INSTALLED" 2>/dev/null
+        fi
+        ;;
+    *) exit 0 ;;
+esac
+EOF
+    chmod +x "$FX_TMP/fakebin/apt-get" "$FX_TMP/fakebin/dpkg-query"
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/sudo.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/pkg.sh"
+    FS_RUNNING_AS_ROOT=1 FS_SUDO_AVAILABLE=1
+    export FS_PKG_BACKEND=deb
+    touch "$FX_TMP/example.deb"
+    : >"$FAKE_LOG"
+    pkg_install_local "$FX_TMP/example.deb"
+    pkg_query_installed example.deb
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "B1-post: install_local silent failure caught by query" 1
+if ! grep -qxF example.deb "$FAKE_INSTALLED" 2>/dev/null; then
+    fx_ok
+else
+    fx_bad "package was unexpectedly installed"
 fi
 
 fx_summary

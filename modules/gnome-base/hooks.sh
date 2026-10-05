@@ -51,7 +51,7 @@ run() {
     local root wdir
     root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)" || return 1
     source "$root/lib/gnome.sh"
-    gnome_require_capable gnome-base || return 0
+    gnome_require_capable gnome-base || return "$MODULE_HOOK_SKIP"
     wdir="${FS_WALLPAPER_ASSETS_DIR:-}"
     if [[ -n "$wdir" && "$wdir" != /* ]]; then
         io_error "gnome-base: FS_WALLPAPER_ASSETS_DIR must be absolute: $wdir"
@@ -72,12 +72,18 @@ run() {
 # and the wallpaper URI matches the picked asset (when a wallpaper dir with
 # an image exists). Each check reports io_info on success or io_error on
 # mismatch; rc1 when anything is missing, else io_info "verify passed".
+# The capability gate returns lib/verify.sh's _VERIFY_HOOK_SKIP, NOT 0: on a
+# non-GNOME / SSH / gsettings-less host this hook checked nothing, and a 0
+# there is the "verify() passed" the audit would have printed. lib/verify.sh is
+# sourced for that constant under the same guard the other hooks use for
+# lib/io.sh, so the contract is available when verify() is called directly too.
 verify() {
     local root rc=0
     root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)" || return 1
     source "$root/lib/gnome.sh"
     source "$root/lib/lists.sh"
-    gnome_require_capable gnome-base || return 0
+    declare -F _verify_hook >/dev/null 2>&1 || source "$root/lib/verify.sh"
+    gnome_require_capable gnome-base || return "$_VERIFY_HOOK_SKIP"
     if ((FS_DRY_RUN == 1)); then
         io_info "gnome-base: verify is read-only; runs only in real mode"
         return 0

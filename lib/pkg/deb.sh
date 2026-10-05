@@ -65,16 +65,16 @@ deb_install_batch() {
         return 0
     fi
     if ((_deb_repos_changed == 1)); then
-        run_sudo "refresh apt metadata" -- apt-get update || return $?
+        run_sudo "refresh apt metadata" --stop -- apt-get update || return $?
         _deb_repos_changed=0
     fi
-    run_sudo "install packages (${#list[@]})" -- apt-get install -y "${list[@]}"
+    run_sudo "install packages (${#list[@]})" --stop -- apt-get install -y "${list[@]}"
 }
 
 deb_update_metadata() {
     deb_supported || return $?
     _deb_repos_changed=0
-    run_sudo "refresh apt metadata" -- apt-get update
+    run_sudo "refresh apt metadata" --stop -- apt-get update
 }
 
 deb_install_local() {
@@ -119,7 +119,7 @@ deb_add_repo() {
         io_error "cannot write repo content for $id"
         return 1
     }
-    run_sudo "add repo $id" -- install -m 0644 "$tmp" "$dest" || rv=$?
+    run_sudo "add repo $id" --stop -- install -m 0644 "$tmp" "$dest" || rv=$?
     rm -f -- "$tmp"
     if ((rv == 0)); then
         _deb_repos_changed=1

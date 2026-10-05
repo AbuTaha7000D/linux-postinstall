@@ -57,7 +57,7 @@ run() {
     root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)" || return 1
     source "$root/lib/gnome.sh"
     source "$root/lib/lists.sh"
-    gnome_require_capable gnome-extensions || return 0
+    gnome_require_capable gnome-extensions || return "$MODULE_HOOK_SKIP"
     if ! gnome_extensions_available; then
         io_error "gnome-extensions: gnome-extensions not found on PATH"
         return 1
@@ -81,19 +81,25 @@ run() {
 # live extension list), then requires every curated extensions.list uuid to be
 # BOTH installed and enabled -- rc1 when any is missing, else io_info "verify
 # passed". read-only: never enables, never installs.
+# The capability gate AND the absent gnome-extensions binary return lib/verify.sh's
+# _VERIFY_HOOK_SKIP, NOT 0 and not 1: on such a host this hook checked nothing,
+# so 0 would be the "verify() passed" the audit prints and 1 would report a
+# missing optional tool as a broken install. lib/verify.sh is sourced for that
+# constant under the same guard the other hooks use for lib/io.sh.
 verify() {
     local root dir rc=0
     root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)" || return 1
     source "$root/lib/gnome.sh"
     source "$root/lib/lists.sh"
-    gnome_require_capable gnome-extensions || return 0
+    declare -F _verify_hook >/dev/null 2>&1 || source "$root/lib/verify.sh"
+    gnome_require_capable gnome-extensions || return "$_VERIFY_HOOK_SKIP"
     if ((FS_DRY_RUN == 1)); then
         io_info "gnome-extensions: verify is read-only; runs only in real mode"
         return 0
     fi
     if ! gnome_extensions_available; then
-        io_error "gnome-extensions: gnome-extensions not found on PATH"
-        return 1
+        io_info "gnome-extensions: gnome-extensions not found on PATH; cannot verify"
+        return "$_VERIFY_HOOK_SKIP"
     fi
     dir="$root/modules/gnome-extensions"
     _gnome_ext_verify "$dir" || rc=1

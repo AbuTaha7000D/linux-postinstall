@@ -165,7 +165,7 @@ run_sudo() {
         if ((FS_RUNNING_AS_ROOT == 1)); then
             printf '# would run: %s\n' "$(_run_render "${args[@]}")"
         else
-            printf '# would run: %s\n' "$(_run_render sudo "${args[@]}")"
+            printf '# would run: %s\n' "$(_run_render sudo -- "${args[@]}")"
         fi
         return 0
     fi

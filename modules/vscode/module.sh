@@ -94,5 +94,10 @@ MODULE_TITLE="Visual Studio Code"
 MODULE_DESCRIPTION="Official Microsoft code repository and key, or the flatpak build"
 MODULE_RISK=medium
 MODULE_DEFAULT=on
+# WHY MODULE_PRIVILEGED=1: prerepo() imports a repository key into the rpmdb
+# or a tool-owned deb keyring, which escalates. The runner reads this
+# declaration (never the presence of prerepo.sh) to decide whether to
+# establish the sudo credential up front.
+MODULE_PRIVILEGED=1
 MODULE_FLATPAK_ALT_ID=com.visualstudio.code
 MODULE_FLATPAK_ALT_SEAM=FS_VSCODE_FLATPAK

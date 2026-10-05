@@ -66,14 +66,14 @@ rpm_install_batch() {
         io_info "all packages already installed"
         return 0
     fi
-    run_sudo "install packages (${#list[@]})" -- "$tool" install -y "${list[@]}"
+    run_sudo "install packages (${#list[@]})" --stop -- "$tool" install -y "${list[@]}"
 }
 
 rpm_update_metadata() {
     rpm_supported || return $?
     local tool
     tool="$(_rpm_dnf)" || return $?
-    run_sudo "refresh rpm metadata" -- "$tool" makecache
+    run_sudo "refresh rpm metadata" --stop -- "$tool" makecache
 }
 
 rpm_install_local() {
@@ -123,7 +123,7 @@ rpm_add_repo() {
         io_error "cannot write repo content for $id"
         return 1
     }
-    run_sudo "add repo $id" -- install -m 0644 "$tmp" "$dest" || rv=$?
+    run_sudo "add repo $id" --stop -- install -m 0644 "$tmp" "$dest" || rv=$?
     rm -f -- "$tmp"
     return "$rv"
 }

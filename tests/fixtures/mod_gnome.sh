@@ -220,11 +220,19 @@ rm -rf "$FX_TMP/h_notools"
     export FS_WALLPAPER_ASSETS_DIR="$FX_TMP/wall"
     source "$ROOT/lib/io.sh"
     source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/modules.sh"
     source "$ROOT/modules/gnome-base/hooks.sh"
     run
 ) >"$FX_OUT" 2>"$FX_ERR"
 FX_BLOCK_RC=$?
-fx_block_rc "gsettings missing skip rc" 0
+# A1: the gate is not "succeeded, nothing to do" -- it is the reserved
+# not-applicable status, so the runner records `skipped` and retries later.
+# Pinned to the exact status: rc 0 here would re-introduce the latch.
+# The literal 92, not "$MODULE_HOOK_SKIP": this pins the WIRE value the module
+# contract reserves, so an implementation that quietly renumbered the constant
+# fails here. That the code's own constant still agrees is asserted once, in
+# tests/fixtures/modules.sh.
+fx_block_rc "gsettings missing skip rc" 92
 fx_out "gnome-base: skipped (not GNOME) (gsettings not found)"
 [[ ! -s "$LOG" ]] && fx_ok || fx_bad "gsettings-missing skip never probes or writes"
 

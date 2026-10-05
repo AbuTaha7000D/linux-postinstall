@@ -5,7 +5,11 @@
 # the pkg.sh dispatcher. Prototype-bug fix: a guaranteed Flathub remote-add
 # (--if-not-exists) precedes every install transaction so an install never
 # aborts for a missing/absent remote; the constant pair FLATPAK_REMOTE_ID
-# + FLATPAK_REMOTE_URL is stable and never user-supplied.
+# + FLATPAK_REMOTE_URL is stable and never user-supplied. That remote-add is
+# itself a MUTATION and its rc is propagated IMMEDIATELY (`|| return $?`), not
+# merely --stop'd: --stop makes run_cmd return 1, but without the explicit
+# guard that rc is discarded by the install step which follows, and
+# install_batch reports success for a remote that was never added.
 # Install scope is always the per-user installation (no sudo; apps live in
 # the invoking user's store), kept deterministic for dry-run rendering.
 # user/system install detection: query and list probe the user scope first
@@ -73,15 +77,15 @@ flatpak_install_batch() {
     if ((${#missing[@]} == 0)); then
         return 0
     fi
-    run_cmd "flatpak remote-add" "flatpak" "remote-add" "--user" \
-        "--if-not-exists" "$FLATPAK_REMOTE_ID" "$FLATPAK_REMOTE_URL"
-    run_cmd "flatpak install" "flatpak" "install" "--user" \
+    run_cmd "flatpak remote-add" --stop -- "flatpak" "remote-add" "--user" \
+        "--if-not-exists" "$FLATPAK_REMOTE_ID" "$FLATPAK_REMOTE_URL" || return $?
+    run_cmd "flatpak install" --stop -- "flatpak" "install" "--user" \
         "--noninteractive" "--assumeyes" "${missing[@]}"
 }
 
 flatpak_update_metadata() {
     flatpak_supported || return $?
-    run_cmd "flatpak update appstream" "flatpak" "update" "--appstream"
+    run_cmd "flatpak update appstream" --stop -- "flatpak" "update" "--appstream"
 }
 
 flatpak_install_local() {
@@ -100,7 +104,7 @@ flatpak_install_local() {
         io_error "local flatpak bundle not found: $file"
         return 1
     }
-    run_cmd "flatpak install local" "flatpak" "install" "--user" \
+    run_cmd "flatpak install local" -- "flatpak" "install" "--user" \
         "--noninteractive" "--assumeyes" "$file"
 }
 
@@ -127,5 +131,5 @@ flatpak_add_repo() {
     if [[ -n "$key" ]]; then
         args+=("--gpg-import" "$key")
     fi
-    run_cmd "flatpak add repo" "flatpak" "${args[@]}"
+    run_cmd "flatpak add repo" --stop -- "flatpak" "${args[@]}"
 }

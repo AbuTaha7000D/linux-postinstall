@@ -424,7 +424,7 @@ smoke_sudo() {
     t_block_rc "sudo dry block" 0
     t_out "avail2=1"
     t_out "line=${probe_before}\$"
-    t_out "# would run: sudo touch"
+    t_out "# would run: sudo -- touch"
     t_rc 0 "dry sudo left no marker" test ! -f "$TMP/dry-marker"
     probe_after="$(wc -l <"$suff")"
     t_rc 0 "dry sudo never probed nor ran" test "$probe_after" -eq "$probe_before"
@@ -452,6 +452,196 @@ smoke_sudo() {
     t_err "sudo unavailable"
 }
 smoke_sudo
+
+printf 'C1 password-required sudo\n'
+# C1 (ROADMAP finding F3). `sudo -n true` cannot distinguish "sudo is
+# absent" from "sudo needs a password", so an ordinary password-sudo host
+# was classified as having no sudo at all and every privileged step failed
+# closed. These cells pin the three-state policy instead, and they pin the
+# two guarantees that fix must not cost: dry-run probes nothing, and a
+# credential that cannot be established is an error rather than silence.
+#
+# Every fake sudo is ABSOLUTE-SHEBANGED (#!/bin/bash) and every scenario
+# drives its own log, its own marker and its own PATH, so no cell can be
+# satisfied by another cell's leftovers. The narrowed-PATH cell carries a
+# positive control on the SAME PATH (Phase B3 rule): dropping sudo from a
+# working PATH must be the only difference that turns a passing escalation
+# into a refusal.
+smoke_sudo_password() {
+    local pdir="$TMP/pw"
+    local bindir="$pdir/bin"
+    local rc_ok=0 rc_fail=0 rc_nosudo=0 rc_dry=0
+    local m_ok="$TMP/pw-ok" m_fail="$TMP/pw-fail"
+    local m_nosudo="$TMP/pw-nosudo" m_ctl="$TMP/pw-ctl" m_dry="$TMP/pw-dry"
+    local l_ok="$pdir/calls-ok" l_fail="$pdir/calls-fail"
+    local l_dry="$pdir/calls-dry" l_nosudo="$pdir/nosudo.calls"
+    mkdir -p "$bindir"
+    rm -f -- "$m_ok" "$m_fail" "$m_nosudo" "$m_ctl" "$m_dry"
+
+    # Password-sudo: refuses the non-interactive probe (-n), honours a
+    # credential refresh (-v) whose result is scenario-driven, and runs
+    # anything else through the real command.
+    printf '%s\n' \
+        '#!/bin/bash' \
+        'printf "%s\n" "$*" >>"$FAKE_LOG"' \
+        'if [[ "${1:-}" == "-n" ]]; then exit 1; fi' \
+        'if [[ "${1:-}" == "-v" ]]; then printf "sudo: a password is required\n" >&2; exit "${FAKE_V_RC:-0}"; fi' \
+        'shift' \
+        'while [[ "${1:-}" == -* ]]; do shift; done' \
+        'if [[ "${1:-}" == "--" ]]; then shift; fi' \
+        'exec "$@"' >"$bindir/sudo"
+    chmod +x "$bindir/sudo"
+
+    # (i) a fake sudo that fails -n and succeeds otherwise => the host can
+    # escalate. Before C1 this host was classified as having no sudo.
+    : >"$l_ok"
+    (
+        set -euo pipefail
+        export PATH="$bindir:$PATH" FAKE_LOG="$l_ok" FAKE_V_RC=0 FS_EUID=1000
+        unset -v FS_SUDO_AVAILABLE FS_SUDO_PASSWORD FS_RUNNING_AS_ROOT 2>/dev/null || :
+        . "$ROOT/lib/io.sh"
+        . "$ROOT/lib/sudo.sh"
+        sudo_detect
+        printf 'avail=%s pw=%s root=%s\n' "$FS_SUDO_AVAILABLE" "$FS_SUDO_PASSWORD" "$FS_RUNNING_AS_ROOT"
+        rv=0
+        sudo_refresh || rv=$?
+        printf 'refresh_rc=%s\n' "$rv"
+        erc=0
+        sudo_exec touch "$m_ok" || erc=$?
+        printf 'exec_rc=%s\n' "$erc"
+    ) >"$OUT" 2>"$ERR"
+    block_rc_last=$?
+    rc_ok=$block_rc_last
+    t_block_rc "C1 (i) password-sudo detect/refresh/exec block" 0
+    t_out 'avail=1 pw=1 root=0'
+    t_out 'refresh_rc=0'
+    t_out 'exec_rc=0'
+    t_rc 0 "C1 (i) detection probed non-interactively" grep -qx -- '-n true' "$l_ok"
+    t_rc 0 "C1 (i) credential refresh actually ran" grep -qx -- '-v' "$l_ok"
+    t_rc 0 "C1 (i) escalation used the -- barrier" grep -qx -- "-- touch $m_ok" "$l_ok"
+    t_rc 0 "C1 (i) privileged step really ran" test -f "$m_ok"
+
+    # (iii) a failing credential refresh must be a clear ERROR, rc 1, with
+    # the attempt visible in the log - never a silent success.
+    : >"$l_fail"
+    (
+        set -euo pipefail
+        export PATH="$bindir:$PATH" FAKE_LOG="$l_fail" FAKE_V_RC=1 FS_EUID=1000
+        unset -v FS_SUDO_AVAILABLE FS_SUDO_PASSWORD FS_RUNNING_AS_ROOT 2>/dev/null || :
+        . "$ROOT/lib/io.sh"
+        . "$ROOT/lib/sudo.sh"
+        sudo_detect
+        rv=0
+        sudo_refresh || rv=$?
+        printf 'refresh_rc=%s\n' "$rv"
+        erc=0
+        sudo_exec touch "$m_fail" || erc=$?
+        printf 'exec_rc=%s\n' "$erc"
+    ) >"$OUT" 2>"$ERR"
+    block_rc_last=$?
+    rc_fail=$block_rc_last
+    t_block_rc "C1 (iii) failing-refresh block" 0
+    t_out 'refresh_rc=1'
+    t_err '\[error\] sudo credential refresh failed; privileged steps cannot run$'
+    t_rc 0 "C1 (iii) the failing refresh was actually attempted" grep -qx -- '-v' "$l_fail"
+
+    # (iv) dry-run: ZERO probes against a freshly emptied fake-sudo log,
+    # refresh no-ops, and the render carries the same `sudo --` barrier the
+    # real exec uses.
+    : >"$l_dry"
+    (
+        set -euo pipefail
+        export PATH="$bindir:$PATH" FAKE_LOG="$l_dry" FS_EUID=1000
+        export FS_DRY_RUN=1 FS_VERBOSE=0 FS_DEBUG=0
+        unset -v FS_SUDO_AVAILABLE FS_SUDO_PASSWORD FS_RUNNING_AS_ROOT 2>/dev/null || :
+        . "$ROOT/lib/io.sh"
+        . "$ROOT/lib/sudo.sh"
+        sudo_detect
+        rv=0
+        sudo_refresh || rv=$?
+        printf 'refresh_rc=%s\n' "$rv"
+        sudo_exec touch "$m_dry"
+    ) >"$OUT" 2>"$ERR"
+    block_rc_last=$?
+    rc_dry=$block_rc_last
+    t_block_rc "C1 (iv) dry-run block" 0
+    t_empty "C1 (iv) dry-run probed sudo zero times" "$l_dry"
+    t_out 'refresh_rc=0'
+    t_out '# would run: sudo -- touch'
+    t_rc 0 "C1 (iv) dry-run wrote nothing" test ! -f "$m_dry"
+
+    # (ii) no sudo in PATH => the fail-closed message and rc are UNCHANGED.
+    # Narrowed PATH: only touch is present, and no sudo at all.
+    local ndir="$TMP/nosudo"
+    local nbin="$ndir/bin"
+    mkdir -p "$nbin"
+    ln -sf "$(command -v touch)" "$nbin/touch"
+    : >"$l_nosudo"
+    (
+        set -euo pipefail
+        export PATH="$nbin" FAKE_LOG="$l_nosudo" FS_EUID=1000
+        export FS_DRY_RUN=0 FS_VERBOSE=0 FS_DEBUG=0
+        unset -v FS_SUDO_AVAILABLE FS_SUDO_PASSWORD FS_RUNNING_AS_ROOT 2>/dev/null || :
+        . "$ROOT/lib/io.sh"
+        . "$ROOT/lib/sudo.sh"
+        sudo_detect
+        printf 'avail=%s pw=%s\n' "$FS_SUDO_AVAILABLE" "$FS_SUDO_PASSWORD"
+        rv=0
+        sudo_refresh || rv=$?
+        printf 'refresh_rc=%s\n' "$rv"
+        erc=0
+        sudo_exec touch "$m_nosudo" || erc=$?
+        printf 'exec_rc=%s\n' "$erc"
+    ) >"$OUT" 2>"$ERR"
+    block_rc_last=$?
+    rc_nosudo=$block_rc_last
+    t_block_rc "C1 (ii) no-sudo block" 0
+    t_out 'avail=0 pw=0'
+    t_out 'refresh_rc=0'
+    t_err 'sudo unavailable; skipping credential refresh'
+    t_out 'exec_rc=1'
+    t_err "\\[error\\] sudo unavailable; cannot escalate: touch $m_nosudo\$"
+    t_rc 0 "C1 (ii) no-sudo escalation wrote nothing" test ! -f "$m_nosudo"
+
+    # Positive control for the cell above: the SAME narrowed PATH plus a
+    # passwordless sudo escalates for real. Without this, "nothing ran" in
+    # the no-sudo cell could just mean the narrowed PATH was incomplete
+    # (the Phase B3 defect) rather than that sudo was genuinely absent.
+    local cdir="$TMP/withsudo"
+    local cbin="$cdir/bin"
+    mkdir -p "$cbin"
+    ln -sf "$(command -v touch)" "$cbin/touch"
+    printf '%s\n' \
+        '#!/bin/bash' \
+        'printf "%s\n" "$*" >>"$FAKE_LOG"' \
+        'if [[ "${1:-}" == "-n" ]]; then exit 0; fi' \
+        'shift' \
+        'while [[ "${1:-}" == -* ]]; do shift; done' \
+        'if [[ "${1:-}" == "--" ]]; then shift; fi' \
+        'exec "$@"' >"$cbin/sudo"
+    chmod +x "$cbin/sudo"
+    : >"$cdir/calls"
+    (
+        set -euo pipefail
+        export PATH="$cbin" FAKE_LOG="$cdir/calls" FS_EUID=1000
+        export FS_DRY_RUN=0 FS_VERBOSE=0 FS_DEBUG=0
+        unset -v FS_SUDO_AVAILABLE FS_SUDO_PASSWORD FS_RUNNING_AS_ROOT 2>/dev/null || :
+        . "$ROOT/lib/io.sh"
+        . "$ROOT/lib/sudo.sh"
+        sudo_detect
+        printf 'avail=%s pw=%s\n' "$FS_SUDO_AVAILABLE" "$FS_SUDO_PASSWORD"
+        erc=0
+        sudo_exec touch "$m_ctl" || erc=$?
+        printf 'exec_rc=%s\n' "$erc"
+    ) >"$OUT" 2>"$ERR"
+    block_rc_last=$?
+    t_block_rc "C1 (ii) narrowed-PATH positive control block" 0
+    t_out 'avail=1 pw=0'
+    t_out 'exec_rc=0'
+    t_rc 0 "C1 (ii) control proves the narrow PATH escalates for real" test -f "$m_ctl"
+    rm -f -- "$m_ok"
+}
+smoke_sudo_password
 
 printf 'P2.7 run\n'
 smoke_run() {
@@ -534,7 +724,7 @@ smoke_run() {
     ) >"$OUT" 2>"$ERR"
     block_rc_last=$?
     t_block_rc "run_sudo dry block" 0
-    t_out '# would run: sudo touch'
+    t_out '# would run: sudo -- touch'
     t_rc 0 "run_sudo dry-run leaves no marker" test ! -f "$marker"
     (
         set -euo pipefail
@@ -604,15 +794,37 @@ smoke_entry() {
     t_block_rc "runs from other CWD with correct output" 0
 }
 smoke_verify() {
+    # `repo:flathub` is a lib/verify.sh row whose SEVERITY depends on whether the
+    # flatpak CLI is in PATH, and the verdict sentence counts the SKIP rows, so
+    # "1 check(s) skipped" is only reproducible on a host that HAS flatpak. A2
+    # added that sentence; the count behind it is a property of this machine, not
+    # of the code, and inheriting it made this suite red on any host without the
+    # flatpak CLI (measured: the same suite with flatpak removed from PATH went
+    # 168/1 -> 167/2, the extra failure being exactly that sentence). The fake
+    # below pins the fact for the two audit cells instead of reading it off the
+    # host, and it answers ONLY `remotes`, so it cannot satisfy a real flatpak
+    # query for anything else. Every other smoke cell keeps the host PATH.
+    mkdir -p "$TMP/vbin"
+    {
+        printf '#!/usr/bin/env bash\n'
+        printf '%s\n' 'case "$1 $2" in'
+        printf '%s\n' "  'remotes --columns=name') printf 'flathub\\n'; exit 0 ;;"
+        printf '%s\n' '  *) exit 97 ;;'
+        printf '%s\n' 'esac'
+    } >"$TMP/vbin/flatpak"
+    chmod +x "$TMP/vbin/flatpak"
     : >"$TMP/empty-installed"
     printf 'wget\nvim\n' >"$TMP/installed-core"
-    t_rc 1 "verify FAIL rc" env FS_HOME="$TMP/vh" FS_PKG_BACKEND=mock \
+    t_rc 1 "verify FAIL rc" env "PATH=$TMP/vbin:$PATH" FS_HOME="$TMP/vh" \
+        FS_PKG_BACKEND=mock \
         FS_MOCK_INSTALLED="$TMP/empty-installed" FS_DISTRO_FAMILY=rpm \
         "$ROOT/setup" verify core
     t_out "== verify =="
     t_out "FAIL core:packages: missing: gnupg2"
-    t_out "WARN core:hook: module has no verify() hook"
+    t_out "PASS repo:flathub: remote present"
+    t_out "SKIP core:hook: module has no verify() hook"
     t_out "verify FAILED"
+    t_out_not "check(s) skipped"
     (
         set +e
         . "$ROOT/lib/io.sh"
@@ -621,11 +833,21 @@ smoke_verify() {
         list_packages "$ROOT/modules/core" rpm
     ) >"$TMP/installed-core" 2>/dev/null
     t_block_rc "seed core installed set" 0
-    t_rc 0 "verify PASS rc" env FS_HOME="$TMP/vh" FS_PKG_BACKEND=mock \
+    t_rc 0 "verify PASS rc" env "PATH=$TMP/vbin:$PATH" FS_HOME="$TMP/vh" \
+        FS_PKG_BACKEND=mock \
         FS_MOCK_INSTALLED="$TMP/installed-core" FS_DISTRO_FAMILY=rpm \
         "$ROOT/setup" verify core
     t_out "PASS core:packages: all "
-    t_out "verify OK with warnings"
+    t_out "PASS repo:flathub: remote present"
+    # exact, not a substring: a verdict that named a different count, or one that
+    # had picked up an extra SKIP row from this host's own PATH, cannot satisfy it
+    if grep -qx '  - verify OK with 1 check(s) skipped' "$OUT"; then
+        ok
+    else
+        bad "verify verdict is not exactly 'verify OK with 1 check(s) skipped'"
+        printf '  stdout:\n' >&2
+        sed 's/^/    /' "$OUT" >&2 2>/dev/null
+    fi
     t_rc 1 "verify unknown module rc" env FS_HOME="$TMP/vh" FS_PKG_BACKEND=mock \
         FS_DISTRO_FAMILY=rpm "$ROOT/setup" verify nosuchmodule
     t_err "module not found: nosuchmodule"

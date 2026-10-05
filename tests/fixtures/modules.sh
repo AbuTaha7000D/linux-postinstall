@@ -253,5 +253,33 @@ fx_out_not "leaked-run"
 fx_out_not "leaked-verify"
 fx_out_not "hooks-executed"
 
+# --- A1: the reserved not-applicable status the module contract defines ----
+echo "--- cell: MODULE_HOOK_SKIP is the reserved 92"
+(
+    set -euo pipefail
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/modules.sh"
+    printf '%s\n' "$MODULE_HOOK_SKIP"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "contract constant readable" 0
+printf '92\n' >"$FX_EXPECT"
+cmp "$FX_EXPECT" "$FX_OUT" >/dev/null 2>&1 && fx_ok || fx_bad "MODULE_HOOK_SKIP must be 92"
+
+# It must not collide with lib/verify.sh's own reserved signals: a run() and a
+# verify() are different functions in the same hooks.sh, and one contract's
+# vocabulary must never be readable as the other's.
+(
+    set -euo pipefail
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/verify.sh"
+    source "$ROOT/lib/modules.sh"
+    printf '%s|%s|%s\n' "$_VERIFY_HOOK_NONE" "$_VERIFY_HOOK_UNDEFINED" "$MODULE_HOOK_SKIP"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "verify signals readable" 0
+printf '90|91|92\n' >"$FX_EXPECT"
+cmp "$FX_EXPECT" "$FX_OUT" >/dev/null 2>&1 && fx_ok || fx_bad "reserved statuses must stay distinct (90/91/92)"
+
 true
 fx_summary

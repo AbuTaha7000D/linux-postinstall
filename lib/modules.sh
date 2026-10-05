@@ -20,10 +20,30 @@
 #               triggers io_warn but does not fail the load; module_load
 #               with the strict argument escalates it to io_error + rc 1
 #               (validation uses strict).
+#               MODULE_PRIVILEGED (P11-R C1, default 0, allowed 0|1) is
+#               the module's OWN declaration that it needs privileged
+#               execution (a run()/prerepo() that calls run_sudo or a
+#               sudo-ing pkg_* seam). It is declarative on purpose: the
+#               runner refreshes the sudo credential when the resolved
+#               SYSTEM plan is non-empty OR a resolved module declares
+#               it, and NEVER infers it from the mere PRESENCE of
+#               hooks.sh/prerepo.sh -- most hooks do not escalate
+#               (apps/git/gnome-*/terminal do not), and inferring made
+#               those privilege-free installs demand `sudo -v` and fail
+#               on a password-sudo host. Any value other than 0|1 is
+#               refused, so malformed metadata cannot silently change
+#               behaviour. Direction of failure: OVER-declaring only
+#               costs one unnecessary refresh (the pre-C1 behaviour);
+#               UNDER-declaring is the residual risk and is the module
+#               author's declaration to get right.
 #   hooks.sh    OPTIONAL file defining run() and/or verify(). Never
 #               sourced at load time; the P4.6 runner sources it in a
 #               subshell and calls run() for install, verify() for
 #               `setup verify`. module_has_hooks only reports presence.
+#               run() may return MODULE_HOOK_SKIP (below) to report
+#               "nothing to do here"; every other non-zero status is a
+#               module FAILURE. verify() has its OWN reserved signals in
+#               lib/verify.sh and must never return MODULE_HOOK_SKIP.
 #   prerepo.sh  OPTIONAL file defining prerepo(), the P7.5 pre-batch
 #               hook: the runner sources it in a subshell and calls
 #               prerepo() AFTER list collection and BEFORE the package
@@ -114,9 +134,10 @@
 #                         reuses it.
 #
 # Globals MODULE_ID/MODULE_TITLE/MODULE_DESCRIPTION/MODULE_RISK/
-# MODULE_DEFAULT/MODULE_DEPENDS/MODULE_FLATPAK_ALT_ID/
-# MODULE_FLATPAK_ALT_SEAM hold the most recent load; RISK/DEFAULT
-# reset to the documented defaults none/off, the rest to "". Single-
+# MODULE_DEFAULT/MODULE_DEPENDS/MODULE_PRIVILEGED/
+# MODULE_FLATPAK_ALT_ID/MODULE_FLATPAK_ALT_SEAM hold the most recent
+# load; RISK/DEFAULT/PRIVILEGED reset to the documented defaults
+# none/off/0, the rest to "". Single-
 # writer: callers load one module at a time and read the globals
 # immediately -- module_load always resets ALL of them, so an optional
 # key a module omits can never leak from a previously loaded module.
@@ -124,12 +145,24 @@
 # code. Bash >= 4.3 safe (no namerefs).
 
 MODULE_LIST_NAMES=(packages.list packages.rpm.list packages.deb.list packages.arch.list flatpaks.list)
+
+# The reserved run() "not applicable" status (A1). A hook returns this when the
+# module had nothing to do on THIS host -- e.g. the P6.5 GNOME capability gate
+# on a non-GNOME or SSH session -- as opposed to failing. The runner records it
+# as the registry's `skipped` state, which is retried next run, instead of
+# `done`, which would latch the module as permanently complete.
+# Chosen to sit clear of the P9.2 verify signals (lib/verify.sh owns 90/91) so
+# the two vocabularies cannot be confused: 92 is this contract's, and no
+# verify() may ever return it.
+MODULE_HOOK_SKIP=92
+
 MODULE_ID=""
 MODULE_TITLE=""
 MODULE_DESCRIPTION=""
 MODULE_RISK="none"
 MODULE_DEFAULT="off"
 MODULE_DEPENDS=""
+MODULE_PRIVILEGED="0"
 MODULE_FLATPAK_ALT_ID=""
 MODULE_FLATPAK_ALT_SEAM=""
 
@@ -150,6 +183,7 @@ module_load() {
     MODULE_RISK="none"
     MODULE_DEFAULT="off"
     MODULE_DEPENDS=""
+    MODULE_PRIVILEGED="0"
     MODULE_FLATPAK_ALT_ID=""
     MODULE_FLATPAK_ALT_SEAM=""
     if [[ -z "$dir" ]]; then
@@ -186,6 +220,7 @@ module_load() {
         case "$key" in
         MODULE_ID | MODULE_TITLE | MODULE_DESCRIPTION | \
             MODULE_RISK | MODULE_DEFAULT | MODULE_DEPENDS | \
+            MODULE_PRIVILEGED | \
             MODULE_FLATPAK_ALT_ID | MODULE_FLATPAK_ALT_SEAM) ;;
         *)
             if [[ "$strict" == "strict" ]]; then
@@ -203,6 +238,7 @@ module_load() {
         MODULE_RISK) MODULE_RISK="$val" ;;
         MODULE_DEFAULT) MODULE_DEFAULT="$val" ;;
         MODULE_DEPENDS) MODULE_DEPENDS="$val" ;;
+        MODULE_PRIVILEGED) MODULE_PRIVILEGED="$val" ;;
         MODULE_FLATPAK_ALT_ID) MODULE_FLATPAK_ALT_ID="$val" ;;
         MODULE_FLATPAK_ALT_SEAM) MODULE_FLATPAK_ALT_SEAM="$val" ;;
         esac
@@ -290,6 +326,13 @@ module_validate() {
     on | off) ;;
     *)
         io_error "invalid MODULE_DEFAULT '$MODULE_DEFAULT' in $dir/module.sh (allowed: on off)"
+        return 1
+        ;;
+    esac
+    case "$MODULE_PRIVILEGED" in
+    0 | 1) ;;
+    *)
+        io_error "invalid MODULE_PRIVILEGED '$MODULE_PRIVILEGED' in $dir/module.sh (allowed: 0 1)"
         return 1
         ;;
     esac

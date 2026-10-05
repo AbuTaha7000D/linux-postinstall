@@ -252,13 +252,14 @@ verify() {
     local want="${1:-}" cur="" root
     root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)" || return 1
     declare -F io_error >/dev/null 2>&1 || source "$root/lib/io.sh"
+    declare -F _verify_hook >/dev/null 2>&1 || source "$root/lib/verify.sh"
     if ((FS_DRY_RUN == 1)); then
         io_info "locale: verify skipped in dry-run (no probing)"
         return 0
     fi
     if ! command -v localectl >/dev/null 2>&1; then
         io_info "locale: localectl not found; cannot verify"
-        return 0
+        return "$_VERIFY_HOOK_SKIP"
     fi
     want="${FS_LOCALE:-$_LOCALE_DEFAULT_LOCALE}"
     if ! _locale_ok_value "$want"; then

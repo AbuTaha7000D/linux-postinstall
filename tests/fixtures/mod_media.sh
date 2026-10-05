@@ -113,14 +113,14 @@ media_dry_cell() {
     FX_BLOCK_RC=$?
     fx_block_rc "$label rc" 0
     if [[ -z "$sysbatch" ]]; then
-        fx_out_not "^# would run: sudo "
+        fx_out_not "^# would run: sudo -- "
     else
         fx_out "$sysbatch"
     fi
     fx_out '^# would run: flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo$'
     fx_out "^# would run: flatpak install --user --noninteractive --assumeyes $MEDIA\$"
     local si="" ri="" ii=""
-    si="$(grep -n "^# would run: sudo " "$FX_OUT" | cut -d: -f1 | head -1)"
+    si="$(grep -n "^# would run: sudo -- " "$FX_OUT" | cut -d: -f1 | head -1)"
     ri="$(grep -n '^# would run: flatpak remote-add' "$FX_OUT" | cut -d: -f1 | head -1)"
     ii="$(grep -n '^# would run: flatpak install ' "$FX_OUT" | cut -d: -f1 | head -1)"
     if [[ -z "$sysbatch" && -z "$si" && -n "$ri" && -n "$ii" && "$ri" -lt "$ii" ]]; then
@@ -148,9 +148,9 @@ media_dry_cell() {
 
 # family-specific OBS packaging: deb/arch declare the native obs-studio
 # system package, rpm declares none.
-media_dry_cell deb deb "media dry-run deb" '^# would run: sudo apt-get install -y obs-studio$' '^# would run: sudo pacman \|^# would run: sudo dnf[0-9]* '
-media_dry_cell arch arch "media dry-run arch" '^# would run: sudo pacman -S --noconfirm --needed obs-studio$' '^# would run: sudo apt-get \|^# would run: sudo dnf[0-9]* '
-media_dry_cell rpm rpm "media dry-run rpm" "" '^# would run: sudo '
+media_dry_cell deb deb "media dry-run deb" '^# would run: sudo -- apt-get install -y obs-studio$' '^# would run: sudo -- pacman \|^# would run: sudo -- dnf[0-9]* '
+media_dry_cell arch arch "media dry-run arch" '^# would run: sudo -- pacman -S --noconfirm --needed obs-studio$' '^# would run: sudo -- apt-get \|^# would run: sudo -- dnf[0-9]* '
+media_dry_cell rpm rpm "media dry-run rpm" "" '^# would run: sudo -- '
 fx_empty "media dry-run recorded nothing" "$LOG"
 if [[ -e "$FX_TMP/h/.local/state/fedora-setup" ]]; then fx_bad "media dry-run created state dir"; else fx_ok; fi
 
@@ -346,7 +346,9 @@ fx_out_not "media: verify passed"
 if [[ "$(grep -c 'media: verify ok:' "$FX_OUT")" == 2 ]]; then fx_ok; else fx_bad "verify fail ok lines (got $(grep -c 'media: verify ok:' "$FX_OUT"))"; fi
 log_only_info "failing verify read-only" "$VLOG"
 
-echo "--- cell: verify fails closed when the flatpak CLI is absent"
+echo "--- cell: verify SKIPS (rc 93) when the flatpak CLI is absent"
+# rc is 93, lib/verify.sh's _VERIFY_HOOK_SKIP -- see the matching cell in
+# tests/fixtures/mod_apps.sh for why this arm is a skip and not a failure.
 (   set -euo pipefail
     export PATH="$NOTOOLS"
     export FS_DRY_RUN=0
@@ -357,8 +359,9 @@ echo "--- cell: verify fails closed when the flatpak CLI is absent"
     verify
 ) >"$FX_OUT" 2>"$FX_ERR"
 FX_BLOCK_RC=$?
-fx_block_rc "verify no-flatpak rc" 1
-fx_err "media: verify: flatpak CLI not found; cannot verify"
+fx_block_rc "verify no-flatpak rc" 93
+fx_out "media: verify: flatpak CLI not found; cannot verify"
+fx_err_not "media: verify: flatpak CLI not found; cannot verify"
 
 # `setup list` row (hermetic, matches modules_list.sh convention)
 (   set -euo pipefail

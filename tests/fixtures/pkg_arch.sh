@@ -364,7 +364,7 @@ fx_err 'refusing invalid repo id'
 ) >"$FX_OUT" 2>"$FX_ERR"
 FX_BLOCK_RC=$?
 fx_block_rc "add repo dry rc0" 0
-if [[ $(grep -c '^# would run: sudo install -m 0644 .*fedora-setup-repo-myother.dry .*dryrepos/myother.conf$' "$FX_OUT" 2>/dev/null || :) == 1 ]]; then
+if [[ $(grep -c '^# would run: sudo -- install -m 0644 .*fedora-setup-repo-myother.dry .*dryrepos/myother.conf$' "$FX_OUT" 2>/dev/null || :) == 1 ]]; then
     fx_ok
 else
     fx_bad "expected single dry repo-add line"
@@ -389,7 +389,7 @@ fi
 ) >"$FX_OUT" 2>"$FX_ERR"
 FX_BLOCK_RC=$?
 fx_block_rc "batch dry rc0" 0
-if [[ $(grep -c '^# would run: sudo pacman -S --noconfirm --needed emacs git$' "$FX_OUT" 2>/dev/null || :) == 1 ]]; then
+if [[ $(grep -c '^# would run: sudo -- pacman -S --noconfirm --needed emacs git$' "$FX_OUT" 2>/dev/null || :) == 1 ]]; then
     fx_ok
 else
     fx_bad "expected single dry pacman transaction"
@@ -489,7 +489,7 @@ fx_err 'AUR packages are opt-in'
 ) >"$FX_OUT" 2>"$FX_ERR"
 FX_BLOCK_RC=$?
 fx_block_rc "aur batch dry pure" 0
-if [[ $(grep -c '^# would run: sudo paru -S --noconfirm yay-bin$' "$FX_OUT" 2>/dev/null || :) == 1 ]]; then
+if [[ $(grep -c '^# would run: sudo -- paru -S --noconfirm yay-bin$' "$FX_OUT" 2>/dev/null || :) == 1 ]]; then
     fx_ok
 else
     fx_bad "expected single dry aur transaction"
@@ -498,6 +498,317 @@ if [[ ! -s "$FAKE_LOG" ]]; then
     fx_ok
 else
     fx_bad "dry-run invoked aur tools"
+fi
+
+# --- B1: package manager transaction failure propagation ---------------
+
+# B1.1: pacman exits non-zero on install_batch -> backend returns non-zero
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH" FAKE_LOG="$FX_TMP/fake.log" FAKE_INSTALLED
+    cat >"$FX_TMP/fakebin/pacman" <<'EOF'
+#!/usr/bin/env bash
+printf 'pacman: %s\n' "$*" >>"$FAKE_LOG" 2>/dev/null || :
+exit 100
+EOF
+    chmod +x "$FX_TMP/fakebin/pacman"
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/sudo.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/pkg.sh"
+    FS_RUNNING_AS_ROOT=1 FS_SUDO_AVAILABLE=1
+    export FS_PKG_BACKEND=arch
+    : >"$FAKE_LOG"
+    pkg_install_batch emacs git
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "B1: install_batch fails when pacman exits non-zero" 1
+fx_err 'command failed (rc=100)'
+
+# B1.2: plan_install refuses to continue when backend fails
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH" FAKE_LOG="$FX_TMP/fake.log" FAKE_INSTALLED
+    cat >"$FX_TMP/fakebin/pacman" <<'EOF'
+#!/usr/bin/env bash
+printf 'pacman: %s\n' "$*" >>"$FAKE_LOG" 2>/dev/null || :
+exit 100
+EOF
+    chmod +x "$FX_TMP/fakebin/pacman"
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/sudo.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/pkg.sh"
+    source "$ROOT/lib/planner.sh"
+    FS_RUNNING_AS_ROOT=1 FS_SUDO_AVAILABLE=1
+    export FS_PKG_BACKEND=arch
+    : >"$FAKE_LOG"
+    plan_install emacs git
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "B1: plan_install refuses when backend fails" 1
+
+# B1.3: pacman exits non-zero on update_metadata -> backend returns non-zero
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH" FAKE_LOG="$FX_TMP/fake.log"
+    cat >"$FX_TMP/fakebin/pacman" <<'EOF'
+#!/usr/bin/env bash
+printf 'pacman: %s\n' "$*" >>"$FAKE_LOG" 2>/dev/null || :
+exit 100
+EOF
+    chmod +x "$FX_TMP/fakebin/pacman"
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/sudo.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/pkg.sh"
+    FS_RUNNING_AS_ROOT=1 FS_SUDO_AVAILABLE=1
+    export FS_PKG_BACKEND=arch
+    : >"$FAKE_LOG"
+    pkg_update_metadata
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "B1: update_metadata fails when pacman exits non-zero" 1
+fx_err 'command failed (rc=100)'
+
+# B1.4: install exits non-zero on add_repo -> backend returns non-zero
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH" FAKE_LOG="$FX_TMP/fake.log" FS_ARCH_REPO_DIR="$FX_TMP/repos"
+    export TMPDIR="$FX_TMP/tmpdir"
+    # Clean up any existing repo from earlier tests
+    rm -f "$FX_TMP/repos/b1test.conf"
+    cat >"$FX_TMP/fakebin/install" <<'EOF'
+#!/usr/bin/env bash
+printf 'install: %s\n' "$*" >>"$FAKE_LOG" 2>/dev/null || :
+exit 100
+EOF
+    chmod +x "$FX_TMP/fakebin/install"
+    # Also need pacman for arch_supported check
+    cat >"$FX_TMP/fakebin/pacman" <<'EOF'
+#!/usr/bin/env bash
+printf 'pacman: %s\n' "$*" >>"$FAKE_LOG" 2>/dev/null || :
+exit 0
+EOF
+    chmod +x "$FX_TMP/fakebin/pacman"
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/sudo.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/pkg.sh"
+    FS_RUNNING_AS_ROOT=1 FS_SUDO_AVAILABLE=1
+    export FS_PKG_BACKEND=arch
+    : >"$FAKE_LOG"
+    pkg_add_repo b1test "https://example.invalid/repo/x86_64"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "B1: add_repo fails when install exits non-zero" 1
+fx_err 'command failed (rc=100)'
+
+# B1.5: AUR helper exits non-zero on aur_batch -> backend returns non-zero
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH" FAKE_LOG="$FX_TMP/fake.log"
+    cat >"$FX_TMP/fakebin/paru" <<'EOF'
+#!/usr/bin/env bash
+printf 'paru: %s\n' "$*" >>"$FAKE_LOG" 2>/dev/null || :
+exit 100
+EOF
+    chmod +x "$FX_TMP/fakebin/paru"
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/sudo.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/pkg.sh"
+    FS_RUNNING_AS_ROOT=1 FS_SUDO_AVAILABLE=1
+    export FS_PKG_BACKEND=arch
+    : >"$FAKE_LOG"
+    pkg_supported
+    arch_aur_batch yay-bin
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "B1: aur_batch fails when paru exits non-zero" 1
+fx_err 'command failed (rc=100)'
+
+# B1.6: mutation test - removing --stop from install_batch is caught
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH" FAKE_LOG="$FX_TMP/fake.log" FAKE_INSTALLED="$FX_TMP/installed"
+    : >"$FAKE_INSTALLED"
+    cat >"$FX_TMP/fakebin/pacman" <<'EOF'
+#!/usr/bin/env bash
+printf 'pacman: %s\n' "$*" >>"$FAKE_LOG" 2>/dev/null || :
+exit 100
+EOF
+    chmod +x "$FX_TMP/fakebin/pacman"
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/sudo.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/pkg.sh"
+    FS_RUNNING_AS_ROOT=1 FS_SUDO_AVAILABLE=1
+    export FS_PKG_BACKEND=arch
+    : >"$FAKE_LOG"
+    pkg_install_batch emacs
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "B1-mut: install_batch mutation (--stop removed) caught" 1
+
+# B1.7: postcondition test - command exits 0 but does no work
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH" FAKE_LOG="$FX_TMP/fake.log" FAKE_INSTALLED="$FX_TMP/installed"
+    : >"$FAKE_INSTALLED"
+    cat >"$FX_TMP/fakebin/pacman" <<'EOF'
+#!/usr/bin/env bash
+printf 'pacman: %s\n' "$*" >>"$FAKE_LOG" 2>/dev/null || :
+# exits 0 but does NOT add to FAKE_INSTALLED
+exit 0
+EOF
+    chmod +x "$FX_TMP/fakebin/pacman"
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/sudo.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/pkg.sh"
+    FS_RUNNING_AS_ROOT=1 FS_SUDO_AVAILABLE=1
+    export FS_PKG_BACKEND=arch
+    : >"$FAKE_LOG"
+    pkg_install_batch emacs
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "B1-post: install_batch postcondition gap (no query after)" 0
+if ! grep -qxF emacs "$FAKE_INSTALLED" 2>/dev/null; then
+    fx_ok
+else
+    fx_bad "package was unexpectedly installed"
+fi
+
+# B1.8: install_local returns 0 even when PM fails (no --stop per postcondition rule)
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH" FAKE_LOG="$FX_TMP/fake.log"
+    cat >"$FX_TMP/fakebin/pacman" <<'EOF'
+#!/usr/bin/env bash
+printf 'pacman: %s\n' "$*" >>"$FAKE_LOG" 2>/dev/null || :
+case "$1" in
+    -U) exit 100 ;;
+    -S) exit 100 ;;
+    -Sy) exit 100 ;;
+    *) exit 0 ;;
+esac
+EOF
+    chmod +x "$FX_TMP/fakebin/pacman"
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/sudo.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/pkg.sh"
+    FS_RUNNING_AS_ROOT=1 FS_SUDO_AVAILABLE=1
+    export FS_PKG_BACKEND=arch
+    touch "$FX_TMP/example.pkg.tar.zst"
+    : >"$FAKE_LOG"
+    pkg_install_local "$FX_TMP/example.pkg.tar.zst"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "B1: install_local returns 0 despite PM failure (postcondition rule)" 0
+fx_err 'command failed (rc=100)'
+
+# B1.9: postcondition check catches the failure (pkg_query_installed returns 1)
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH" FAKE_LOG="$FX_TMP/fake.log" FAKE_INSTALLED="$FX_TMP/installed"
+    : >"$FAKE_INSTALLED"
+    cat >"$FX_TMP/fakebin/pacman" <<'EOF'
+#!/usr/bin/env bash
+printf 'pacman: %s\n' "$*" >>"$FAKE_LOG" 2>/dev/null || :
+case "$1" in
+    -Q) grep -qxF -- "${2:-}" "$FAKE_INSTALLED" 2>/dev/null || exit 1 ;;
+    -S) exit 100 ;;
+    -U) exit 100 ;;
+    -Sy) exit 100 ;;
+    *) exit 0 ;;
+esac
+EOF
+    chmod +x "$FX_TMP/fakebin/pacman"
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/sudo.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/pkg.sh"
+    FS_RUNNING_AS_ROOT=1 FS_SUDO_AVAILABLE=1
+    export FS_PKG_BACKEND=arch
+    touch "$FX_TMP/example.pkg.tar.zst"
+    : >"$FAKE_LOG"
+    pkg_install_local "$FX_TMP/example.pkg.tar.zst" || rc=$?
+    pkg_query_installed example.pkg.tar.zst
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "B1: postcondition query catches failed install_local" 1
+
+# B1.10: mutation test - removing postcondition check is caught
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH" FAKE_LOG="$FX_TMP/fake.log" FAKE_INSTALLED="$FX_TMP/installed"
+    : >"$FAKE_INSTALLED"
+    cat >"$FX_TMP/fakebin/pacman" <<'EOF'
+#!/usr/bin/env bash
+printf 'pacman: %s\n' "$*" >>"$FAKE_LOG" 2>/dev/null || :
+case "$1" in
+    -Q) grep -qxF -- "${2:-}" "$FAKE_INSTALLED" 2>/dev/null || exit 1 ;;
+    -U) exit 100 ;;
+    -S) exit 100 ;;
+    -Sy) exit 100 ;;
+    *) exit 0 ;;
+esac
+EOF
+    chmod +x "$FX_TMP/fakebin/pacman"
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/sudo.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/pkg.sh"
+    FS_RUNNING_AS_ROOT=1 FS_SUDO_AVAILABLE=1
+    export FS_PKG_BACKEND=arch
+    touch "$FX_TMP/example.pkg.tar.zst"
+    : >"$FAKE_LOG"
+    pkg_install_local "$FX_TMP/example.pkg.tar.zst"  # NO postcondition check!
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "B1-mut: missing postcondition check not caught by backend" 0
+if ! pkg_query_installed example.pkg.tar.zst >/dev/null 2>&1; then
+    fx_ok  # package correctly NOT installed (query would catch it if run)
+else
+    fx_bad "package should not be installed"
+fi
+
+# B1.12: postcondition test - install_local exits 0 but doesn't install, query catches it
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH" FAKE_LOG="$FX_TMP/fake.log" FAKE_INSTALLED="$FX_TMP/installed"
+    : >"$FAKE_INSTALLED"
+    cat >"$FX_TMP/fakebin/pacman" <<'EOF'
+#!/usr/bin/env bash
+printf 'pacman: %s\n' "$*" >>"$FAKE_LOG" 2>/dev/null || :
+case "$1" in
+    -Q) grep -qxF -- "${2:-}" "$FAKE_INSTALLED" 2>/dev/null || exit 1 ;;
+    -U) exit 0 ;;
+    -S) exit 100 ;;
+    -Sy) exit 100 ;;
+    *) exit 0 ;;
+esac
+EOF
+    chmod +x "$FX_TMP/fakebin/pacman"
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/sudo.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/pkg.sh"
+    FS_RUNNING_AS_ROOT=1 FS_SUDO_AVAILABLE=1
+    export FS_PKG_BACKEND=arch
+    touch "$FX_TMP/example.pkg.tar.zst"
+    : >"$FAKE_LOG"
+    pkg_install_local "$FX_TMP/example.pkg.tar.zst"
+    pkg_query_installed example.pkg.tar.zst
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "B1-post: install_local silent failure caught by query" 1
+if ! grep -qxF example.pkg.tar.zst "$FAKE_INSTALLED" 2>/dev/null; then
+    fx_ok
+else
+    fx_bad "package was unexpectedly installed"
 fi
 
 fx_summary

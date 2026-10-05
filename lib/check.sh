@@ -22,11 +22,13 @@
 # this shape exists to prevent: STATUS_WORST would be updated on the subshell's
 # copy and lost, silently reporting PASS on a host with no resolvable state
 # base. So the rule is: probe in the subshell, report in the caller.
-# The privilege check reuses sudo_detect's canonical policy globals and adds
-# only a `command -v sudo` split so the "sudo needs a password" arm can be a
-# WARN rather than being flattened into the same answer as "no sudo at all";
-# the only privilege probe is sudo_detect's own `sudo -n true`, which can never
-# prompt and can never hang.
+# The privilege check renders sudo_detect's canonical policy globals and
+# nothing else: it reads FS_SUDO_AVAILABLE together with FS_SUDO_PASSWORD
+# so the password-required state is reported as itself rather than being
+# flattened into the same answer as "no sudo at all", and it never runs a
+# probe of its own. `sudo -n true` cannot prompt and cannot hang, and the
+# prompting half (sudo_refresh) is deliberately NOT reached from here: a
+# diagnostic that hung for a password would be unusable.
 #
 # EXIT CODE. The rule lives in lib/status.sh (shared with `setup verify`,
 # P9.2) and is deliberately not restated as a second implementation here:
@@ -109,10 +111,10 @@ _check_privileges() {
         return 0
     fi
     sudo_detect
-    if ((FS_SUDO_AVAILABLE == 1)); then
+    if ((FS_SUDO_AVAILABLE == 1)) && ((FS_SUDO_PASSWORD != 1)); then
         _check_row "$_CHECK_PASS" "privileges" "non-root with passwordless sudo"
-    elif command -v sudo >/dev/null 2>&1; then
-        _check_row "$_CHECK_WARN" "privileges" "non-root; sudo needs a password, so unattended runs will prompt"
+    elif ((FS_SUDO_AVAILABLE == 1)); then
+        _check_row "$_CHECK_WARN" "privileges" "non-root; sudo requires a password, so privileged steps prompt for one"
     else
         _check_row "$_CHECK_FAIL" "privileges" "not root and no sudo in PATH; privileged modules cannot run"
     fi

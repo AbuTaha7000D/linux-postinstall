@@ -108,7 +108,7 @@ dev_dry_cell() {
     fx_out_not "$badfam"
     fx_out_not '^# would run: flatpak '
     local n w
-    n="$(grep -c '^# would run: sudo ' "$FX_OUT")"
+    n="$(grep -c '^# would run: sudo -- ' "$FX_OUT")"
     if (( n == 1 )); then fx_ok; else fx_bad "$label system batch single (got $n)"; fi
     w="$(grep -c '^# would run:' "$FX_OUT")"
     if (( w == 1 )); then fx_ok; else fx_bad "$label would-run lines (got $w, want 1)"; fi
@@ -116,14 +116,14 @@ dev_dry_cell() {
 }
 
 dev_dry_cell deb deb "dev dry-run deb" \
-    '^# would run: sudo apt-get install -y python3-pip nodejs gcc make cmake clang jupyter-notebook$' \
-    '^# would run: sudo pacman \|^# would run: sudo dnf[0-9]* '
+    '^# would run: sudo -- apt-get install -y python3-pip nodejs gcc make cmake clang jupyter-notebook$' \
+    '^# would run: sudo -- pacman \|^# would run: sudo -- dnf[0-9]* '
 dev_dry_cell rpm rpm "dev dry-run rpm" \
-    '^# would run: sudo dnf5 install -y python3-pip nodejs gcc make cmake clang jupyter-notebook$' \
-    '^# would run: sudo apt-get \|^# would run: sudo pacman '
+    '^# would run: sudo -- dnf5 install -y python3-pip nodejs gcc make cmake clang jupyter-notebook$' \
+    '^# would run: sudo -- apt-get \|^# would run: sudo -- pacman '
 dev_dry_cell arch arch "dev dry-run arch" \
-    '^# would run: sudo pacman -S --noconfirm --needed python-pip nodejs gcc make cmake clang jupyter-notebook$' \
-    '^# would run: sudo apt-get \|^# would run: sudo dnf[0-9]* '
+    '^# would run: sudo -- pacman -S --noconfirm --needed python-pip nodejs gcc make cmake clang jupyter-notebook$' \
+    '^# would run: sudo -- apt-get \|^# would run: sudo -- dnf[0-9]* '
 if [[ -e "$FX_TMP/hdry/.local/state/fedora-setup" ]]; then fx_bad "dev dry-run created state dir"; else fx_ok; fi
 
 # real-mode deb routing with already-installed filtering: gcc + make are

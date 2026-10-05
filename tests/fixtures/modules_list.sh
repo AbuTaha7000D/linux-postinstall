@@ -351,6 +351,7 @@ cmp "$FX_EXPECT" "$FX_OUT" >/dev/null 2>&1 && fx_ok || fx_bad "depends content"
     source "$ROOT/lib/state.sh"
     state_init
     state_module_mark alpha
+    state_module_skip hooksonly
 ) >"$FX_OUT" 2>"$FX_ERR"
 FX_BLOCK_RC=$?
 fx_block_rc "state pre-mark alpha rc0" 0
@@ -363,8 +364,37 @@ fx_block_rc "state pre-mark alpha rc0" 0
 ) >"$FX_OUT" 2>"$FX_ERR"
 FX_BLOCK_RC=$?
 fx_block_rc "setup list valid set rc0" 0
-printf "alpha\tAlpha Module\tlow\ton\tdone\nbeta\tBeta Module\tnone\toff\t-\nhooksonly\tHooks Only\tlow\toff\t-\n" >"$FX_EXPECT"
+# One comparison pins all THREE registry states at once: done (alpha),
+# skipped (hooksonly) and unrecorded (beta). A list that reported `skipped` as
+# `done`, or as `-`, fails here.
+printf "alpha\tAlpha Module\tlow\ton\tdone\nbeta\tBeta Module\tnone\toff\t-\nhooksonly\tHooks Only\tlow\toff\tskipped\n" >"$FX_EXPECT"
 cmp "$FX_EXPECT" "$FX_OUT" >/dev/null 2>&1 && fx_ok || fx_bad "list table exact (sorted, status from registry)"
+
+# A1: a state word the registry does not define is refused, so the row shows
+# no status at all rather than a plausible-looking "done".
+(
+    set -euo pipefail
+    export FS_HOME="$FX_HOME_T"
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/state.sh"
+    state_init
+    printf 'finished 2026-01-01T00:00:00' >"$FS_STATE_DIR/modules/beta"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "unknown state word written rc0" 0
+
+(
+    set -euo pipefail
+    cd "$ROOT"
+    export FS_MODULES_DIR="$FX_TMP/validset" FS_HOME="$FX_HOME_T" FS_DISTRO_FAMILY=rpm
+    "$ROOT/setup" list
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "setup list unknown state rc0" 0
+fx_err "unrecognized module state in registry: beta"
+printf "alpha\tAlpha Module\tlow\ton\tdone\nbeta\tBeta Module\tnone\toff\t-\nhooksonly\tHooks Only\tlow\toff\tskipped\n" >"$FX_EXPECT"
+cmp "$FX_EXPECT" "$FX_OUT" >/dev/null 2>&1 && fx_ok || fx_bad "unknown state renders as no status"
+rm -f "$FX_HOME_T/.local/state/fedora-setup/modules/beta"
 
 (
     set -euo pipefail

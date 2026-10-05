@@ -167,7 +167,7 @@ rm -rf "$FX_TMP/l_dry"
 lc_run l_dry "dry default" 0 1
 [[ $(grep -c '^# would run:' "$FX_OUT") == 1 ]] && fx_ok \
     || fx_bad "dry plan is 1 line (got $(grep -c '^# would run:' "$FX_OUT"))"
-fx_out '# would run: sudo localectl set-locale LANG=en_US.UTF-8'
+fx_out '# would run: sudo -- localectl set-locale LANG=en_US.UTF-8'
 fx_out 'the readback check cannot run in dry-run'
 fx_empty "dry-run probed nothing" "$OPS"
 if [[ -e "$FX_TMP/l_dry" ]]; then fx_bad "dry-run created state"; else fx_ok; fi
@@ -177,7 +177,7 @@ printf -- '--- cell: dry-run with an explicit locale, and no backup\n'
 lc_reset
 rm -rf "$FX_TMP/l_dry2"
 lc_run l_dry2 "dry explicit" 0 1 'FS_LOCALE=ar_EG.UTF-8'
-fx_out '# would run: sudo localectl set-locale LANG=ar_EG.UTF-8'
+fx_out '# would run: sudo -- localectl set-locale LANG=ar_EG.UTF-8'
 fx_empty "dry explicit probed nothing" "$OPS"
 
 printf -- '--- cell: non-systemd host: graceful skip\n'
@@ -213,6 +213,32 @@ fx_block_rc "non-systemd rc" 0
 fx_out 'localectl not found (not a systemd host); skipping'
 if grep -q '^# would run:' "$FX_OUT"; then fx_bad "non-systemd host rendered a plan"; else fx_ok; fi
 if grep -q 'set-locale' "$OPS"; then fx_bad "ran set-locale without systemd"; else fx_ok; fi
+
+printf -- '--- cell: verify SKIPS (rc 93) when localectl is absent\n'
+# The run() arm above is pinned as a graceful skip because it is a no-op that
+# must not fail an install. The verify() arm is a DIFFERENT contract and needed
+# its own cell: `return 0` there made a module whose audit never ran report
+# `PASS locale:hook`, which is the false-PASS the audit exists to prevent. rc is
+# lib/verify.sh's _VERIFY_HOOK_SKIP; the literal is pinned because the value is
+# part of the protocol. This cell exists because mutation M15 (rc -> 1) was NOT
+# caught anywhere before it: nothing exercised this arm at all.
+lc_reset
+(
+    set -euo pipefail
+    export FS_HOME="$FX_TMP/l_vskip"
+    export PATH="$FX_TMP/farm_nolc"
+    export FS_DRY_RUN=0
+    export FS_LC_CONF="$LCCONF" FS_LOCALE_CONF="$LCCONF"
+    unset FS_YES FS_PROFILE FS_DISTRO_FILE FS_LOCALE FS_LOCALE_REVERT 2>/dev/null || :
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/modules.sh"
+    source "$ROOT/modules/locale/hooks.sh"
+    verify
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "verify skips without localectl" 93
+fx_out 'locale: localectl not found; cannot verify'
+if grep -q 'set-locale' "$FX_OUT"; then fx_bad "verify ran localectl it does not have"; else fx_ok; fi
 
 printf -- '--- cell: an unavailable locale fails closed before any write\n'
 lc_reset

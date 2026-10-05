@@ -381,7 +381,7 @@ smoke_sudo() {
     t_block_rc "sudo dry block" 0
     t_out "avail2=1"
     t_out "line=${probe_before}\$"
-    t_out "# would run: sudo touch"
+    t_out "# would run: sudo -- touch"
     t_rc 0 "dry sudo left no marker" test ! -f "$TMP/dry-marker"
     probe_after="$(wc -l <"$suff")"
     t_rc 0 "dry sudo never probed nor ran" test "$probe_after" -eq "$probe_before"
@@ -489,7 +489,7 @@ smoke_run() {
     ) >"$OUT" 2>"$ERR"
     block_rc_last=$?
     t_block_rc "run_sudo dry block" 0
-    t_out '# would run: sudo touch'
+    t_out '# would run: sudo -- touch'
     t_rc 0 "run_sudo dry-run leaves no marker" test ! -f "$marker"
     (
         set -euo pipefail

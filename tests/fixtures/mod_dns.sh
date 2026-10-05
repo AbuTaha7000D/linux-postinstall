@@ -253,8 +253,8 @@ rm -rf "$FX_TMP/h_dry"
 dns_run h_dry "dry explicit" 0 1 'FS_DNS_CONNECTION=Home'
 [[ $(grep -c '^# would run:' "$FX_OUT") == 2 ]] && fx_ok \
     || fx_bad "dry plan is 2 lines (got $(grep -c '^# would run:' "$FX_OUT"))"
-fx_out_fixed "# would run: sudo nmcli connection modify Home ipv4.dns 8.8.8.8\\,8.8.4.4 ipv4.ignore-auto-dns yes"
-fx_out_fixed "# would run: sudo nmcli connection up Home"
+fx_out_fixed "# would run: sudo -- nmcli connection modify Home ipv4.dns 8.8.8.8\\,8.8.4.4 ipv4.ignore-auto-dns yes"
+fx_out_fixed "# would run: sudo -- nmcli connection up Home"
 fx_out "name-resolution check for flathub.org cannot run in dry-run"
 fx_empty "dry-run probed nothing" "$OPS"
 if [[ -e "$FX_TMP/h_dry" ]]; then fx_bad "dry-run created state"; else fx_ok; fi

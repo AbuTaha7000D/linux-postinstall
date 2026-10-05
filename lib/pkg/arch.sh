@@ -58,12 +58,12 @@ arch_install_batch() {
         io_info "all packages already installed"
         return 0
     fi
-    run_sudo "install packages (${#list[@]})" -- pacman -S --noconfirm --needed "${list[@]}"
+    run_sudo "install packages (${#list[@]})" --stop -- pacman -S --noconfirm --needed "${list[@]}"
 }
 
 arch_update_metadata() {
     arch_supported || return $?
-    run_sudo "refresh arch metadata" -- pacman -Sy
+    run_sudo "refresh arch metadata" --stop -- pacman -Sy
 }
 
 arch_install_local() {
@@ -111,7 +111,7 @@ arch_add_repo() {
         io_error "cannot write repo content for $id"
         return 1
     }
-    run_sudo "add repo $id" -- install -m 0644 "$tmp" "$dest" || rv=$?
+    run_sudo "add repo $id" --stop -- install -m 0644 "$tmp" "$dest" || rv=$?
     rm -f -- "$tmp"
     return "$rv"
 }
@@ -138,5 +138,5 @@ arch_aur_batch() {
         io_error "AUR packages are opt-in: install an AUR helper (paru or yay) first; none found in PATH"
         return 1
     }
-    run_sudo "install aur packages ($#)" -- "$helper" -S --noconfirm "$@"
+    run_sudo "install aur packages ($#)" --stop -- "$helper" -S --noconfirm "$@"
 }

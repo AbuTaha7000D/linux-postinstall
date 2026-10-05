@@ -464,7 +464,7 @@ gnome_gsettings_set() {
         fi
     fi
     rc=0
-    run_cmd "gsettings set $schema/$key" -- gsettings set "$schema" "$key" "$value" || rc=$?
+    run_cmd "gsettings set $schema/$key" --stop -- gsettings set "$schema" "$key" "$value" || rc=$?
     return "$rc"
 }
 

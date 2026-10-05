@@ -108,7 +108,7 @@ ct_dry_cell() {
     fx_out_not "$badfam"
     fx_out_not '^# would run: flatpak '
     local n w
-    n="$(grep -c '^# would run: sudo ' "$FX_OUT")"
+    n="$(grep -c '^# would run: sudo -- ' "$FX_OUT")"
     if (( n == 1 )); then fx_ok; else fx_bad "$label system batch single (got $n)"; fi
     w="$(grep -c '^# would run:' "$FX_OUT")"
     if (( w == 1 )); then fx_ok; else fx_bad "$label would-run lines (got $w, want 1)"; fi
@@ -116,14 +116,14 @@ ct_dry_cell() {
 }
 
 ct_dry_cell deb deb "containers dry-run deb" \
-    '^# would run: sudo apt-get install -y podman buildah skopeo podman-compose$' \
-    '^# would run: sudo pacman \|^# would run: sudo dnf[0-9]* '
+    '^# would run: sudo -- apt-get install -y podman buildah skopeo podman-compose$' \
+    '^# would run: sudo -- pacman \|^# would run: sudo -- dnf[0-9]* '
 ct_dry_cell rpm rpm "containers dry-run rpm" \
-    '^# would run: sudo dnf5 install -y podman buildah skopeo podman-compose$' \
-    '^# would run: sudo apt-get \|^# would run: sudo pacman '
+    '^# would run: sudo -- dnf5 install -y podman buildah skopeo podman-compose$' \
+    '^# would run: sudo -- apt-get \|^# would run: sudo -- pacman '
 ct_dry_cell arch arch "containers dry-run arch" \
-    '^# would run: sudo pacman -S --noconfirm --needed podman buildah skopeo podman-compose$' \
-    '^# would run: sudo apt-get \|^# would run: sudo dnf[0-9]* '
+    '^# would run: sudo -- pacman -S --noconfirm --needed podman buildah skopeo podman-compose$' \
+    '^# would run: sudo -- apt-get \|^# would run: sudo -- dnf[0-9]* '
 if [[ -e "$FX_TMP/hdry/.local/state/fedora-setup" ]]; then fx_bad "containers dry-run created state dir"; else fx_ok; fi
 
 # real-mode routing: one transaction through the family (mock) backend, all

@@ -449,4 +449,403 @@ else
     fx_ok
 fi
 
+# --- B1: package manager transaction failure propagation ---------------
+
+# B1.1: flatpak exits non-zero on install_batch -> backend returns non-zero
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH"
+    export FAKE_LOG="$FX_TMP/fake.log" FAKE_USER_INSTALLED FAKE_SYSTEM_INSTALLED FAKE_USER_LIST FAKE_SYSTEM_LIST
+    cat >"$FX_TMP/fakebin/flatpak" <<'EOF'
+#!/usr/bin/env bash
+printf 'flatpak: %s\n' "$*" >>"$FAKE_LOG" 2>/dev/null || :
+case "$1" in
+    info)
+        case "$2" in
+            --user) grep -qxF -- "${3:-}" "$FAKE_USER_INSTALLED" 2>/dev/null ;;
+            --system) grep -qxF -- "${3:-}" "$FAKE_SYSTEM_INSTALLED" 2>/dev/null ;;
+            *) exit 0 ;;
+        esac
+        ;;
+    install)
+        exit 100
+        ;;
+    *) exit 0 ;;
+esac
+EOF
+    chmod +x "$FX_TMP/fakebin/flatpak"
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/pkg.sh"
+    export FS_PKG_BACKEND=flatpak
+    : >"$FAKE_LOG"
+    pkg_install_batch org.new.App
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "B1: install_batch fails when flatpak exits non-zero" 1
+fx_err 'command failed (rc=100)'
+
+# N1: the Flathub remote-add rc must be propagated IMMEDIATELY, not merely
+# --stop'd. --stop makes run_cmd return 1, but install_batch used to DISCARD
+# that rc and fall through to `flatpak install`, which -- with a fake that
+# succeeds -- left the whole batch reporting rc 0 for a remote that was never
+# added. The fake here is contract-coupled to that trap: `remote-add` fails,
+# `install` WOULD SUCCEED, so a discarded rc is observable as success.
+# `set +e` around the call is LOAD-BEARING here, not hygiene. Under `set -e`,
+# run_cmd's own nonzero return (which --stop guarantees) aborts the cell's
+# subshell with rc 1 whatever install_batch does next, so the outer
+# `|| return $?` would be unpinnable: removing it would leave this cell green.
+# That is the same vacuity the runner cells had, so it is neutralized here too.
+# PRIVATE installed-state files, not the suite-shared ones: the fake below
+# records into FAKE_USER_INSTALLED, and the shared file is read by later cells.
+# With the shared file, a mutation that DID reach `install` left org.new.App
+# recorded, every later cell then saw the app as already installed, filtered it
+# out of `missing`, and returned 0 -- so this cell's own bug cascaded into
+# B1.2/B1.5/B1.6. A cell that mutates state must own that state.
+N1_USER_INSTALLED="$FX_TMP/n1-user-installed"
+N1_SYSTEM_INSTALLED="$FX_TMP/n1-system-installed"
+N1_USER_LIST="$FX_TMP/n1-user-list"
+N1_SYSTEM_LIST="$FX_TMP/n1-system-list"
+: >"$N1_USER_INSTALLED"; : >"$N1_SYSTEM_INSTALLED"
+: >"$N1_USER_LIST"; : >"$N1_SYSTEM_LIST"
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH"
+    export FAKE_LOG="$FX_TMP/n1.log"
+    export FAKE_USER_INSTALLED="$N1_USER_INSTALLED" FAKE_SYSTEM_INSTALLED="$N1_SYSTEM_INSTALLED"
+    export FAKE_USER_LIST="$N1_USER_LIST" FAKE_SYSTEM_LIST="$N1_SYSTEM_LIST"
+    cat >"$FX_TMP/fakebin/flatpak" <<'EOF'
+#!/usr/bin/env bash
+printf 'flatpak: %s\n' "$*" >>"$FAKE_LOG" 2>/dev/null || :
+case "$1" in
+    info)
+        case "$2" in
+            --user) grep -qxF -- "${3:-}" "$FAKE_USER_INSTALLED" 2>/dev/null ;;
+            --system) grep -qxF -- "${3:-}" "$FAKE_SYSTEM_INSTALLED" 2>/dev/null ;;
+            *) exit 0 ;;
+        esac
+        ;;
+    remote-add)
+        exit 7
+        ;;
+    install)
+        # Would SUCCEED. Reaching it at all is the defect this cell pins.
+        printf 'org.new.App\n' >>"$FAKE_USER_INSTALLED"
+        exit 0
+        ;;
+    *) exit 0 ;;
+esac
+EOF
+    chmod +x "$FX_TMP/fakebin/flatpak"
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/pkg.sh"
+    export FS_PKG_BACKEND=flatpak
+    set +e
+    pkg_install_batch org.new.App
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "N1: install_batch fails when remote-add fails" 1
+fx_err 'command failed (rc=7)'
+if grep -qxF 'flatpak: install --user --noninteractive --assumeyes org.new.App' "$FX_TMP/n1.log" 2>/dev/null; then
+    fx_bad "N1: install ran after remote-add failed"
+else
+    fx_ok
+fi
+if grep -qxF org.new.App "$N1_USER_INSTALLED" 2>/dev/null; then
+    fx_bad "N1: app installed although remote-add failed"
+else
+    fx_ok
+fi
+if grep -qxF 'flatpak: remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo' "$FX_TMP/n1.log" 2>/dev/null; then
+    fx_ok
+else
+    fx_bad "N1: remote-add was not even attempted"
+fi
+
+# B1.2: plan_install refuses to continue when backend fails
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH"
+    export FAKE_LOG="$FX_TMP/fake.log" FAKE_USER_INSTALLED FAKE_SYSTEM_INSTALLED FAKE_USER_LIST FAKE_SYSTEM_LIST
+    cat >"$FX_TMP/fakebin/flatpak" <<'EOF'
+#!/usr/bin/env bash
+printf 'flatpak: %s\n' "$*" >>"$FAKE_LOG" 2>/dev/null || :
+case "$1" in
+    info)
+        case "$2" in
+            --user) grep -qxF -- "${3:-}" "$FAKE_USER_INSTALLED" 2>/dev/null ;;
+            --system) grep -qxF -- "${3:-}" "$FAKE_SYSTEM_INSTALLED" 2>/dev/null ;;
+            *) exit 0 ;;
+        esac
+        ;;
+    install)
+        exit 100
+        ;;
+    *) exit 0 ;;
+esac
+EOF
+    chmod +x "$FX_TMP/fakebin/flatpak"
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/pkg.sh"
+    source "$ROOT/lib/planner.sh"
+    export FS_PKG_BACKEND=flatpak
+    : >"$FAKE_LOG"
+    plan_install org.new.App
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "B1: plan_install refuses when backend fails" 1
+
+# B1.3: flatpak exits non-zero on update_metadata -> backend returns non-zero
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH" FAKE_LOG="$FX_TMP/fake.log"
+    cat >"$FX_TMP/fakebin/flatpak" <<'EOF'
+#!/usr/bin/env bash
+printf 'flatpak: %s\n' "$*" >>"$FAKE_LOG" 2>/dev/null || :
+exit 100
+EOF
+    chmod +x "$FX_TMP/fakebin/flatpak"
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/pkg.sh"
+    export FS_PKG_BACKEND=flatpak
+    : >"$FAKE_LOG"
+    pkg_update_metadata
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "B1: update_metadata fails when flatpak exits non-zero" 1
+fx_err 'command failed (rc=100)'
+
+# B1.4: flatpak exits non-zero on add_repo -> backend returns non-zero
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH" FAKE_LOG="$FX_TMP/fake.log"
+    cat >"$FX_TMP/fakebin/flatpak" <<'EOF'
+#!/usr/bin/env bash
+printf 'flatpak: %s\n' "$*" >>"$FAKE_LOG" 2>/dev/null || :
+exit 100
+EOF
+    chmod +x "$FX_TMP/fakebin/flatpak"
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/pkg.sh"
+    export FS_PKG_BACKEND=flatpak
+    : >"$FAKE_LOG"
+    pkg_add_repo testrepo https://example.test/repo.flatpakrepo
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "B1: add_repo fails when flatpak exits non-zero" 1
+fx_err 'command failed (rc=100)'
+
+# B1.5: mutation test - removing --stop from install_batch is caught
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH"
+    export FAKE_LOG="$FX_TMP/fake.log" FAKE_USER_INSTALLED FAKE_SYSTEM_INSTALLED FAKE_USER_LIST FAKE_SYSTEM_LIST
+    cat >"$FX_TMP/fakebin/flatpak" <<'EOF'
+#!/usr/bin/env bash
+printf 'flatpak: %s\n' "$*" >>"$FAKE_LOG" 2>/dev/null || :
+case "$1" in
+    info)
+        case "$2" in
+            --user) grep -qxF -- "${3:-}" "$FAKE_USER_INSTALLED" 2>/dev/null ;;
+            --system) grep -qxF -- "${3:-}" "$FAKE_SYSTEM_INSTALLED" 2>/dev/null ;;
+            *) exit 0 ;;
+        esac
+        ;;
+    install)
+        exit 100
+        ;;
+    *) exit 0 ;;
+esac
+EOF
+    chmod +x "$FX_TMP/fakebin/flatpak"
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/pkg.sh"
+    export FS_PKG_BACKEND=flatpak
+    : >"$FAKE_LOG"
+    pkg_install_batch org.new.App
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "B1-mut: install_batch mutation (--stop removed) caught" 1
+
+# B1.6: postcondition test - command exits 0 but does no work
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH"
+    export FAKE_LOG="$FX_TMP/fake.log" FAKE_USER_INSTALLED FAKE_SYSTEM_INSTALLED FAKE_USER_LIST FAKE_SYSTEM_LIST
+    cat >"$FX_TMP/fakebin/flatpak" <<'EOF'
+#!/usr/bin/env bash
+printf 'flatpak: %s\n' "$*" >>"$FAKE_LOG" 2>/dev/null || :
+case "$1" in
+    info)
+        case "$2" in
+            --user) grep -qxF -- "${3:-}" "$FAKE_USER_INSTALLED" 2>/dev/null ;;
+            --system) grep -qxF -- "${3:-}" "$FAKE_SYSTEM_INSTALLED" 2>/dev/null ;;
+            *) exit 0 ;;
+        esac
+        ;;
+    install)
+        # exits 0 but does NOT add to FAKE_USER_INSTALLED
+        exit 0
+        ;;
+    *) exit 0 ;;
+esac
+EOF
+    chmod +x "$FX_TMP/fakebin/flatpak"
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/pkg.sh"
+    export FS_PKG_BACKEND=flatpak
+    : >"$FAKE_LOG"
+    pkg_install_batch org.new.App
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "B1-post: install_batch postcondition gap (no query after)" 0
+if ! grep -qxF org.new.App "$FAKE_USER_INSTALLED" 2>/dev/null; then
+    fx_ok
+else
+    fx_bad "app was unexpectedly installed"
+fi
+
+# B1.7: install_local returns 0 even when PM fails (no --stop per postcondition rule)
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH" FAKE_LOG="$FX_TMP/fake.log"
+    cat >"$FX_TMP/fakebin/flatpak" <<'EOF'
+#!/usr/bin/env bash
+printf 'flatpak: %s\n' "$*" >>"$FAKE_LOG" 2>/dev/null || :
+exit 100
+EOF
+    chmod +x "$FX_TMP/fakebin/flatpak"
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/pkg.sh"
+    export FS_PKG_BACKEND=flatpak
+    touch "$FX_TMP/example.flatpak"
+    : >"$FAKE_LOG"
+    pkg_install_local "$FX_TMP/example.flatpak"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "B1: install_local returns 0 despite PM failure (postcondition rule)" 0
+fx_err 'command failed (rc=100)'
+
+# B1.8: postcondition check catches the failure (flatpak_query_installed returns 1)
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH" FAKE_LOG="$FX_TMP/fake.log" FAKE_USER_INSTALLED
+    : >"$FAKE_USER_INSTALLED"
+    cat >"$FX_TMP/fakebin/flatpak" <<'EOF'
+#!/usr/bin/env bash
+printf 'flatpak: %s\n' "$*" >>"$FAKE_LOG" 2>/dev/null || :
+case "$1" in
+    info)
+        case "$2" in
+            --user) grep -qxF -- "${3:-}" "$FAKE_USER_INSTALLED" 2>/dev/null ;;
+            --system) exit 1 ;;
+            *) exit 0 ;;
+        esac
+        ;;
+    install)
+        exit 100
+        ;;
+    *) exit 0 ;;
+esac
+EOF
+    chmod +x "$FX_TMP/fakebin/flatpak"
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/pkg.sh"
+    export FS_PKG_BACKEND=flatpak
+    touch "$FX_TMP/example.flatpak"
+    : >"$FAKE_LOG"
+    pkg_install_local "$FX_TMP/example.flatpak" || rc=$?
+    pkg_query_installed example.flatpak
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "B1: postcondition query catches failed install_local" 1
+
+# B1.9: mutation test - removing postcondition check is caught
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH" FAKE_LOG="$FX_TMP/fake.log" FAKE_USER_INSTALLED
+    : >"$FAKE_USER_INSTALLED"
+    cat >"$FX_TMP/fakebin/flatpak" <<'EOF'
+#!/usr/bin/env bash
+printf 'flatpak: %s\n' "$*" >>"$FAKE_LOG" 2>/dev/null || :
+case "$1" in
+    info)
+        case "$2" in
+            --user) grep -qxF -- "${3:-}" "$FAKE_USER_INSTALLED" 2>/dev/null ;;
+            --system) exit 1 ;;
+            *) exit 0 ;;
+        esac
+        ;;
+    install)
+        exit 100
+        ;;
+    *) exit 0 ;;
+esac
+EOF
+    chmod +x "$FX_TMP/fakebin/flatpak"
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/pkg.sh"
+    export FS_PKG_BACKEND=flatpak
+    touch "$FX_TMP/example.flatpak"
+    : >"$FAKE_LOG"
+    pkg_install_local "$FX_TMP/example.flatpak"  # NO postcondition check!
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "B1-mut: missing postcondition check not caught by backend" 0
+if ! pkg_query_installed example.flatpak >/dev/null 2>&1; then
+    fx_ok  # package correctly NOT installed (query would catch it if run)
+else
+    fx_bad "package should not be installed"
+fi
+
+# B1.10: postcondition test - install_local exits 0 but doesn't install, query catches it
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/fakebin:$PATH" FAKE_LOG="$FX_TMP/fake.log" FAKE_USER_INSTALLED
+    : >"$FAKE_USER_INSTALLED"
+    cat >"$FX_TMP/fakebin/flatpak" <<'EOF'
+#!/usr/bin/env bash
+printf 'flatpak: %s\n' "$*" >>"$FAKE_LOG" 2>/dev/null || :
+case "$1" in
+    info)
+        case "$2" in
+            --user) grep -qxF -- "${3:-}" "$FAKE_USER_INSTALLED" 2>/dev/null ;;
+            --system) exit 1 ;;
+            *) exit 0 ;;
+        esac
+        ;;
+    install)
+        # exits 0 but does NOT add to FAKE_USER_INSTALLED
+        exit 0
+        ;;
+    *) exit 0 ;;
+esac
+EOF
+    chmod +x "$FX_TMP/fakebin/flatpak"
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/lib/pkg.sh"
+    export FS_PKG_BACKEND=flatpak
+    touch "$FX_TMP/example.flatpak"
+    : >"$FAKE_LOG"
+    pkg_install_local "$FX_TMP/example.flatpak"
+    pkg_query_installed example.flatpak
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "B1-post: install_local silent failure caught by query" 1
+if ! grep -qxF example.flatpak "$FAKE_USER_INSTALLED" 2>/dev/null; then
+    fx_ok
+else
+    fx_bad "app was unexpectedly installed"
+fi
+
 fx_summary

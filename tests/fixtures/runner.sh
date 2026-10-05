@@ -12,9 +12,26 @@
 # subshell isolation (FS_MODULE_FAMILY exported, and each hook seeing
 # its OWN module's metadata when it does not sort last), and the
 # flatpak-alternative pair (exclusive with the native SYSTEM path,
-# additive with the module's own flatpaks.list). State, mock
+# additive with the module's own flatpaks.list). A1 adds: a run()
+# that reports not-applicable (MODULE_HOOK_SKIP) is recorded as the
+# registry's `skipped` state and counted as skipped -- NOT ok and NOT
+# done -- is re-invoked on the next run, still stops the run (rc1, no
+# summary) when the registry cannot record the skip, and leaves a
+# `done` entry (and an unrecognized state word) behaving exactly as
+# before. State, mock
 # installed-set/call log, and the flatpak fake log/installed set all
 # live under FX_TMP so no system path or privilege is touched.
+# B3 adds batch-failure ABORT semantics: a failing system transaction and a
+# failing flatpak transaction each stop the run (rc1, no hooks, no state,
+# no summary) instead of falling through to the next stage. Both guards are
+# covered behaviourally, and the cells carry three properties that make that
+# coverage real rather than nominal: a restricted PATH that is COMPLETE for
+# every stage (proved by a positive-control cell that drives the same PATH to
+# a successful finish), `set +e` around runner_run so the cell's own errexit
+# cannot manufacture the very rc being asserted, and a PATH chosen per cell
+# so the stage AFTER the one under test would otherwise SUCCEED -- otherwise
+# a removed guard would still be masked by the next stage failing. The old
+# static grep for the guards' source text is deliberately gone.
 # Usage: bash tests/fixtures/runner.sh  (exit 0 on success)
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -80,6 +97,24 @@ standard_hook() {
 mkmod a;      standard_hook a
 mkmod b none a; standard_hook b
 mkmod c none b; standard_hook c
+mkmod notapp
+mkmod okmod
+printf '#!/usr/bin/env bash\nrun() { printf "run id=%%s okmod\\n" "${MODULE_ID:-NONE}" >>"${ORDER:?}"; }\n' \
+    >"$M/okmod/hooks.sh"
+# A1: run() reports NOT-APPLICABLE via the reserved status. It still records
+# that it ran, so a cell can prove a second run re-invokes it.
+{
+    printf '#!/usr/bin/env bash\n'
+    printf 'run() {\n'
+    printf '    printf "run id=%%s notapp\\n" "${MODULE_ID:-NONE}" >>"${ORDER:?}"\n'
+    printf '    return "$MODULE_HOOK_SKIP"\n'
+    printf '}\n'
+} >"$M/notapp/hooks.sh"
+printf 'notapp\n' >"$P/notapp.conf"
+printf 'okmod\nnotapp\n' >"$P/a1mix.conf"
+printf 'notapp\nbadmod\n' >"$P/a1mixfail.conf"
+mkmod badmod
+printf '#!/usr/bin/env bash\nrun() {\n    return 7\n}\n' >"$M/badmod/hooks.sh"
 mkmod d destructive c
 printf '#!/usr/bin/env bash\nrun() {\n    run_cmd "d fail" --stop -- "$FAKE/failrun" 7\n}\n' >"$M/d/hooks.sh"
 mkmod e none d; standard_hook e
@@ -232,19 +267,64 @@ for id in a b c; do
     if [[ -f "$(STATE_DIR "$FX_TMP")/$id" && "$(head -1 "$(STATE_DIR "$FX_TMP")/$id")" == done* ]]; then fx_ok; else fx_bad "state marked for $id"; fi
 done
 
-# --- flatpak batch failure: backend gate absent -> rc1, no hooks ---------
-# Run the full profile (c carries a flatpak) against a minimal PATH that has
-# the runner's tools but NO flatpak binary at all, so flatpak_supported
-# fails regardless of whether the host has flatpak installed. The system
-# batch (mock) commits; the flatpak batch then aborts with `flatpak batch
-# failed`, rc1, and no hooks/state follow.
-: >"$FX_TMP/minbin.log"
+# --- restricted-PATH harness (B3) --------------------------------------
+# The two batch-failure cells below run with a PATH holding ONLY the tools the
+# runner/state/mock layers need, so the cells stay hermetic and the flatpak one
+# can guarantee "no flatpak binary anywhere" (flatpak_supported then fails
+# regardless of what the host has). That hermeticity is also a hazard: a tool
+# the run needs but MINBIN lacks aborts the run at an INCIDENTAL point --
+# state_init's `mkdir -p`, or a hook's `#!/usr/bin/env bash` -- and produces
+# the very "no hooks / no state" outcome the cell is supposed to attribute to
+# the batch guard. The earlier MINBIN listed only grep/sort/uniq/readlink/
+# mktemp, so the flatpak cell aborted in state_init and proved nothing.
+# Two things prevent that, and both are load-bearing:
+#   1. minbin below is COMPLETE for every stage the run reaches.
+#   2. the control cell that follows drives the SAME restricted PATH to a
+#      SUCCESSFUL finish (hook loop reached, `done` state recorded), so a later
+#      "no hooks / no state" can only come from the guard under test.
 MINBIN="$FX_TMP/minbin"
 mkdir -p "$MINBIN"
-for t in grep sort uniq readlink mktemp; do
+for t in bash env grep sort uniq cut head tail cat mkdir rm mv cp ln readlink \
+    mktemp stat tee date chmod touch basename dirname tr wc sed awk; do
     src="$(command -v "$t" 2>/dev/null)"
     if [[ -n "$src" ]]; then ln -sf "$src" "$MINBIN/$t"; fi
 done
+
+# Control: same restricted PATH, same profile, batch SUCCEEDING. If this ever
+# fails, the restricted PATH is incomplete and the two failure cells below are
+# vacuous -- so it is asserted rather than assumed.
+HOOK_LOG="$FX_TMP/hook1p.log"
+MOCK_LOG="$FX_TMP/m1p.log"
+INSTALLED="$FX_TMP/i1p"
+: >"$HOOK_LOG"; : >"$MOCK_LOG"; : >"$INSTALLED"
+(
+    set -euo pipefail
+    export FS_PKG_BACKEND=mock FS_MOCK_LOG="$MOCK_LOG" FS_MOCK_INSTALLED="$INSTALLED"
+    export FS_FAKE_LOG="$FX_TMP/f1p.log" FS_FAKE_INSTALLED="$FX_TMP/fs1p"
+    export FS_HOME="$FX_TMP/mpctrl" FS_DRY_RUN=0 HOOK_LOG FAKE_LOG_REC="$FAKE/logrec"
+    : >"$FS_FAKE_LOG"; : >"$FS_FAKE_INSTALLED"
+    export PATH="$FAKE:$MINBIN"
+    eval "$SRC"
+    set +e
+    runner_run "$M" "$P" "full" "mock"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "restricted PATH completes a run (control) rc0" 0
+if [[ "$(cat "$HOOK_LOG")" == "A
+B
+C" ]]; then fx_ok; else fx_bad "restricted PATH reached the hook loop (control)"; fi
+for id in a b c; do
+    if [[ -f "$(STATE_DIR "$FX_TMP/mpctrl")/$id" ]]; then fx_ok; else fx_bad "restricted PATH recorded state for $id (control)"; fi
+done
+
+# --- flatpak batch failure: backend gate absent -> rc1, no hooks, no state
+# Run the full profile (c carries a flatpak) against MINBIN, which contains no
+# flatpak binary at all, so flatpak_supported fails regardless of the host.
+# The system batch (mock) commits; the flatpak batch then aborts with `flatpak
+# batch failed`, rc1, and no hooks/state follow.
+# `set +e` around runner_run is LOAD-BEARING, not hygiene: under `set -e` the
+# failing command inside the runner kills the cell's subshell with rc1 no matter
+# what the guard does next, which made the guard's removal unpinnable here.
 HOOK_LOG="$FX_TMP/hook1b.log"
 MOCK_LOG="$FX_TMP/m1b.log"
 INSTALLED="$FX_TMP/i1b"
@@ -255,6 +335,7 @@ INSTALLED="$FX_TMP/i1b"
     export FS_HOME="$FX_TMP/mflatfail" FS_DRY_RUN=0 HOOK_LOG FAKE_LOG_REC="$FAKE/logrec"
     export PATH="$MINBIN"
     eval "$SRC"
+    set +e
     runner_run "$M" "$P" "full" "rpm"
 ) >"$FX_OUT" 2>"$FX_ERR"
 FX_BLOCK_RC=$?
@@ -267,6 +348,50 @@ fx_out_not '^== run complete ==$'
 for id in a b c; do
     if [[ -e "$(STATE_DIR "$FX_TMP/mflatfail")/$id" ]]; then fx_bad "state written after flatpak failure"; else fx_ok; fi
 done
+
+# --- system package batch failure: mock backend forced failure -> rc1, no hooks, no state ---
+# Run with FS_MOCK_BATCH_FAIL=1 to force the mock backend's install_batch to fail.
+# The system batch should fail, no hooks should run, no state should be marked.
+# PATH is $FAKE:$MINBIN, NOT MINBIN: the profile carries a flatpak (c), so the
+# flatpak batch runs next. With no flatpak binary available it would fail too
+# and, with the system guard removed, would stop the run at the SAME place with
+# the SAME rc and no hooks -- making this cell blind to the system guard. Giving
+# the flatpak stage a working fake means the system guard is the only thing that
+# can stop this run, which is what the cell claims to measure.
+HOOK_LOG="$FX_TMP/hook1c.log"
+MOCK_LOG="$FX_TMP/m1c.log"
+INSTALLED="$FX_TMP/i1c"
+: >"$HOOK_LOG"; : >"$MOCK_LOG"; : >"$INSTALLED"
+(
+    set -euo pipefail
+    export FS_PKG_BACKEND=mock FS_MOCK_LOG="$MOCK_LOG" FS_MOCK_INSTALLED="$INSTALLED"
+    export FS_MOCK_BATCH_FAIL=1
+    export FS_FAKE_LOG="$FX_TMP/f1c.log" FS_FAKE_INSTALLED="$FX_TMP/fs1c"
+    export FS_HOME="$FX_TMP/msysfail" FS_DRY_RUN=0 HOOK_LOG FAKE_LOG_REC="$FAKE/logrec"
+    : >"$FS_FAKE_LOG"; : >"$FS_FAKE_INSTALLED"
+    export PATH="$FAKE:$MINBIN"
+    eval "$SRC"
+    set +e
+    runner_run "$M" "$P" "full" "mock"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "system package batch failure rc1" 1
+fx_err 'package batch failed'
+RCMI=$(grep -c '^mock install ' "$MOCK_LOG")
+if [[ "$RCMI" == "1" ]]; then fx_ok; else fx_bad "system batch attempted but should fail (got $RCMI)"; fi
+fx_empty "system package failure ran no hooks" "$HOOK_LOG"
+fx_out_not '^== run complete ==$'
+for id in a b c; do
+    if [[ -e "$(STATE_DIR "$FX_TMP/msysfail")/$id" ]]; then fx_bad "state written after system package failure"; else fx_ok; fi
+done
+
+# The batch-failure guards used to be "verified" by grepping runner.sh's source
+# for the literal `|| {` after each plan_install. That was a static check of the
+# file's TEXT, so it kept passing while the cells above proved nothing, and it
+# read as a mutation test while asserting no runtime behaviour at all. It is
+# deliberately GONE: the guards are now covered behaviourally by the two cells
+# above, whose rc / no-hooks / no-state assertions are each proven to flip when
+# the corresponding guard is removed (an actual source mutation, not a grep).
 
 # --- dry run: renders, touches nothing, ignores resume state ------------
 
@@ -729,5 +854,183 @@ if [[ ! -e "$FX_TMP/dryprep-home/.local/state" ]]; then fx_ok; else fx_bad "dry 
 _dr="$(grep -n 'echo prerepo-rendered' "$FX_OUT" | head -1 | cut -d: -f1)"
 _db="$(grep -n 'mock install p4' "$FX_OUT" | head -1 | cut -d: -f1)"
 if [[ -n "$_dr" && -n "$_db" ]] && (( _dr < _db )); then fx_ok; else fx_bad "dry prerepo render must precede the batch render (prerepo line $_dr, batch line $_db)"; fi
+
+# --- A1.1 not-applicable is recorded `skipped`, never `done` -------------
+echo "--- cell: A1 skip is skipped not done"
+: >"$ORDER"
+rm -rf "$FX_TMP/a1home"
+(
+    set -euo pipefail
+    export FS_PKG_BACKEND=mock FS_MOCK_LOG="$MOCK_LOG" FS_MOCK_INSTALLED="$INSTALLED"
+    export FS_HOME="$FX_TMP/a1home" FS_DRY_RUN=0 ORDER HOOK_LOG="$FX_TMP/a1hook.log" PATH="$FAKE:$PATH"
+    eval "$SRC"
+    runner_run "$M" "$P" "a1mix" "rpm"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "A1 skip rc0 (a skip is not a failure)" 0
+fx_out '^  - 1 modules ok · 1 skipped · 0 failed · '
+fx_err_not 'module failed: notapp'
+if [[ "$(head -1 "$(STATE_DIR "$FX_TMP/a1home")/notapp" 2>/dev/null)" == skipped* ]]; then
+    fx_ok
+else
+    fx_bad "not-applicable module must be recorded skipped, got: $(head -1 "$(STATE_DIR "$FX_TMP/a1home")/notapp" 2>/dev/null)"
+fi
+if grep -qxF 'run id=notapp notapp' "$ORDER"; then fx_ok; else fx_bad "not-applicable hook did not run"; fi
+if grep -q '^FAIL' "$FX_OUT"; then fx_bad "a skip must not emit a FAIL row"; else fx_ok; fi
+
+# --- A1.2 a skipped module is retried on the next run --------------------
+echo "--- cell: A1 second run re-invokes a skipped module"
+# $ORDER is deliberately NOT truncated here: the count below spans BOTH runs,
+# which is the whole point -- the latch this task removes would leave it at 1.
+(
+    set -euo pipefail
+    export FS_PKG_BACKEND=mock FS_MOCK_LOG="$MOCK_LOG" FS_MOCK_INSTALLED="$INSTALLED"
+    export FS_HOME="$FX_TMP/a1home" FS_DRY_RUN=0 ORDER HOOK_LOG="$FX_TMP/a1hook.log" PATH="$FAKE:$PATH"
+    eval "$SRC"
+    runner_run "$M" "$P" "a1mix" "rpm"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "A1 second run rc0" 0
+# TWO invocations across the two runs: the latch this task removes would make
+# this 1, and "already completed" in the output is the tell-tale.
+if [[ "$(grep -c '^run id=notapp notapp$' "$ORDER")" == "2" ]]; then
+    fx_ok
+else
+    fx_bad "skipped module was not re-invoked (count $(grep -c '^run id=notapp notapp$' "$ORDER"), expected 2)"
+fi
+fx_out_not 'already completed: notapp'
+# okmod really did complete in run 1, so this run skips for TWO different
+# reasons: one because it is done, one because it is not applicable. Both
+# count as skipped, and neither counts as ok.
+fx_out '^  - 0 modules ok · 2 skipped · 0 failed · '
+
+# --- A1.3 skip + failure: counts, rc and rows agree -----------------------
+echo "--- cell: A1 skip and failure together"
+rm -rf "$FX_TMP/a1failhome"
+: >"$ORDER"
+(
+    set -euo pipefail
+    export FS_PKG_BACKEND=mock FS_MOCK_LOG="$MOCK_LOG" FS_MOCK_INSTALLED="$INSTALLED"
+    export FS_HOME="$FX_TMP/a1failhome" FS_DRY_RUN=0 ORDER HOOK_LOG="$FX_TMP/a1hook2.log" PATH="$FAKE:$PATH"
+    eval "$SRC"
+    runner_run "$M" "$P" "a1mixfail" "rpm"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "A1 skip+fail rc1" 1
+# The combination no single-outcome run reaches: the skip must still be
+# counted as skipped even while a sibling fails, or the counts and rc are
+# describing different runs.
+fx_out '^  - 0 modules ok · 1 skipped · 1 failed · '
+if grep -qx '  - FAIL badmod: hook exited 7$' "$FX_OUT"; then fx_ok; else fx_bad "missing exact FAIL row"; fi
+if grep -q 'FAIL notapp' "$FX_OUT"; then fx_bad "skipped module must not appear in a FAIL row"; else fx_ok; fi
+
+# --- A1.4 a `done` module is still short-circuited (legacy format) -------
+echo "--- cell: A1 done still short-circuits"
+rm -rf "$FX_TMP/a1donehome"
+mkdir -p "$(STATE_DIR "$FX_TMP/a1donehome")"
+printf 'done 2026-01-01T00:00:00' >"$(STATE_DIR "$FX_TMP/a1donehome")/notapp"
+: >"$ORDER"
+(
+    set -euo pipefail
+    export FS_PKG_BACKEND=mock FS_MOCK_LOG="$MOCK_LOG" FS_MOCK_INSTALLED="$INSTALLED"
+    export FS_HOME="$FX_TMP/a1donehome" FS_DRY_RUN=0 ORDER HOOK_LOG="$FX_TMP/a1hook3.log" PATH="$FAKE:$PATH"
+    eval "$SRC"
+    runner_run "$M" "$P" "notapp" "rpm"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "A1 done module rc0" 0
+fx_out 'already completed: notapp'
+# The gate must NOT fire: a pre-A1 "done <ts>" entry, written with no trailing
+# newline exactly as state_module_mark wrote it, still means done.
+if [[ -s "$ORDER" ]]; then fx_bad "a done module's hook must not be re-invoked"; else fx_ok; fi
+fx_out '^  - 0 modules ok · 1 skipped · 0 failed · '
+
+# --- A1.5 an unrecognized state word is refused, never read as done ------
+echo "--- cell: A1 unknown state word fails closed"
+rm -rf "$FX_TMP/a1boghom"
+mkdir -p "$(STATE_DIR "$FX_TMP/a1boghom")"
+printf 'finished 2026-01-01T00:00:00' >"$(STATE_DIR "$FX_TMP/a1boghom")/notapp"
+: >"$ORDER"
+(
+    set -euo pipefail
+    export FS_PKG_BACKEND=mock FS_MOCK_LOG="$MOCK_LOG" FS_MOCK_INSTALLED="$INSTALLED"
+    export FS_HOME="$FX_TMP/a1boghom" FS_DRY_RUN=0 ORDER HOOK_LOG="$FX_TMP/a1hook4.log" PATH="$FAKE:$PATH"
+    eval "$SRC"
+    runner_run "$M" "$P" "notapp" "rpm"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "A1 unknown state rc0 (treated as not-done)" 0
+fx_err 'unrecognized module state in registry: notapp'
+if grep -qxF 'run id=notapp notapp' "$ORDER"; then fx_ok; else fx_bad "unknown state must not short-circuit the module"; fi
+fx_out_not 'already completed: notapp'
+
+# --- A1.5b more malformed shapes are refused the same way ----------------
+# Same contract as A1.5 (a record the registry cannot parse must never be read
+# as done), reached through the two shapes a hand-edit or a foreign writer can
+# produce. Disclosed as unpinned by the A1 Senior Review.
+for shape in 'empty' 'leading-space' 'word-only'; do
+    rm -rf "$FX_TMP/a1shapehome"
+    mkdir -p "$(STATE_DIR "$FX_TMP/a1shapehome")"
+    case "$shape" in
+    empty) : >"$(STATE_DIR "$FX_TMP/a1shapehome")/notapp" ;;
+    leading-space) printf ' done 2026-01-01T00:00:00' >"$(STATE_DIR "$FX_TMP/a1shapehome")/notapp" ;;
+    word-only) printf 'skipped' >"$(STATE_DIR "$FX_TMP/a1shapehome")/notapp" ;;
+    esac
+    : >"$ORDER"
+    (
+        set -euo pipefail
+        export FS_PKG_BACKEND=mock FS_MOCK_LOG="$MOCK_LOG" FS_MOCK_INSTALLED="$INSTALLED"
+        export FS_HOME="$FX_TMP/a1shapehome" FS_DRY_RUN=0 ORDER HOOK_LOG="$FX_TMP/a1hook7.log" PATH="$FAKE:$PATH"
+        eval "$SRC"
+        runner_run "$M" "$P" "notapp" "rpm"
+    ) >"$FX_OUT" 2>"$FX_ERR"
+    FX_BLOCK_RC=$?
+    fx_block_rc "A1 $shape registry entry rc0 (not read as done)" 0
+    fx_out_not 'already completed: notapp'
+    if grep -qxF 'run id=notapp notapp' "$ORDER"; then fx_ok; else fx_bad "$shape entry must not short-circuit the module"; fi
+done
+
+# --- A1.6 a skip the registry cannot record aborts rc1 with no summary ----
+echo "--- cell: A1 state_module_skip failure aborts"
+rm -rf "$FX_TMP/a1rohome"
+mkdir -p "$(STATE_DIR "$FX_TMP/a1rohome")/notapp"
+: >"$ORDER"
+(
+    set -euo pipefail
+    export FS_PKG_BACKEND=mock FS_MOCK_LOG="$MOCK_LOG" FS_MOCK_INSTALLED="$INSTALLED"
+    export FS_HOME="$FX_TMP/a1rohome" FS_DRY_RUN=0 ORDER HOOK_LOG="$FX_TMP/a1hook5.log" PATH="$FAKE:$PATH"
+    eval "$SRC"
+    runner_run "$M" "$P" "notapp" "rpm"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "A1 unrecordable skip rc1" 1
+# The registry is authoritative for BOTH recorded states, so a skip it cannot
+# write stops the run exactly as an unrecordable `done` does -- and, like it,
+# must NOT fall through to the reporter with half a run's records.
+fx_out_not 'run complete'
+fx_out_not 'modules ok'
+
+# --- A1.7 a dry run reports the skip and writes no state at all ----------
+echo "--- cell: A1 dry run counts the skip and writes nothing"
+rm -rf "$FX_TMP/a1dryhome"
+: >"$ORDER"
+(
+    set -euo pipefail
+    export FS_PKG_BACKEND=mock FS_MOCK_LOG="$MOCK_LOG" FS_MOCK_INSTALLED="$INSTALLED"
+    export FS_HOME="$FX_TMP/a1dryhome" FS_DRY_RUN=1 ORDER HOOK_LOG="$FX_TMP/a1hook6.log" PATH="$FAKE:$PATH"
+    eval "$SRC"
+    runner_run "$M" "$P" "notapp" "rpm"
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "A1 dry skip rc0" 0
+# The summary is not state: a dry run still reports the skip, but it must not
+# record one -- `state_module_skip` is behind the same dry-run guard as
+# `state_module_mark`, so no state root is created at all.
+fx_out '^  - 0 modules ok · 1 skipped · 0 failed · '
+if [[ -e "$FX_TMP/a1dryhome/.local/state" ]]; then
+    fx_bad "dry run created a state root for a skip"
+else
+    fx_ok
+fi
 
 fx_summary

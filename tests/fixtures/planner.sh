@@ -211,8 +211,8 @@ fi
 ) >"$FX_OUT" 2>"$FX_ERR"
 FX_BLOCK_RC=$?
 fx_block_rc "rpm dry plan_install single line" 0
-fx_out '^# would run: sudo dnf5 install -y vim git curl$'
-if [[ "$(grep -c '^# would run: sudo dnf5 install ' "$FX_OUT" || :)" == "1" ]]; then
+fx_out '^# would run: sudo -- dnf5 install -y vim git curl$'
+if [[ "$(grep -c '^# would run: sudo -- dnf5 install ' "$FX_OUT" || :)" == "1" ]]; then
     fx_ok
 else
     fx_bad "dry plan must render exactly one dnf line"

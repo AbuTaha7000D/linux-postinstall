@@ -433,4 +433,36 @@ FX_BLOCK_RC=$?
 fx_block_rc "setup list rc" 0
 fx_out 'gnome-extensions.*GNOME Shell extensions.*medium.*on'
 
+printf -- '--- cell: verify SKIPS (rc 93) when gnome-extensions is absent\n'
+# Same contract as the capability gate above, for the other reason this hook can
+# check nothing: the binary it reads the live extension list with is not on
+# PATH. Before A2 this arm returned 1 with an io_error, i.e. a missing OPTIONAL
+# tool was reported to the audit as a broken install; and nothing pinned it, so
+# mutation M20 was a BAD-EDIT until now. A capable GNOME session with no
+# gnome-extensions must be a skip, and the reason must be io_info so a reader of
+# the audit log is not told something failed.
+# PATH is the fixture's minimal notools dir, NOT fakebin:$PATH: this host has a
+# REAL /usr/bin/gnome-extensions, so "remove the fake and keep the system dirs"
+# would silently audit the real extension list -- the leak tests/fixtures/verify.sh
+# guards against with guard_fake, reproduced here by construction.
+(
+    set -euo pipefail
+    export PATH="$FX_TMP/notools"
+    export XDG_CURRENT_DESKTOP=GNOME
+    export FS_DRY_RUN=0
+    source "$ROOT/lib/io.sh"
+    source "$ROOT/lib/run.sh"
+    source "$ROOT/modules/gnome-extensions/hooks.sh"
+    verify
+) >"$FX_OUT" 2>"$FX_ERR"
+FX_BLOCK_RC=$?
+fx_block_rc "verify without gnome-extensions" 93
+fx_out 'gnome-extensions: gnome-extensions not found on PATH; cannot verify'
+if env PATH="$FX_TMP/notools" command -v gnome-extensions >/dev/null 2>&1; then
+    fx_bad "the cell PATH still resolves a real gnome-extensions"
+else
+    fx_ok
+fi
+fx_err_not 'gnome-extensions: gnome-extensions not found on PATH; cannot verify'
+
 fx_summary

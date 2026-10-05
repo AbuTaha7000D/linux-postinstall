@@ -379,7 +379,9 @@ run() {
 }
 
 verify() {
-    local dir="" f="" alt=""
+    local dir="" f="" alt="" root
+    root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)" || return 1
+    declare -F _verify_hook >/dev/null 2>&1 || source "$root/lib/verify.sh"
     if ((FS_DRY_RUN == 1)); then
         io_info "chrome: verify is read-only; runs only in real mode"
         return 0
@@ -389,11 +391,11 @@ verify() {
     fi
     if [[ -n "$alt" ]]; then
         io_info "chrome: the flatpak alternative is selected; the desktop-entry check covers the native bundle only"
-        return 0
+        return "$_VERIFY_HOOK_SKIP"
     fi
     if [[ "${FS_MODULE_FAMILY:-}" == "arch" ]]; then
         io_info "chrome: no native Arch bundle is installed; nothing to verify"
-        return 0
+        return "$_VERIFY_HOOK_SKIP"
     fi
     dir="${FS_CHROME_DESKTOP_DIR:-/usr/share/applications}"
     for f in "$dir/google-chrome.desktop" "$dir/com.google.Chrome.desktop"; do

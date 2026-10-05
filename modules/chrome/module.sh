@@ -67,7 +67,10 @@
 #
 # No verify() note: verify() lives in hooks.sh and checks the installed
 # .desktop, read-only, per the P7.1 apps precedent (setup verify itself is
-# still "not implemented yet", rc1, P9.2).
+# still "not implemented yet", rc1, P9.2). Its two not-applicable arms (the
+# flatpak alternative selected, and a family with no native bundle) return
+# lib/verify.sh's _VERIFY_HOOK_SKIP, so `setup verify` renders SKIP there and
+# rc 0 -- never the PASS a 0 would have produced.
 #
 # The install itself is confirmed by POSTCONDITION, not by the seam's rc:
 # pkg_install_local cannot report failure (see hooks.sh for the P3
@@ -82,5 +85,10 @@ MODULE_TITLE="Google Chrome"
 MODULE_DESCRIPTION="Distro-native Chrome bundle with a digest check, or the flatpak build"
 MODULE_RISK=medium
 MODULE_DEFAULT=on
+# WHY MODULE_PRIVILEGED=1: run() installs a downloaded bundle through
+# pkg_install_local, which escalates. The runner reads this declaration
+# (never the presence of this file) to decide whether to establish the
+# sudo credential up front.
+MODULE_PRIVILEGED=1
 MODULE_FLATPAK_ALT_ID=com.google.Chrome
 MODULE_FLATPAK_ALT_SEAM=FS_CHROME_FLATPAK

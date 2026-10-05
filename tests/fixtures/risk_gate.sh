@@ -112,7 +112,7 @@ RUN_G=0
 
 run_gate 1 "dep edge pulling locale is refused" '' --dry-run --yes --profile minimal
 fx_err 'high-risk module[(]s[)] pulled in transitively by a dependency: locale'
-fx_out_not '^# would run: sudo localectl'
+fx_out_not '^# would run: sudo -- localectl'
 # A risk-gate refusal is an ABORT path: it must not reach the reporter. Without
 # this, adding `summary_report;` before that `return 1` printed a clean-looking
 # "0 modules ok . 0 skipped . 0 failed" line straight after the run said it
@@ -150,7 +150,7 @@ RUN_G=$((RUN_G + 1))
 FX_BLOCK_RC=$?
 fx_block_rc "profile naming locale stays rc0" 0
 fx_out '!! high-risk module[(]s[)] not selected: locale'
-fx_out_not '^# would run: sudo localectl'
+fx_out_not '^# would run: sudo -- localectl'
 fx_out '^# would run: mock install'
 
 # --- 3. dry-run alert: destructive and high warn, safe stays quiet --------
@@ -199,12 +199,12 @@ fx_out_not '!! dry run: core'
 run_gate 0 "direct high-risk invocation runs" $'\n\ny\n' --dry-run dns
 fx_out '^\[.*\] \[info\] module: dns (destructive)$'
 fx_out '!! dry run: dns is destructive'
-fx_out '^# would run: sudo nmcli'
+fx_out '^# would run: sudo -- nmcli'
 fx_out 'high-risk module[(]s[)] enabled: dns; continue?'
 
 run_gate 1 "declining the confirmation aborts" $'\n\nn\n' --dry-run dns
 fx_err 'installation aborted (high-risk confirmation declined)'
-fx_out_not '^# would run: sudo'
+fx_out_not '^# would run: sudo --'
 
 run_gate 0 "piped session, safe module only" $'\n\n' --dry-run core
 fx_out '^# would run: mock install'

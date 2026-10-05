@@ -367,15 +367,15 @@ vs_dry_cell() {
     if [[ -e "$FX_TMP/hdry/.local/state/fedora-setup" ]]; then fx_bad "$label dry created state dir"; else fx_ok; fi
 }
 vs_dry_cell rpm rpm "vscode dry rpm" \
-    '^# would run: sudo install -m 0644 .*fedora-setup-repo-vscode\.dry .*/repos/vscode\.repo$' \
-    '^# would run: sudo rpm --import .*fedora-setup-vscode-key\.dry$' \
-    '^# would run: sudo dnf5 makecache$' \
-    '^# would run: sudo dnf5 install -y code$'
+    '^# would run: sudo -- install -m 0644 .*fedora-setup-repo-vscode\.dry .*/repos/vscode\.repo$' \
+    '^# would run: sudo -- rpm --import .*fedora-setup-vscode-key\.dry$' \
+    '^# would run: sudo -- dnf5 makecache$' \
+    '^# would run: sudo -- dnf5 install -y code$'
 vs_dry_cell deb deb "vscode dry deb" \
-    '^# would run: sudo install -m 0644 .*fedora-setup-repo-vscode\.dry .*/sources/vscode\.list$' \
-    '^# would run: sudo gpg --batch --yes --dearmor --output .*fedora-setup-vscode\.gpg .*fedora-setup-vscode-key\.dry$' \
-    '^# would run: sudo apt-get update$' \
-    '^# would run: sudo apt-get install -y code$'
+    '^# would run: sudo -- install -m 0644 .*fedora-setup-repo-vscode\.dry .*/sources/vscode\.list$' \
+    '^# would run: sudo -- gpg --batch --yes --dearmor --output .*fedora-setup-vscode\.gpg .*fedora-setup-vscode-key\.dry$' \
+    '^# would run: sudo -- apt-get update$' \
+    '^# would run: sudo -- apt-get install -y code$'
 
 # arch: no repository, no install, explicit warning, module still done
 : >"$OPS"
@@ -467,7 +467,7 @@ FX_BLOCK_RC=$?
 fx_block_rc "vscode native path after a later module rc" 0
 fx_out 'repodata/repomd.xml.key'
 fx_out 'install -m 0644 .*fedora-setup-repo-vscode\.dry .*/repos/vscode\.repo$'
-fx_out '^# would run: sudo dnf5 install -y code zzp$'
+fx_out '^# would run: sudo -- dnf5 install -y code zzp$'
 fx_empty "vscode native path after a later module executed nothing" "$OPS"
 
 # --- 6. real mode against the stand-ins ------------------------------------
