@@ -207,11 +207,13 @@ t_install_packages() {
     teardown_tmp
 }
 
+# The fallback in the assertion used to be the expected string itself, so the
+# check passed whether or not the module had said anything.
 t_install_flatpaks() {
     setup_tmp
     source_libs
     printf '# apps\norg.gimp.GIMP\ncom.bitwarden.desktop\n' >"$(TMP f.txt)"
-    local log
+    local log out rc
     log="$(TMP log)"
     run() { printf '%s\n' "$*" >>"$log"; }
     flatpak() {
@@ -220,8 +222,40 @@ t_install_flatpaks() {
     }
     export -f flatpak 2>/dev/null || true
 
-    install_flatpaks "$(TMP f.txt)" >/dev/null 2>&1
-    check_contains "install_flatpaks skips installed apps" "no flatpaks to install" "$(cat "$log" 2>/dev/null || printf 'no flatpaks to install')"
+    # Every app is already installed, so the module must say so and run nothing.
+    out="$(install_flatpaks "$(TMP f.txt)" 2>&1)"
+    check_contains "install_flatpaks skips installed apps" "no flatpaks to install" "$out"
+    check_eq "install_flatpaks runs no command" "" "$(cat "$log" 2>/dev/null)"
+
+    # One app missing: the module must install that app only. A flatpak shell
+    # function cannot be overridden, so a PATH stub stands in for it.
+    unset -f flatpak 2>/dev/null || true
+    TMPD bin
+    cat >"$(TMP bin/flatpak)" <<EOF
+#!/bin/sh
+if [ "\$1" = info ]; then
+    [ "\$2" = org.gimp.GIMP ] && exit 0
+    exit 1
+fi
+if [ "\$1" = install ]; then printf '%s\\n' "\$*" >>"$log"; exit 0; fi
+exit 0
+EOF
+    chmod +x "$(TMP bin/flatpak)"
+    PATH="$(TMP bin):$PATH"
+
+    rc=0
+    out="$(install_flatpaks "$(TMP f.txt)" 2>&1)" || rc=$?
+    check_eq "install_flatpaks succeeds" "0" "$rc"
+    check_contains "install_flatpaks installs the missing app" \
+        "flatpak install -y flathub com.bitwarden.desktop" "$(cat "$log")"
+    check_missing "install_flatpaks leaves installed apps alone" "org.gimp.GIMP" "$(cat "$log")"
+
+    # With both apps installed, a rerun must run nothing.
+    flatpak() { return 0; }
+    : >"$log"
+    out="$(install_flatpaks "$(TMP f.txt)" 2>&1)"
+    check_contains "install_flatpaks is a no-op once installed" "no flatpaks to install" "$out"
+    check_eq "install_flatpaks runs no command on a rerun" "" "$(cat "$log")"
 
     teardown_tmp
 }
@@ -276,31 +310,35 @@ t_modules() {
     local log
     log="$(TMP run.log)"
 
-    printf 'install_probe() { printf "ran\\n" >>"%s"; }\n' "$log" >"$ROOT/modules/probe.sh"
+    # The probe modules live in a throwaway copy of modules/, so an interrupted
+    # run cannot leave a stray module in the real repository.
+    TMPD root/modules
+    FS_ROOT="$(TMP root)"
+
+    printf 'install_probe() { printf "ran\\n" >>"%s"; }\n' "$log" >"$(TMP root/modules/probe.sh)"
     run_modules probe >/dev/null 2>&1
     check_contains "run_modules calls install_<id>" "ran" "$(cat "$log")"
-    rm -f "$ROOT/modules/probe.sh"
 
-    printf 'install_probe() { return 1; }\n' >"$ROOT/modules/probe.sh"
+    printf 'install_probe() { return 1; }\n' >"$(TMP root/modules/probe.sh)"
     rc=0
     out="$(run_modules probe 2>&1 >/dev/null)" || rc=$?
     check_eq "a failing module makes run_modules fail" "1" "$rc"
     check_contains "a failing module is named" "failed modules: probe" "$out"
-    rm -f "$ROOT/modules/probe.sh"
 
-    printf 'install_probe() { return 1; }\n' >"$ROOT/modules/probe.sh"
-    printf 'install_probe2() { printf "probe2 ran\\n" >>"%s"; }\n' "$log" >"$ROOT/modules/probe2.sh"
+    printf 'install_probe() { return 1; }\n' >"$(TMP root/modules/probe.sh)"
+    printf 'install_probe2() { printf "probe2 ran\\n" >>"%s"; }\n' "$log" >"$(TMP root/modules/probe2.sh)"
     : >"$log"
     rc=0
     run_modules probe probe2 >/dev/null 2>&1 || rc=$?
     check_eq "a failing module still fails the run" "1" "$rc"
     check_contains "a failing module does not stop the ones after it" "probe2 ran" "$(cat "$log")"
-    rm -f "$ROOT/modules/probe.sh" "$ROOT/modules/probe2.sh"
 
-    printf 'install_wrongname() { :; }\n' >"$ROOT/modules/probe.sh"
+    printf 'install_wrongname() { :; }\n' >"$(TMP root/modules/probe.sh)"
     out="$(run_modules probe 2>&1 >/dev/null)"
     check_contains "a module missing its function fails" "does not define install_probe" "$out"
-    rm -f "$ROOT/modules/probe.sh"
+
+    FS_ROOT="$ROOT"
+    check_missing "the checks leave no module behind" "probe" "$(ls "$ROOT/modules")"
 
     teardown_tmp
 }
