@@ -351,6 +351,182 @@ t_verified_binary() {
     teardown_tmp
 }
 
+# -------------------------------------------------------------- dns/locale ----
+
+# nmcli and localectl are stubbed, and FS_ROOT points into the temp dir, so the
+# dns and locale modules run for real without touching this machine or the
+# checked-in repository.
+
+t_dns() {
+    setup_tmp
+    source_libs
+    # shellcheck source=/dev/null
+    source "$ROOT/modules/dns.sh"
+    _tmpdirs=()
+
+    TMPD root
+    FS_ROOT="$(TMP root)"
+    export FS_DNS_CONNECTION=""
+
+    nmcli() {
+        local a prev="" dns=""
+        if [[ "$*" == *--active* ]]; then
+            cat "$(TMP names)"
+        elif [[ "$1 $2" == "connection modify" ]]; then
+            for a in "$@"; do
+                [[ "$prev" == ipv4.dns ]] && dns="$a"
+                prev="$a"
+            done
+            printf '%s' "$3" >"$(TMP modified)"
+            printf '%s' "$dns" >"$(TMP dns)"
+        elif [[ "$3" == ipv4.dns ]]; then
+            printf 'ipv4.dns:%s\n' "$(cat "$(TMP dns)" 2>/dev/null)"
+        fi
+        return 0
+    }
+    # run_root is stubbed so applying the change needs no root, but it keeps the
+    # real dry-run behaviour: a dry run must not run the command.
+    run_root() {
+        ((FS_DRY_RUN)) && return 0
+        shift
+        "$@"
+    }
+
+    # nmcli lists the loopback profile first: it must be skipped.
+    printf 'lo\nMy Net 5\n' >"$(TMP names)"
+
+    # The bare NAME output, with no field prefix to match on.
+    check_eq "dns finds the active connection" "My Net 5" "$(_dns_active)"
+
+    # nmcli prefixes the field, and joins the servers with commas.
+    printf '8.8.8.8,8.8.4.4' >"$(TMP dns)"
+    check_eq "dns drops the ipv4.dns prefix and the commas" "8.8.8.8 8.8.4.4" \
+        "$(_dns_servers "My Net 5")"
+
+    : >"$(TMP dns)"
+    check_eq "an unset dns reads as empty" "" "$(_dns_servers "My Net 5")"
+
+    # A connection whose name contains spaces: the backup must keep the name
+    # whole, and the revert must hand that whole name back to nmcli.
+    FS_DRY_RUN=0
+    FS_DNS_REVERT=0
+    printf '192.168.1.1' >"$(TMP dns)"
+    local rc=0
+    install_dns >/dev/null 2>&1 || rc=$?
+    check_eq "dns sets the servers and succeeds" "0" "$rc"
+    check_eq "the backup keeps the connection name whole" "My Net 5" \
+        "$(sed -n 1p "$(TMP root/.dns-backup)")"
+    check_eq "the backup keeps the old servers" "192.168.1.1" \
+        "$(sed -n 2p "$(TMP root/.dns-backup)")"
+
+    rm -f "$(TMP modified)"
+    FS_DNS_REVERT=1
+    rc=0
+    install_dns >/dev/null 2>&1 || rc=$?
+    check_eq "dns revert succeeds" "0" "$rc"
+    check_eq "dns revert targets the whole name" "My Net 5" "$(cat "$(TMP modified)")"
+    check_eq "dns revert restores the old servers" "192.168.1.1" \
+        "$(_dns_servers "My Net 5")"
+
+    # Running again with the wanted value already in place changes nothing.
+    FS_DNS_REVERT=0
+    printf '8.8.8.8,8.8.4.4' >"$(TMP dns)"
+    rm -f "$(TMP modified)"
+    rc=0
+    install_dns >/dev/null 2>&1 || rc=$?
+    check_eq "an already correct dns succeeds without changing anything" "0" "$rc"
+    check_eq "an already correct dns runs no modify" "no" \
+        "$([[ -e "$(TMP modified)" ]] && echo yes || echo no)"
+
+    # A dry run must touch neither NetworkManager nor the backup.
+    rm -f "$(TMP root/.dns-backup)" "$(TMP modified)"
+    printf '192.168.1.1' >"$(TMP dns)"
+    FS_DRY_RUN=1
+    rc=0
+    install_dns >/dev/null 2>&1 || rc=$?
+    check_eq "dns dry run succeeds" "0" "$rc"
+    check_eq "dns dry run creates no backup" "no" \
+        "$([[ -e "$(TMP root/.dns-backup)" ]] && echo yes || echo no)"
+    check_eq "dns dry run changes no connection" "no" \
+        "$([[ -e "$(TMP modified)" ]] && echo yes || echo no)"
+
+    printf 'Some Other Net\n1.1.1.1\n' >"$(TMP root/.dns-backup)"
+    install_dns >/dev/null 2>&1
+    check_eq "dns dry run leaves an existing backup alone" "Some Other Net
+1.1.1.1" "$(cat "$(TMP root/.dns-backup)")"
+
+    FS_DRY_RUN=0
+    unset FS_DNS_CONNECTION FS_DNS_REVERT
+    FS_ROOT="$ROOT"
+    # Drop the stubs so the later checks see the real run_root again.
+    unset -f nmcli run_root
+    source_libs
+    teardown_tmp
+}
+
+t_locale() {
+    setup_tmp
+    source_libs
+    # shellcheck source=/dev/null
+    source "$ROOT/modules/locale.sh"
+    _tmpdirs=()
+
+    TMPD root
+    FS_ROOT="$(TMP root)"
+    export FS_LOCALE=""
+
+    localectl() {
+        case "${1:-}" in
+        status) printf '   System Locale: LANG=%s\n' "$(cat "$(TMP lang)")" ;;
+        set-locale) printf '%s' "${2#LANG=}" >"$(TMP lang)" ;;
+        esac
+        return 0
+    }
+    run_root() {
+        ((FS_DRY_RUN)) && return 0
+        shift
+        "$@"
+    }
+
+    printf 'C.UTF-8' >"$(TMP lang)"
+
+    # A dry run must leave both the locale and the backup alone.
+    FS_DRY_RUN=1
+    local rc=0
+    install_locale >/dev/null 2>&1 || rc=$?
+    check_eq "locale dry run succeeds" "0" "$rc"
+    check_eq "locale dry run creates no backup" "no" \
+        "$([[ -e "$(TMP root/.locale-backup)" ]] && echo yes || echo no)"
+    check_eq "locale dry run changes no locale" "C.UTF-8" "$(cat "$(TMP lang)")"
+
+    printf 'de_DE.UTF-8\n' >"$(TMP root/.locale-backup)"
+    install_locale >/dev/null 2>&1
+    check_eq "locale dry run leaves an existing backup alone" "de_DE.UTF-8" \
+        "$(cat "$(TMP root/.locale-backup)")"
+
+    # Dry run off, the change really happens.
+    FS_DRY_RUN=0
+    rm -f "$(TMP root/.locale-backup)"
+    rc=0
+    install_locale >/dev/null 2>&1 || rc=$?
+    check_eq "locale set succeeds" "0" "$rc"
+    check_eq "locale set applies the locale" "en_US.UTF-8" "$(cat "$(TMP lang)")"
+    check_eq "locale backup keeps the old locale" "C.UTF-8" \
+        "$(cat "$(TMP root/.locale-backup)")"
+
+    FS_LOCALE_REVERT=1
+    rc=0
+    install_locale >/dev/null 2>&1 || rc=$?
+    check_eq "locale revert succeeds" "0" "$rc"
+    check_eq "locale revert restores the old locale" "C.UTF-8" "$(cat "$(TMP lang)")"
+
+    FS_ROOT="$ROOT"
+    # Drop the stubs so the later checks see the real run_root again.
+    unset -f localectl run_root
+    source_libs
+    teardown_tmp
+}
+
 # ------------------------------------------------------------ error paths ----
 
 t_failure_propagation() {
@@ -493,8 +669,8 @@ t_cli() {
 run_unit_tests() {
     local t
     for t in t_distro t_read_list t_package_files t_install_packages t_install_flatpaks \
-        t_write_block t_modules t_verified_binary t_failure_propagation \
-        t_dry_run t_cli; do
+        t_write_block t_modules t_verified_binary t_dns t_locale \
+        t_failure_propagation t_dry_run t_cli; do
         printf '%s\n' "${t#t_}"
         "$t"
     done
