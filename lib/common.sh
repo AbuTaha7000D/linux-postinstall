@@ -83,12 +83,18 @@ read_list() {
 
 # write_atomic <file> -- replace the file with stdin, via a temp file + rename.
 write_atomic() {
-    local file="$1" dir tmp
+    local file="$1" dir tmp mode=0644
 
     if ((FS_DRY_RUN)); then
         log_info "would write: $file"
         return 0
     fi
+    # Follow a symlink, so the file it points at is updated instead of being
+    # replaced by a regular file, and keep its mode.
+    if [[ -L "$file" ]]; then
+        file="$(readlink -f -- "$file")" || die "cannot resolve $1"
+    fi
+    [[ -e "$file" ]] && mode="$(stat -c %a -- "$file")"
     dir="$(dirname -- "$file")"
     run "create dir" mkdir -p -- "$dir"
     tmp="$(mktemp -- "$dir/.postinstall.XXXXXX")" || die "cannot create temp file in $dir"
@@ -96,7 +102,7 @@ write_atomic() {
         rm -f -- "$tmp"
         die "cannot write $tmp"
     }
-    chmod 0644 "$tmp"
+    chmod "$mode" -- "$tmp"
     mv -f -- "$tmp" "$file" || {
         rm -f -- "$tmp"
         die "cannot replace $file"

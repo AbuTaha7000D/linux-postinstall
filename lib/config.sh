@@ -44,10 +44,17 @@ block_body() {
 # silently drop one of them.
 write_block() {
     local file="$1" name="$2"
-    local want="" have="" begins
+    local want="" have="" begins mode=""
 
     want="$(cat)"
     [[ -n "$want" ]] || die "refusing to write an empty block to $file"
+
+    # Follow a symlink, so the file it points at is updated instead of being
+    # replaced by a regular file, and keep its mode.
+    if [[ -L "$file" ]]; then
+        file="$(readlink -f -- "$file")" || die "cannot resolve $1"
+    fi
+    [[ -f "$file" ]] && mode="$(stat -c %a -- "$file")"
 
     begins="$(grep -c "^# BEGIN $BLOCK_PREFIX $name\$" -- "$file" 2>/dev/null || true)"
     if [[ "$begins" -gt 1 ]]; then
@@ -89,6 +96,8 @@ write_block() {
         rm -f -- "$file.new.$$"
         die "cannot write $file"
     }
+    # The temp file gets the default mode; give it the file's own.
+    [[ -n "$mode" ]] && chmod "$mode" -- "$file.new.$$"
     mv -f -- "$file.new.$$" "$file" || {
         rm -f -- "$file.new.$$"
         die "cannot replace $file"
