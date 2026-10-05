@@ -615,7 +615,12 @@ t_dry_run() {
     # Every command goes through run()/run_root(), so a dry run that leaves the
     # filesystem and the sudo path untouched proves nothing ran.
     FS_FAMILY=deb
-    PKG_INSTALL="touch $(TMP PWNED)"
+    # The stand-in installer records that it ran by creating one file, and drops
+    # the package names it is handed: a bare "touch" would treat them as file
+    # names and leave a file per package in the working directory.
+    printf '#!/bin/sh\ntouch "%s"\n' "$(TMP PWNED)" >"$(TMP installer)"
+    chmod +x "$(TMP installer)"
+    PKG_INSTALL="$(TMP installer)"
     pkg_installed() { return 1; }
     printf 'git\n' >"$(TMP pkgs.txt)"
 
