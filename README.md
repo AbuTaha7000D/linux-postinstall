@@ -97,8 +97,10 @@ writes a single block between markers and leaves the rest of the file alone:
 ```
 
 On the next run the block is replaced, not appended, so it cannot grow. Your own
-lines outside the markers are preserved. The first time a file is touched, a
-timestamped backup is written next to it.
+lines outside the markers are preserved. Whenever a file really changes, the
+previous version is copied to `<file>.bak` beside it, replacing any earlier
+backup, so it holds the state from before the last change. A run that finds
+everything already correct writes nothing at all.
 
 ## Sudo
 
