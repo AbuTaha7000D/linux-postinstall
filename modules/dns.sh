@@ -64,21 +64,27 @@ install_dns() {
     log_info "DNS set to $want (previous value in $backup)"
 }
 
+# nmcli's terse mode prints the connection name on its own line, with no field
+# prefix, so the first usable line is the name. "--" is what it prints for an
+# empty value, and "lo" is the loopback profile: always active, but it carries
+# no resolver and is never the connection worth changing.
 _dns_active() {
     local line
     while IFS= read -r line; do
-        case "$line" in
-        *"NAME="*)
-            line="${line#*NAME=}"
-            printf '%s' "${line%%|*}"
-            return 0
-            ;;
-        esac
+        line="${line#"${line%%[![:space:]]*}"}"
+        line="${line%"${line##*[![:space:]]}"}"
+        [[ -z "$line" || "$line" == "--" || "$line" == "lo" ]] && continue
+        printf '%s' "$line"
+        return 0
     done < <(nmcli -t -f NAME connection show --active 2>/dev/null)
     return 0
 }
 
+# nmcli prefixes this field with its name ("ipv4.dns:8.8.8.8,8.8.4.4"), and
+# prints a bare "ipv4.dns:" when the connection has no DNS set. Drop the prefix
+# and flatten the comma-separated list into the space-separated form the rest
+# of this module compares against, so "unset" normalises to an empty string.
 _dns_servers() {
     nmcli -t -f ipv4.dns connection show "$1" 2>/dev/null | head -1 |
-        sed 's/^[[:space:]]*//; s/[[:space:]]*$//; s/,/ /g; s/[[:space:]][[:space:]]*/ /g'
+        sed 's/^[^:]*://; s/,/ /g; s/[[:space:]][[:space:]]*/ /g; s/^ //; s/ $//'
 }
