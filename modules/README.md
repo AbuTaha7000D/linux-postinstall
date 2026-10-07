@@ -15,13 +15,12 @@ Shared helpers (distribution/family detection, desktop-environment detection, `r
 - `gnome_extensions.sh` — Open recommended GNOME extensions in your browser
 - `gnome_themes.sh` — User-driven GNOME theme selection and application
 - `icons_and_cursors.sh` — Set up user icons and cursor themes, copy icons, set cursor, set icon theme to Adwaita, and add ~/Github to the sidebar
-- `install_apps.sh` — Install system, Flatpak, and AUR (Arch) applications, including Chrome, VS Code, and the Starship prompt (official installer)
-- `install_atuin.sh` — Install and configure Atuin shell history manager
+- `install_apps.sh` — Install system, Flatpak, and AUR (Arch) applications, including Chrome and VS Code
 - `install_fonts.sh` — Install user fonts from the additions/fonts directory
 - `set_aliases.sh` — Write the managed alias block (`# >>> linux-postinstall aliases >>>` … `# <<< linux-postinstall aliases <<<`) to Bash (and Zsh/Fish when present)
 - `set_favorite_apps.sh` — Set favorite apps in the GNOME dock
 - `set_wallpaper.sh` — Set GNOME wallpaper from additions/wallpaper.jpg
-- `terminal_themes.sh` — Configure shell startup: `chsh` to Bash, Atuin, and Starship init for Bash/Zsh/Fish
+- `terminal_themes.sh` — Terminal stack: select the default shell, install the selected shell/Atuin/Starship when missing, configure the selected shell, and change the default shell with `chsh`
 
 ## Usage
 

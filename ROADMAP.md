@@ -26,7 +26,7 @@ The user approved a complete plan to restore the intended CLI and behavior, with
 - `scripts/` is migrated to `modules/`; shared helpers move to `lib/common.sh`.
 - `lib/common.sh` provides the dry-run-aware `run`/`run_root` helpers, distro-family detection with the existing `OS_RELEASE_FILE` seam, and desktop-environment detection.
 - `setup` keeps CLI parsing, the fixed module order, and overall failure handling.
-- The existing multi-distro package architecture (explicit family arrays, Flatpak/Flathub, yay/AUR only on Arch, vendor Chrome/VS Code with lazy architecture checks) stays intact. Package installation stays in the packages layer; modules do not duplicate it.
+- The existing multi-distro package architecture (explicit family arrays, Flatpak/Flathub, yay/AUR only on Arch, vendor Chrome/VS Code with lazy architecture checks) stays intact. System package installation stays in the packages layer; Starship is installed by the terminal layer; modules do not duplicate the family package lists.
 
 **Install flow and GNOME/non-GNOME behavior.**
 
@@ -37,17 +37,17 @@ The user approved a complete plan to restore the intended CLI and behavior, with
 
 **Terminal behavior.**
 
-- The terminal command runs Atuin installation and Starship shell initialization; both stay in scope.
-- `chsh` → bash is kept as existing behavior (approved decision).
-- Starship initialization is added for bash (`eval "$(starship init bash)"`), zsh (`eval "$(starship init zsh)"`), and fish (`starship init fish | source`), each appended with a guard to the appropriate rc file of shells that exist; nothing else in user shell configuration is touched.
-- The terminal module contains no Starship installation logic.
+- The terminal command owns the full terminal stack: shell selection, ensuring the selected shell, Atuin, and Starship are installed, configuring Atuin and Starship for the selected shell, and making it the default shell via `chsh`.
+- `chsh` targets the user-selected shell (Bash, Zsh, or Fish), replacing the previous unconditional `chsh` → bash.
+- Starship and Atuin initialization are appended with an exact-line guard to the selected shell's rc file only (`~/.bashrc`, `~/.zshrc`, or `~/.config/fish/config.fish`); nothing else in user shell configuration is touched.
+- The terminal module owns the Starship installation logic (official installer only); the packages layer contains none.
 
 **Starship installation (official installer only).**
 
-- The packages layer installs Starship using the official non-interactive installer, exactly: `curl -sS https://starship.rs/install.sh | sh -s -- -y`.
+- The terminal layer installs Starship using the official non-interactive installer, exactly: `curl -sS https://starship.rs/install.sh | sh -s -- -y`.
 - The same command works across Fedora, Debian, and Arch families; no distro-specific method replaces it.
 - Starship must not appear in any distro-specific package array and must never be installed via `dnf`, `apt`, `pacman`, `yay`, COPR, or GitHub release binaries.
-- The dry-run check runs before any presence check, so `--dry-run` always prints the exact installer line and never executes it. Real runs skip installation when `starship` is already present (idempotent) and fail nonzero if installation fails.
+- In dry-run, read-only presence checks run and the exact installer line is printed only when Starship is missing; it is never executed. Real runs skip installation when `starship` is already present (idempotent) and fail nonzero if installation fails or `starship` is still missing after the installer.
 - `curl` is already in all three package arrays, so the prerequisite comes from the package step itself.
 
 **Complete Oh My Posh removal.**
@@ -81,14 +81,14 @@ The user approved a complete plan to restore the intended CLI and behavior, with
 
 - **Starship channel:** the official starship.rs installer for every supported family. Verified from the installer source: `-y` skips prompts, and the installer self-elevates with `sudo` only when `/usr/local/bin` is not writable, so the exact pipeline works both for a normal user and as root.
 - **Rejected Starship channels:** distro package arrays (no official Fedora package exists anyway), COPR (a persistent third-party repository plus an extra dependency), and GitHub release binaries.
-- **Placement:** the installer step lives at the end of the packages layer; the terminal layer only configures.
+- **Placement:** the installer step lives in the terminal layer together with shell selection, Atuin, and `chsh`; the packages layer no longer installs Starship.
 - **`dev` scoping:** placeholder now, wired into the default install; its stack is deliberately undefined (“do not invent the stack yet”).
-- **Names:** command names come from the approved CLI; existing script file names are kept inside `modules/` (`install_apps.sh` remains the `packages` layer and `terminal_themes.sh` configures Starship).
+- **Names:** command names come from the approved CLI; existing script file names are kept inside `modules/` (`install_apps.sh` remains the `packages` layer and `terminal_themes.sh` implements the terminal stack).
 - **CLI extras:** `-v`/`--version` is kept (the original CLI had it); `list` is dropped; old group commands and `install <group>` arguments are removed.
 - **GNOME order:** the existing relative order is kept; the spec's example listing was treated as illustrative.
 - **Alias source of truth:** definitions are embedded in the aliases module (robust, no parsing); `additions/shell_conf` becomes legacy reference data. The remote-execution `terminal-theme` alias is not migrated (P3-T02).
-- **Terminal guards:** real runs fail clearly with a “run ./setup packages first” message if Starship is missing; the dry-run branch prints planned work before any presence check.
-- **`chsh` → bash and Atuin:** retained.
+- **Terminal guards:** real runs install Starship when missing (official installer) and fail nonzero with a clear message if the installer leaves it missing; dry-run performs only read-only presence checks and prints would-run lines.
+- **`chsh` and Atuin:** retained; `chsh` targets the selected shell instead of always bash.
 - **Bookmarks rerun:** the `~/Github` sidebar line gets an existence guard so reruns do not duplicate it.
 - **Roadmap alignment:** the P3-T02 Oh My Posh reference is updated to Starship as part of recording this plan (authorized by the same instruction that directed updating this file).
 
@@ -98,13 +98,13 @@ All validation is sandboxed: fake `HOME`, PATH tripwire commands, `OS_RELEASE_FI
 
 1. `bash -n` passes for `setup`, `lib/common.sh`, and every `modules/*.sh`.
 2. `help`, `-h`, and `--help` exit 0 with commands and options sections; `version` and `-v` exit 0; invalid commands (`bogus`, `list`, `all`, `install_apps`, the empty string) exit nonzero with a usage hint on stderr.
-3. Dry-run matrix: every command with `--dry-run` in both positions exits 0, prints would-run lines including the exact `curl -sS https://starship.rs/install.sh | sh -s -- -y` line from the packages layer, triggers no mutating tripwire commands (`sudo`, `dnf`, `apt-get`, `pacman`, `yay`, `wget`, `curl`, `chsh`, `locale-gen`, `localectl`, `gsettings`, install-mode `flatpak`), and leaves the sandbox HOME untouched.
+3. Dry-run matrix: every command with `--dry-run` in both positions exits 0, prints would-run lines including the exact `curl -sS https://starship.rs/install.sh | sh -s -- -y` line from the terminal layer, triggers no mutating tripwire commands (`sudo`, `dnf`, `apt-get`, `pacman`, `yay`, `wget`, `curl`, `chsh`, `locale-gen`, `localectl`, `gsettings`, install-mode `flatpak`), and leaves the sandbox HOME untouched.
 4. `./setup --dry-run` output is identical to `./setup install --dry-run`.
 5. Desktop scenarios: `XDG_CURRENT_DESKTOP=GNOME` includes all seven GNOME steps; Hyprland, KDE, and empty desktop values run normal steps only plus the skip line; the detected environment is printed.
 6. Language scenarios: piped input → English; pseudoterminal with `2` → Arabic; pseudoterminal with no input → English after about 10 seconds; invalid input → English; unreadable or foreign `OS_RELEASE_FILE` → nonzero with stderr.
-7. Package matrix: Fedora, Debian, and Arch `OS_RELEASE_FILE` substitutions produce the correct family commands; `yay` and `pacman` never appear off-Arch; the official Starship line appears for all three; Starship is absent from all three arrays.
+7. Package matrix: Fedora, Debian, and Arch `OS_RELEASE_FILE` substitutions produce the correct family commands; `yay` and `pacman` never appear off-Arch; Starship is absent from all three arrays and packages output contains no Starship line.
 8. Aliases: two runs against a fake HOME leave exactly one marker pair and preserve pre-existing user content; zsh and fish stubs on PATH receive their own blocks; dry-run writes nothing.
-9. Terminal: contains the three exact init strings and no installation logic; `terminal` still dispatches Atuin; no Oh My Posh state exists.
+9. Terminal: selects a shell, installs the selected shell/Atuin/Starship when missing, appends only the selected shell's exact init strings, and changes the default shell only when needed; no Oh My Posh state exists.
 10. `grep -RniE 'oh-my-pos[h]|poshtheme[s]' .` returns no matches; a supplementary case-insensitive `Oh My Posh` scan finds nothing outside git history.
 11. Failure propagation: a stubbed required module failure exits nonzero, names the failed step, and prints no success message; `dev` exits 0 with its placeholder message in both modes.
 12. `git status` shows only intended paths (`setup`, `lib/`, `modules/`, `README.md`, `additions/shell_conf`, plus the authorized `AGENTS.md` and `ROADMAP.md` recording).

@@ -264,20 +264,5 @@ else
     esac
 fi
 
-# Starship: official installer (the only Starship install path)
-STARSHIP_INSTALL_CMD='curl -sS https://starship.rs/install.sh | sh -s -- -y'
-if [ "${SETUP_DRY_RUN:-0}" = "1" ]; then
-    echo "would run: $STARSHIP_INSTALL_CMD"
-elif command -v starship >/dev/null 2>&1; then
-    echo "Starship is already installed ($(starship --version 2>/dev/null | head -n1))."
-else
-    echo "Installing Starship (official installer)..."
-    if ! sh -c "$STARSHIP_INSTALL_CMD"; then
-        echo "Error: Starship installation failed (official installer)." >&2
-        exit 1
-    fi
-    echo "Starship installed."
-fi
-
-echo -e "\nAll system, Flatpak, Chrome, VS Code, and Starship steps processed.\n"
+echo -e "\nAll system, Flatpak, Chrome, and VS Code steps processed.\n"
 echo -e "\n#################### Done! ####################"

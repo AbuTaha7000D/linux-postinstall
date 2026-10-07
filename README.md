@@ -20,7 +20,7 @@ This script automates the initial setup and configuration of a Linux system, str
 - **System Configuration:**
   - Sets the system language to English (US) or Arabic, with a 10-second interactive prompt.
   - Installs fonts for improved visual appearance.
-  - Configures the terminal (Atuin and the Starship prompt for Bash, Zsh, and Fish).
+  - Configures the terminal: selects your default shell (Bash, Zsh, or Fish), installs it if missing, and configures Atuin and Starship for that shell.
   - Sets up aliases for common commands as a managed block in your shell configuration.
   - Configures custom keyboard shortcuts.
   - Sets favorite applications in the GNOME Shell dock (if applicable).
@@ -63,7 +63,7 @@ Debian-family support expects Debian 13 (trixie) or newer, or Ubuntu 25.10 or ne
     - `language`     : Set system language (English/Arabic, 10-second prompt)
     - `fonts`        : Install user fonts from additions/fonts
     - `aliases`      : Write the managed alias block to Bash (and Zsh/Fish when present)
-    - `terminal`     : Configure shell startup (chsh, Atuin, Starship init)
+    - `terminal`     : Select the default shell (Bash/Zsh/Fish), install it if missing, configure Atuin and Starship for it, and set it as the default shell (chsh)
     - `dev`          : Development environment module (placeholder)
     - `gnome`        : Run the GNOME group (wallpaper, themes, icons/cursors, favorites, shortcuts, extensions)
     - `shortcuts`    : Add custom GNOME keyboard shortcuts

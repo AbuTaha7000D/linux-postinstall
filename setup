@@ -24,7 +24,7 @@ usage() {
     echo
     echo "Commands:"
     echo "  install      Run all setup steps (recommended; same as no arguments)"
-    echo "  terminal     Configure the terminal (Atuin and Starship initialization)"
+    echo "  terminal     Select the default shell and configure Atuin and Starship for it"
     echo "  aliases      Set the project aliases in shell configuration files"
     echo "  packages     Install system packages, Flatpaks, and vendor applications"
     echo "  language     Set system language (English/Arabic)"
@@ -74,7 +74,6 @@ cmd_install() {
     run_step "$SETUP_DIR/modules/change_language.sh" "language"
     run_step "$SETUP_DIR/modules/install_fonts.sh" "fonts"
     run_step "$SETUP_DIR/modules/set_aliases.sh" "aliases"
-    run_step "$SETUP_DIR/modules/install_atuin.sh" "install_atuin"
     run_step "$SETUP_DIR/modules/terminal_themes.sh" "terminal_themes"
     run_step "$SETUP_DIR/modules/dev.sh" "dev"
 
@@ -142,7 +141,6 @@ main() {
                 run_step "$SETUP_DIR/modules/set_aliases.sh" "aliases"
                 ;;
             terminal)
-                run_step "$SETUP_DIR/modules/install_atuin.sh" "install_atuin"
                 run_step "$SETUP_DIR/modules/terminal_themes.sh" "terminal_themes"
                 ;;
             dev)
