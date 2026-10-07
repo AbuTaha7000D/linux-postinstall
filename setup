@@ -1,145 +1,176 @@
-#!/usr/bin/env bash
-# setup - personal post-install script.
-#
-#   ./setup                     install packages, then run every module
-#   ./setup install             same
-#   ./setup install terminal    install packages, then run only these modules
-#   ./setup packages            install packages and Flatpaks only
-#   ./setup modules             run every module, install no packages
-#   ./setup list                list available modules
-#   ./setup help                this text
-#
-# Options:
-#   --dry-run    print every command instead of running it; change nothing
-#   -h --help    this text
-#
-# Order of work: detect the distro, install config/packages.txt (plus
-# config/packages-<family>.txt when present) and config/flatpak.txt, then run
-# each module named on the command line, or the ones in config/modules.txt.
-#
-# A failing module is reported and the rest still run; the exit status is 1 if
-# any step failed.
+#!/bin/bash
 
-set -euo pipefail
+################################################################################
+# Modular Linux Postinstall Setup Script
+# Parses the CLI, runs the fixed module order from modules/, and fails fast.
+################################################################################
 
-FS_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-export FS_ROOT
+# Version
+VERSION="v2.1.1"
 
-source "$FS_ROOT/lib/common.sh"
-source "$FS_ROOT/lib/packages.sh"
-source "$FS_ROOT/lib/config.sh"
-source "$FS_ROOT/lib/modules.sh"
+SETUP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/common.sh
+source "$SETUP_DIR/lib/common.sh"
 
-_tmpdirs=()
-cleanup() {
-    local d
-    for d in "${_tmpdirs[@]+"${_tmpdirs[@]}"}"; do
-        rm -rf -- "$d"
-    done
-}
-trap cleanup EXIT
+# Check if the script is run as root
+if [ "$EUID" -eq 0 ]; then
+    echo "This script should not be run as root. Please run it as a regular user."
+    exit 1
+fi
 
+# Print usage/help
 usage() {
-    sed -n '2,14p' "$0" | sed 's/^#\{1,\} \{0,1\}//'
+    echo "Usage: $0 [--dry-run] [command]"
+    echo
+    echo "Commands:"
+    echo "  install      Run all setup steps (recommended; same as no arguments)"
+    echo "  terminal     Configure the terminal (Atuin and Starship initialization)"
+    echo "  aliases      Set the project aliases in shell configuration files"
+    echo "  packages     Install system packages, Flatpaks, and vendor applications"
+    echo "  language     Set system language (English/Arabic)"
+    echo "  fonts        Install user fonts from additions/fonts"
+    echo "  dev          Set up the development environment"
+    echo "  gnome        Run the GNOME desktop configuration steps"
+    echo "  shortcuts    Add custom GNOME keyboard shortcuts"
+    echo "  favorites    Set favorite apps in the GNOME dock"
+    echo "  extensions   Open recommended GNOME extensions in your browser"
+    echo "  help         Show this help message"
+    echo "  version      Show version"
+    echo
+    echo "Options:"
+    echo "  --dry-run          Print the commands that would run, without running them"
+    echo "  -h, --help         Show this help message"
+    echo "  -v, --version      Show version"
 }
 
-do_packages() {
-    local -a files=()
-    mapfile -t files < <(package_files)
-    install_packages "${files[@]}" || return 1
-    if [[ -f "$FS_ROOT/config/flatpak.txt" ]]; then
-        install_flatpaks "$FS_ROOT/config/flatpak.txt"
+run_step() {
+    local script="$1"
+    local step_name="$2"
+    bash "$script"
+    local rc=$?
+    if [ $rc -ne 0 ]; then
+        echo "Error: Failed at step '$step_name' ($script) with exit code $rc" >&2
+        exit $rc
     fi
 }
 
-do_modules() {
-    if (($# > 0)); then
-        run_modules "$@"
-        return
-    fi
-    local -a ids=()
-    mapfile -t ids < <(default_modules)
-    ((${#ids[@]} > 0)) || die "no modules configured in config/modules.txt"
-    run_modules "${ids[@]}"
+# GNOME-only steps, in order
+run_gnome_steps() {
+    run_step "$SETUP_DIR/modules/set_wallpaper.sh" "set_wallpaper"
+    run_step "$SETUP_DIR/modules/gnome_themes.sh" "gnome_themes"
+    run_step "$SETUP_DIR/modules/icons_and_cursors.sh" "icons_and_cursors"
+    run_step "$SETUP_DIR/modules/set_favorite_apps.sh" "set_favorite_apps"
+    run_step "$SETUP_DIR/modules/add_custom_shortcut.sh" "add_custom_shortcut"
+    run_step "$SETUP_DIR/modules/gnome_extensions.sh" "gnome_extensions"
 }
 
+# Full setup: normal steps always, GNOME steps only on a GNOME desktop
+cmd_install() {
+    local de
+    de=$(desktop_environment)
+    echo "Desktop environment: $de"
+
+    run_step "$SETUP_DIR/modules/install_apps.sh" "packages"
+    run_step "$SETUP_DIR/modules/change_language.sh" "language"
+    run_step "$SETUP_DIR/modules/install_fonts.sh" "fonts"
+    run_step "$SETUP_DIR/modules/set_aliases.sh" "aliases"
+    run_step "$SETUP_DIR/modules/install_atuin.sh" "install_atuin"
+    run_step "$SETUP_DIR/modules/terminal_themes.sh" "terminal_themes"
+    run_step "$SETUP_DIR/modules/dev.sh" "dev"
+
+    if [ "$de" = "gnome" ]; then
+        run_gnome_steps
+    else
+        echo "Skipping GNOME steps (desktop: $de)."
+    fi
+}
+
+# Main execution
 main() {
-    local cmd="all"
-    local -a ids=()
+    local cmd="" cmd_seen=0 arg
 
-    while (($# > 0)); do
-        case "$1" in
-        -h | --help)
-            usage
-            return 0
-            ;;
-        --dry-run)
-            FS_DRY_RUN=1
-            ;;
-        -*)
-            usage >&2
-            die "unknown option: $1"
-            ;;
-        *)
-            cmd="$1"
-            shift
-            ids+=("$@")
-            break
-            ;;
+    # Parse every argument before running any setup step.
+    # No arguments and 'install' both run the full setup.
+    # An empty-string argument stays invalid.
+    for arg in "$@"; do
+        case "$arg" in
+            --dry-run)
+                export SETUP_DRY_RUN=1
+                ;;
+            help|-h|--help)
+                usage
+                exit 0
+                ;;
+            version|-v|--version)
+                echo "setup $VERSION"
+                exit 0
+                ;;
+            -*)
+                echo "Error: Unknown option '$arg'." >&2
+                echo "For more information, run '$0 help'." >&2
+                exit 1
+                ;;
+            *)
+                if [ "$cmd_seen" -eq 1 ]; then
+                    echo "Error: Unexpected argument '$arg'." >&2
+                    echo "For more information, run '$0 help'." >&2
+                    exit 1
+                fi
+                cmd="$arg"
+                cmd_seen=1
+                ;;
         esac
-        shift
     done
 
-    case "$cmd" in
-    list)
-        ((${#ids[@]} == 0)) || die "list takes no module names"
-        list_modules
-        return 0
-        ;;
-    help | "")
-        ((${#ids[@]} == 0)) || die "help takes no arguments"
-        usage
-        return 0
-        ;;
-    install | all | modules)
-        if ((${#ids[@]} > 0)); then
-            validate_modules "${ids[@]}"
-        fi
-        ;;
-    packages)
-        ((${#ids[@]} == 0)) || die "packages takes no module names"
-        ;;
-    *)
-        usage >&2
-        die "unknown command: $cmd"
-        ;;
-    esac
-
-    if ((FS_DRY_RUN)); then
-        log_info "DRY RUN: nothing will be changed"
-    fi
-    detect_distro
-
-    local rc=0
-    case "$cmd" in
-    install | all)
-        do_packages || rc=1
-        do_modules "${ids[@]+"${ids[@]}"}" || rc=1
-        ;;
-    packages)
-        do_packages || rc=1
-        ;;
-    modules)
-        do_modules "${ids[@]+"${ids[@]}"}" || rc=1
-        ;;
-    esac
-
-    if ((rc == 0)); then
-        log_info "done"
+    if [ "$cmd_seen" -eq 0 ]; then
+        cmd_install
     else
-        log_error "finished with errors (rc=$rc)"
+        case "$cmd" in
+            install)
+                cmd_install
+                ;;
+            packages)
+                run_step "$SETUP_DIR/modules/install_apps.sh" "packages"
+                ;;
+            language)
+                run_step "$SETUP_DIR/modules/change_language.sh" "language"
+                ;;
+            fonts)
+                run_step "$SETUP_DIR/modules/install_fonts.sh" "fonts"
+                ;;
+            aliases)
+                run_step "$SETUP_DIR/modules/set_aliases.sh" "aliases"
+                ;;
+            terminal)
+                run_step "$SETUP_DIR/modules/install_atuin.sh" "install_atuin"
+                run_step "$SETUP_DIR/modules/terminal_themes.sh" "terminal_themes"
+                ;;
+            dev)
+                run_step "$SETUP_DIR/modules/dev.sh" "dev"
+                ;;
+            gnome)
+                run_gnome_steps
+                ;;
+            shortcuts)
+                run_step "$SETUP_DIR/modules/add_custom_shortcut.sh" "add_custom_shortcut"
+                ;;
+            favorites)
+                run_step "$SETUP_DIR/modules/set_favorite_apps.sh" "set_favorite_apps"
+                ;;
+            extensions)
+                run_step "$SETUP_DIR/modules/gnome_extensions.sh" "gnome_extensions"
+                ;;
+            *)
+                echo "Error: Invalid command '$cmd'." >&2
+                echo "For more information, run '$0 help'." >&2
+                exit 1
+                ;;
+        esac
     fi
-    return "$rc"
+
+    echo -e "Installation complete.\n"
+    exit 0
 }
 
+# Run the main function
 main "$@"

@@ -1,4 +1,0 @@
-# Extra packages on Debian/Ubuntu-likes.
-gnupg
-fastfetch
-python3-pip

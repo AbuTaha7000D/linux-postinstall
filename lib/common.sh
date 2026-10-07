@@ -1,110 +1,96 @@
-#!/usr/bin/env bash
-# lib/common.sh - logging, command execution, sudo, dry-run.
-#
-# Every command that changes the system goes through run() or run_root().
-# Both refuse to continue when the command fails: a failed install must never
-# be reported as a successful setup. FS_DRY_RUN=1 turns them into print-only.
-#
-# Sourced by setup; not executable on its own.
+#!/bin/bash
+# Shared helpers for setup and modules
 
-FS_ROOT="${FS_ROOT:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)}"
-FS_DRY_RUN="${FS_DRY_RUN:-0}"
+distribution(){
+    local file="${OS_RELEASE_FILE:-/etc/os-release}"
+    local line word dtype="unknown" id="" id_like=""
+    local -a like_words=()
 
-case "$FS_DRY_RUN" in 0 | 1) ;; *) printf 'error: FS_DRY_RUN must be 0 or 1\n' >&2; exit 1 ;; esac
+    if [ ! -r "$file" ]; then
+        echo "$dtype"
+        return 0
+    fi
 
-_ts() { printf '[%s]' "$(date +%H:%M:%S)"; }
+    while IFS= read -r line || [ -n "$line" ]; do
+        case "$line" in
+            ID_LIKE=*) id_like="${line#ID_LIKE=}" ;;
+            ID=*) id="${line#ID=}" ;;
+        esac
+    done < "$file"
 
-log_info() { printf '%s %s\n' "$(_ts)" "$*"; }
-log_warn() { printf '%s WARNING: %s\n' "$(_ts)" "$*" >&2; }
-log_error() { printf '%s ERROR: %s\n' "$(_ts)" "$*" >&2; }
+    id="${id#\"}"
+    id="${id%\"}"
+    id="${id#\'}"
+    id="${id%\'}"
+    id_like="${id_like#\"}"
+    id_like="${id_like%\"}"
+    id_like="${id_like#\'}"
+    id_like="${id_like%\'}"
 
-die() {
-    log_error "$*"
-    exit 1
+    case "$id" in
+        fedora|rhel|centos) dtype="redhat" ;;
+        ubuntu|debian) dtype="debian" ;;
+        arch|cachyos) dtype="arch" ;;
+        *)
+            read -ra like_words <<< "$id_like"
+            for word in "${like_words[@]}"; do
+                case "$word" in
+                    fedora|rhel|centos) dtype="redhat"; break ;;
+                    ubuntu|debian) dtype="debian"; break ;;
+                    arch|cachyos) dtype="arch"; break ;;
+                esac
+            done
+            ;;
+    esac
+
+    echo "$dtype"
 }
 
-have() { command -v "$1" >/dev/null 2>&1; }
+# Print the detected desktop environment as a lowercase token.
+# Uses XDG_CURRENT_DESKTOP (colon-separated list) with DESKTOP_SESSION fallback.
+desktop_environment(){
+    local raw="${XDG_CURRENT_DESKTOP:-}" session="${DESKTOP_SESSION:-}"
+    local entry lower
 
-_shown() {
-    local out="" a
-    for a in "$@"; do
-        printf -v a '%q' "$a"
-        out+="$a "
+    local IFS=':'
+    for entry in $raw; do
+        lower=$(printf '%s' "$entry" | tr '[:upper:]' '[:lower:]')
+        case "$lower" in
+            gnome) echo "gnome"; return 0 ;;
+            hyprland) echo "hyprland"; return 0 ;;
+            kde) echo "kde"; return 0 ;;
+            xfce) echo "xfce"; return 0 ;;
+            sway) echo "sway"; return 0 ;;
+        esac
     done
-    printf '%s' "${out% }"
+
+    lower=$(printf '%s' "$session" | tr '[:upper:]' '[:lower:]')
+    case "$lower" in
+        *gnome*) echo "gnome" ;;
+        *hypr*) echo "hyprland" ;;
+        *kde*) echo "kde" ;;
+        *) echo "unknown" ;;
+    esac
 }
 
-# run <label> <cmd...> -- run a command; die unless it exits 0.
-run() {
-    local label="$1"
-    shift
-    if ((FS_DRY_RUN)); then
-        log_info "would $label: $(_shown "$@")"
+# Run a command, or print it when SETUP_DRY_RUN=1.
+run(){
+    if [ "${SETUP_DRY_RUN:-0}" = "1" ]; then
+        printf 'would run:'
+        printf ' %q' "$@"
+        printf '\n'
         return 0
     fi
-    log_info "$label: $(_shown "$@")"
-    "$@" || die "$label failed: $(_shown "$@")"
+    "$@"
 }
 
-# run_root <label> <cmd...> -- run a command as root.
-# Prompts for a password if sudo wants one. Dry-run never calls sudo.
-run_root() {
-    local label="$1"
-    shift
-    if ((FS_DRY_RUN)); then
-        log_info "would $label: sudo $(_shown "$@")"
+# Run a command with sudo, or print it when SETUP_DRY_RUN=1.
+run_root(){
+    if [ "${SETUP_DRY_RUN:-0}" = "1" ]; then
+        printf 'would run: sudo'
+        printf ' %q' "$@"
+        printf '\n'
         return 0
     fi
-    if ((EUID == 0)); then
-        run "$label" "$@"
-        return
-    fi
-    have sudo || die "$label needs root privileges and sudo is not installed"
-    log_info "$label: sudo $(_shown "$@")"
-    sudo "$@" || die "$label failed: sudo $(_shown "$@")"
-}
-
-# read_list <file> -- print the non-blank, non-comment lines of a config file.
-#
-# Trailing whitespace is trimmed. Leading whitespace is kept, because some of
-# these files are fed to programs that care about indentation (gitconfig).
-# Indented comments and indented blank lines are still skipped.
-read_list() {
-    local file="$1" line trimmed
-    [[ -f "$file" ]] || die "config file not found: $file"
-    [[ -r "$file" ]] || die "config file not readable: $file"
-    while IFS= read -r line || [[ -n "$line" ]]; do
-        trimmed="${line#"${line%%[![:space:]]*}"}"
-        trimmed="${trimmed%"${trimmed##*[![:space:]]}"}"
-        [[ -z "$trimmed" || "$trimmed" == '#'* ]] && continue
-        printf '%s\n' "${line%"${line##*[![:space:]]}"}"
-    done <"$file"
-}
-
-# write_atomic <file> -- replace the file with stdin, via a temp file + rename.
-write_atomic() {
-    local file="$1" dir tmp mode=0644
-
-    if ((FS_DRY_RUN)); then
-        log_info "would write: $file"
-        return 0
-    fi
-    # Follow a symlink, so the file it points at is updated instead of being
-    # replaced by a regular file, and keep its mode.
-    if [[ -L "$file" ]]; then
-        file="$(readlink -f -- "$file")" || die "cannot resolve $1"
-    fi
-    [[ -e "$file" ]] && mode="$(stat -c %a -- "$file")"
-    dir="$(dirname -- "$file")"
-    run "create dir" mkdir -p -- "$dir"
-    tmp="$(mktemp -- "$dir/.postinstall.XXXXXX")" || die "cannot create temp file in $dir"
-    cat >"$tmp" || {
-        rm -f -- "$tmp"
-        die "cannot write $tmp"
-    }
-    chmod "$mode" -- "$tmp"
-    mv -f -- "$tmp" "$file" || {
-        rm -f -- "$tmp"
-        die "cannot replace $file"
-    }
+    sudo "$@"
 }

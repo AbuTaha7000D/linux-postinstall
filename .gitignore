@@ -1,21 +1,29 @@
-# Editor and OS noise
+# Logs and temporary files
+*.log
+*.tmp
+
+# Build files and caches
+*.bin
+*.o
+*.out
+
+# Downloaded Packages
+*.deb
+*.rpm
+
+# System files
 .DS_Store
-*~
-*.swp
+.Thumbs.db
+.Trash-*
+.Spotlight-V100
+.fseventsd
+
+# Ignore IDE-specific directories
 .vscode/
 .idea/
 
-# Scratch space
-*.log
-*.tmp
-downloads/
-.cache/
-
-# Wallpaper images are personal and not shared; the directory is tracked so
-# the gnome module has somewhere to look.
-assets/wallpaper/*
-!assets/wallpaper/.gitkeep
-
-# Runtime backups written by the locale and dns modules
-.dns-backup
-.locale-backup
+# IDE
+*.swp
+*~
+*.pyc
+__pycache__/
