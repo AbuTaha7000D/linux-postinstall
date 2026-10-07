@@ -84,7 +84,37 @@ run(){
     "$@"
 }
 
-# Run a command with sudo, or print it when SETUP_DRY_RUN=1.
+# Ensure sudo credentials before a privileged operation. Lazy: only called
+# from run_root, so authentication happens exactly when a privileged command
+# is about to run. Uses native credential caching: a non-interactive probe
+# first (also refreshes a still-valid timestamp), then a single interactive
+# sudo -v if the probe fails. On success after prompting, setup's marker file
+# is touched so setup can clean up only the credentials this run created.
+# Dry-run never touches credentials. Failure prints once and returns nonzero;
+# no retry loop, so a cancelled prompt cannot hang the run.
+ensure_sudo(){
+    if [ "${SETUP_DRY_RUN:-0}" = "1" ]; then
+        return 0
+    fi
+    if [ "${SUDO_AUTH_FAILED:-0}" = "1" ]; then
+        return 1
+    fi
+    if sudo -n -v >/dev/null 2>&1; then
+        return 0
+    fi
+    if sudo -v; then
+        if [ -n "${SETUP_SUDO_MARKER:-}" ]; then
+            touch "$SETUP_SUDO_MARKER" 2>/dev/null || true
+        fi
+        return 0
+    fi
+    SUDO_AUTH_FAILED=1
+    echo "Error: sudo authentication failed." >&2
+    return 1
+}
+
+# Run a command with sudo, or print it when SETUP_DRY_RUN=1. The single path
+# for privileged operations: authenticate lazily, then run through sudo.
 run_root(){
     if [ "${SETUP_DRY_RUN:-0}" = "1" ]; then
         printf 'would run: sudo'
@@ -92,5 +122,6 @@ run_root(){
         printf '\n'
         return 0
     fi
+    ensure_sudo || return 1
     sudo "$@"
 }

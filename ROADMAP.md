@@ -38,7 +38,8 @@ The user approved a complete plan to restore the intended CLI and behavior, with
 **Terminal behavior.**
 
 - The terminal command owns the full terminal stack: shell selection, ensuring the selected shell, Atuin, and Starship are installed, configuring Atuin and Starship for the selected shell, and making it the default shell via `chsh`.
-- `chsh` targets the user-selected shell (Bash, Zsh, or Fish), replacing the previous unconditional `chsh` → bash.
+- The selected shell's install is verified with `command -v`; when it cannot be verified (package-manager failure, or a successful install that left the shell missing), the module warns, falls back to Bash before any configuration or `chsh`, and configures Bash instead. Dry-run prints would-run lines and never verifies or falls back on simulated results.
+- `chsh` targets the user-selected shell (Bash, Zsh, or Fish), replacing the previous unconditional `chsh` → bash. It runs through `run_root` as root with an explicit username, so it never prompts interactively.
 - Starship and Atuin initialization are appended with an exact-line guard to the selected shell's rc file only (`~/.bashrc`, `~/.zshrc`, or `~/.config/fish/config.fish`); nothing else in user shell configuration is touched.
 - The terminal module owns the Starship installation logic (official installer only); the packages layer contains none.
 
@@ -89,6 +90,8 @@ The user approved a complete plan to restore the intended CLI and behavior, with
 - **Alias source of truth:** definitions are embedded in the aliases module (robust, no parsing); `additions/shell_conf` becomes legacy reference data. The remote-execution `terminal-theme` alias is not migrated (P3-T02).
 - **Terminal guards:** real runs install Starship when missing (official installer) and fail nonzero with a clear message if the installer leaves it missing; dry-run performs only read-only presence checks and prints would-run lines.
 - **`chsh` and Atuin:** retained; `chsh` targets the selected shell instead of always bash.
+- **Centralized sudo authentication:** every privileged command goes through `run_root`, which authenticates lazily via `ensure_sudo` — a native `sudo -n -v` probe (credential check plus timestamp refresh) and, only when that fails, one interactive `sudo -v`. `setup` exports a marker file only after a successful interactive `sudo -v` and an EXIT trap runs `sudo -k` only when that marker exists, on both success and failure, so a credential timestamp that predates the run is never cleared. Dry-run never invokes or authenticates sudo.
+- **Shell verification and fallback:** a selected Zsh/Fish install is verified after the package-manager attempt; failure of any kind (including sudo authentication failure at that stage) is recovered with a warning and a fallback to Bash before configuration or `chsh`. Authentication failure in non-recoverable steps (`language`, `chsh`) still hard-fails.
 - **Bookmarks rerun:** the `~/Github` sidebar line gets an existence guard so reruns do not duplicate it.
 - **Roadmap alignment:** the P3-T02 Oh My Posh reference is updated to Starship as part of recording this plan (authorized by the same instruction that directed updating this file).
 
@@ -104,7 +107,7 @@ All validation is sandboxed: fake `HOME`, PATH tripwire commands, `OS_RELEASE_FI
 6. Language scenarios: piped input → English; pseudoterminal with `2` → Arabic; pseudoterminal with no input → English after about 10 seconds; invalid input → English; unreadable or foreign `OS_RELEASE_FILE` → nonzero with stderr.
 7. Package matrix: Fedora, Debian, and Arch `OS_RELEASE_FILE` substitutions produce the correct family commands; `yay` and `pacman` never appear off-Arch; Starship is absent from all three arrays and packages output contains no Starship line.
 8. Aliases: two runs against a fake HOME leave exactly one marker pair and preserve pre-existing user content; zsh and fish stubs on PATH receive their own blocks; dry-run writes nothing.
-9. Terminal: selects a shell, installs the selected shell/Atuin/Starship when missing, appends only the selected shell's exact init strings, and changes the default shell only when needed; no Oh My Posh state exists.
+9. Terminal: selects a shell, installs the selected shell/Atuin/Starship when missing, verifies the selected shell and falls back to Bash when it cannot be verified (no configuration or `chsh` for the failed shell), appends only the selected shell's exact init strings, and changes the default shell only when needed; no Oh My Posh state exists.
 10. `grep -RniE 'oh-my-pos[h]|poshtheme[s]' .` returns no matches; a supplementary case-insensitive `Oh My Posh` scan finds nothing outside git history.
 11. Failure propagation: a stubbed required module failure exits nonzero, names the failed step, and prints no success message; `dev` exits 0 with its placeholder message in both modes.
 12. `git status` shows only intended paths (`setup`, `lib/`, `modules/`, `README.md`, `additions/shell_conf`, plus the authorized `AGENTS.md` and `ROADMAP.md` recording).

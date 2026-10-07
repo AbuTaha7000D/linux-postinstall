@@ -20,7 +20,7 @@ Shared helpers (distribution/family detection, desktop-environment detection, `r
 - `set_aliases.sh` — Write the managed alias block (`# >>> linux-postinstall aliases >>>` … `# <<< linux-postinstall aliases <<<`) to Bash (and Zsh/Fish when present)
 - `set_favorite_apps.sh` — Set favorite apps in the GNOME dock
 - `set_wallpaper.sh` — Set GNOME wallpaper from additions/wallpaper.jpg
-- `terminal_themes.sh` — Terminal stack: select the default shell, install the selected shell/Atuin/Starship when missing, configure the selected shell, and change the default shell with `chsh`
+- `terminal_themes.sh` — Terminal stack: select the default shell, install and verify the selected shell when missing (falling back to Bash when it cannot be verified), install Atuin and Starship when missing, configure the selected shell, and change the default shell with `chsh` (non-interactive, via `run_root`)
 
 ## Usage
 

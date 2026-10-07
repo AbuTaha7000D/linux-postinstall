@@ -1,6 +1,7 @@
 #!/bin/bash
-# Terminal stack: select the default shell, install the selected shell and
-# Atuin/Starship when missing, configure the selected shell, then chsh to it.
+# Terminal stack: select the default shell, install and verify the selected
+# shell (falling back to Bash when it cannot be verified), install Atuin and
+# Starship when missing, configure the selected shell, then chsh to it.
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -13,10 +14,10 @@ fi
 
 STARSHIP_INSTALL_CMD='curl -sS https://starship.rs/install.sh | sh -s -- -y'
 
-# Stage 1: shell selection. Interactive with a 5-second default; non-TTY and
-# --dry-run skip the menu and use Bash without blocking.
+# Stage 1: shell selection. Interactive with a 5-second default; non-TTY
+# input skips the menu and uses Bash without blocking.
 shell_key="bash"
-if [ "$DRY" -eq 0 ] && [ -t 0 ]; then
+if [ -t 0 ]; then
     echo "Choose your default shell:"
     echo
     echo "  1) Bash"
@@ -35,48 +36,57 @@ if [ "$DRY" -eq 0 ] && [ -t 0 ]; then
     esac
 fi
 
-case "$shell_key" in
-    zsh)
-        shell_name="Zsh"
-        shell_bin="zsh"
-        rc_file="$HOME/.zshrc"
-        atuin_init='eval "$(atuin init zsh)"'
-        starship_init='eval "$(starship init zsh)"'
-        ;;
-    fish)
-        shell_name="Fish"
-        shell_bin="fish"
-        rc_file="$HOME/.config/fish/config.fish"
-        atuin_init='atuin init fish | source'
-        starship_init='starship init fish | source'
-        ;;
-    *)
-        shell_name="Bash"
-        shell_bin="bash"
-        rc_file="$HOME/.bashrc"
-        atuin_init='eval "$(atuin init bash)"'
-        starship_init='eval "$(starship init bash)"'
-        ;;
-esac
+# Map shell_key to the shell name, binary, rc file, and init lines. Called
+# once after selection and again if the selected shell falls back to Bash.
+apply_shell_selection() {
+    case "$shell_key" in
+        zsh)
+            shell_name="Zsh"
+            shell_bin="zsh"
+            rc_file="$HOME/.zshrc"
+            atuin_init='eval "$(atuin init zsh)"'
+            starship_init='eval "$(starship init zsh)"'
+            ;;
+        fish)
+            shell_name="Fish"
+            shell_bin="fish"
+            rc_file="$HOME/.config/fish/config.fish"
+            atuin_init='atuin init fish | source'
+            starship_init='starship init fish | source'
+            ;;
+        *)
+            shell_name="Bash"
+            shell_bin="bash"
+            rc_file="$HOME/.bashrc"
+            atuin_init='eval "$(atuin init bash)"'
+            starship_init='eval "$(starship init bash)"'
+            ;;
+    esac
+}
+apply_shell_selection
 echo "Selected shell: $shell_name."
 
-# Stage 2: ensure the selected shell is installed (family package manager).
+# Stage 2: ensure the selected shell is installed (family package manager),
+# then verify it really exists. A package-manager failure or a successful
+# install that leaves the shell missing is recovered by falling back to Bash
+# before any configuration or chsh. Dry-run only prints would-run lines and
+# never verifies or falls back on simulated results.
 install_shell_package() {
     local pkg="$1" dtype
     dtype=$(distribution)
     case "$dtype" in
         redhat)
-            run_root dnf install -y "$pkg" || { echo "Error: failed to install $pkg (dnf)." >&2; return 1; }
+            run_root dnf install -y "$pkg" || { echo "Warning: failed to install $pkg (dnf)." >&2; return 1; }
             ;;
         debian)
-            run_root apt-get update || { echo "Error: failed to refresh the apt package index." >&2; return 1; }
-            run_root apt-get install -y "$pkg" || { echo "Error: failed to install $pkg (apt-get)." >&2; return 1; }
+            run_root apt-get update || { echo "Warning: failed to refresh the apt package index." >&2; return 1; }
+            run_root apt-get install -y "$pkg" || { echo "Warning: failed to install $pkg (apt-get)." >&2; return 1; }
             ;;
         arch)
-            run_root pacman -S --noconfirm "$pkg" || { echo "Error: failed to install $pkg (pacman)." >&2; return 1; }
+            run_root pacman -S --noconfirm "$pkg" || { echo "Warning: failed to install $pkg (pacman)." >&2; return 1; }
             ;;
         *)
-            echo "Error: cannot install $pkg: unsupported distribution ($dtype)." >&2
+            echo "Warning: cannot install $pkg: unsupported distribution ($dtype)." >&2
             return 1
             ;;
     esac
@@ -86,11 +96,22 @@ if [ "$shell_key" = "bash" ]; then
     echo "$shell_name is already installed."
 elif command -v "$shell_bin" >/dev/null 2>&1; then
     echo "$shell_name is already installed."
-else
-    if [ "$DRY" -eq 0 ]; then
-        echo "Installing $shell_name..."
-    fi
+elif [ "$DRY" -eq 1 ]; then
     install_shell_package "$shell_bin"
+else
+    echo "Installing $shell_name..."
+    install_shell_package "$shell_bin" || true
+    if ! command -v "$shell_bin" >/dev/null 2>&1; then
+        echo "Warning: $shell_name installation could not be verified." >&2
+        echo "Falling back to Bash."
+        shell_key="bash"
+        apply_shell_selection
+        echo "Selected shell: $shell_name."
+        if ! command -v "$shell_bin" >/dev/null 2>&1; then
+            echo "Error: bash not found after falling back." >&2
+            exit 1
+        fi
+    fi
 fi
 
 # Stage 3: ensure Atuin is installed (official installer only).
@@ -122,6 +143,9 @@ elif [ "$DRY" -eq 1 ]; then
     echo "would run: $STARSHIP_INSTALL_CMD"
 else
     echo "Installing Starship (official installer)..."
+    # The installer self-elevates for /usr/local/bin; authenticate first so
+    # the only password prompt happens at a clean point, never mid-pipeline.
+    ensure_sudo || exit 1
     if ! sh -c "$STARSHIP_INSTALL_CMD"; then
         echo "Error: Starship installation failed (official installer)." >&2
         exit 1
@@ -166,10 +190,11 @@ if [ "$login_base" = "$shell_bin" ]; then
 else
     shell_path=$(command -v "$shell_bin" 2>/dev/null) || shell_path="$shell_bin"
     if [ "$DRY" -eq 1 ]; then
-        echo "would run: chsh -s $shell_path"
+        run_root chsh -s "$shell_path" "$(id -un)"
     else
         echo "Setting $shell_name as the default shell..."
-        if ! run chsh -s "$shell_path"; then
+        # Root plus an explicit username keeps chsh non-interactive.
+        if ! run_root chsh -s "$shell_path" "$(id -un)"; then
             echo "Error: failed to change the default shell to $shell_name." >&2
             exit 1
         fi

@@ -80,7 +80,7 @@ fi
 run_root cp "$LOCALE_FILE" "$LOCALE_FILE.bak"
 echo "Backup of $LOCALE_FILE created."
 
-echo "$LANG_CONTENT" | sudo tee "$LOCALE_FILE" > /dev/null
+echo "$LANG_CONTENT" | run_root tee "$LOCALE_FILE" > /dev/null
 if command -v update-locale &> /dev/null; then
     run_root update-locale || true
 fi

@@ -54,6 +54,17 @@ run_step() {
     fi
 }
 
+# Remove sudo credentials only when this run actually created them: the
+# marker exists only after a successful interactive sudo -v, so a credential
+# timestamp that was already valid before the run is never cleared. Runs on
+# both success and failure; sudo -k never prompts.
+cleanup_sudo() {
+    if [ -n "${SETUP_SUDO_MARKER:-}" ] && [ -f "$SETUP_SUDO_MARKER" ]; then
+        sudo -k >/dev/null 2>&1 || true
+        rm -f "$SETUP_SUDO_MARKER"
+    fi
+}
+
 # GNOME-only steps, in order
 run_gnome_steps() {
     run_step "$SETUP_DIR/modules/set_wallpaper.sh" "set_wallpaper"
@@ -120,6 +131,15 @@ main() {
                 ;;
         esac
     done
+
+    # After parsing only (help/version/invalid exits never reach sudo): export
+    # the credential marker and arm cleanup. Dry-run never authenticates, so
+    # it never needs a marker either.
+    if [ "${SETUP_DRY_RUN:-0}" != "1" ]; then
+        SETUP_SUDO_MARKER="${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/setup-sudo-auth.$$"
+        export SETUP_SUDO_MARKER
+        trap cleanup_sudo EXIT
+    fi
 
     if [ "$cmd_seen" -eq 0 ]; then
         cmd_install
