@@ -1,296 +1,506 @@
-# Implementation Roadmap
-
-## Status and scope
-
-This document is the persistent implementation roadmap and future-work record. At the time this roadmap was written, the repository contained a `setup` launcher and task scripts under `scripts/`, and did not yet match the proposed `lib/`, `modules/`, and `config/` organization. Phases 1 and 2 passed their review gates, and a pre-Phase-3 cleanup pass then removed direct DNS modification and other risky leftover behavior, fixed locale failure handling and step ordering, simplified the family package lists, and made vendor and architecture checks lazy; that pass was reviewed and its gate passed. The approved restoration plan below is the current work package. Completed work is recorded through status updates and review gates rather than per-task markers.
-
-The target is a small personal rebuild tool for Fedora-, Debian-, and Arch-family systems. The roadmap does not authorize a framework, universal distro support, or unrelated features.
-
-## Approved restoration plan — 2026-10-07
-
-The user approved a complete plan to restore the intended CLI and behavior, with a Starship-based terminal stack. This section is the authoritative record of that plan. It is organized into requirements, implementation decisions, validation criteria, deferred work, and constraints, and it does not add requirements beyond what was approved. Where this section conflicts with older task text (for example the P3-T02 mention of Oh My Posh), the approved decision here wins and the task text is aligned with it.
-
-### Requirements
-
-**CLI redesign and command hierarchy.**
-
-- Commands: `install`, `terminal`, `aliases`, `packages`, `language`, `fonts`, `dev`, `gnome`, `shortcuts`, `favorites`, `extensions`, `help`, `version`.
-- Options: `--dry-run` (global, accepted in any position), `-h`/`--help`, `-v`/`--version`.
-- No arguments and `install` run the identical full setup through a single code path.
-- `help` prints structured usage with commands and options sections. Invalid commands, old command names (`all`, `install_apps`, and the other retired group names), module arguments after `install`, `list`, and unknown options fail nonzero with a usage hint on stderr.
-- `--dry-run` performs no file changes, package installs, sudo invocations, or shell-configuration changes; it prints the commands that would run, including the exact Starship installer line.
-- The existing refusal to run as root and the fail-fast step runner (named failing step, nonzero propagation, no success message after a required failure) are retained.
-
-**lib/ vs modules/ architecture.**
-
-- `scripts/` is migrated to `modules/`; shared helpers move to `lib/common.sh`.
-- `lib/common.sh` provides the dry-run-aware `run`/`run_root` helpers, distro-family detection with the existing `OS_RELEASE_FILE` seam, and desktop-environment detection.
-- `setup` keeps CLI parsing, the fixed module order, and overall failure handling.
-- The existing multi-distro package architecture (explicit family arrays, Flatpak/Flathub, yay/AUR only on Arch, vendor Chrome/VS Code with lazy architecture checks) stays intact. System package installation stays in the packages layer; Starship is installed by the terminal layer; modules do not duplicate the family package lists.
-
-**Install flow and GNOME/non-GNOME behavior.**
-
-- Normal steps, always: packages → language → fonts → aliases → terminal → dev.
-- GNOME steps, only when the detected desktop is GNOME: wallpaper → gnome_themes → icons_and_cursors → favorites → shortcuts → extensions. Non-GNOME desktops print one clear skip line; the normal steps still run.
-- Detection uses `XDG_CURRENT_DESKTOP` (colon-separated, case-insensitive) with `DESKTOP_SESSION` fallback, and the detected environment is printed.
-- Explicit `./setup gnome` runs the GNOME group on any desktop; individual modules keep their own guards.
-
-**Terminal behavior.**
-
-- The terminal command owns the full terminal stack: shell selection, ensuring the selected shell, Atuin, and Starship are installed, configuring Atuin and Starship for the selected shell, and making it the default shell via `chsh`.
-- The selected shell's install is verified with `command -v`; when it cannot be verified (package-manager failure, or a successful install that left the shell missing), the module warns, falls back to Bash before any configuration or `chsh`, and configures Bash instead. Dry-run prints would-run lines and never verifies or falls back on simulated results.
-- `chsh` targets the user-selected shell (Bash, Zsh, or Fish), replacing the previous unconditional `chsh` → bash. It runs through `run_root` as root with an explicit username, so it never prompts interactively.
-- Starship and Atuin initialization are appended with an exact-line guard to the selected shell's rc file only (`~/.bashrc`, `~/.zshrc`, or `~/.config/fish/config.fish`); nothing else in user shell configuration is touched.
-- The terminal module owns the Starship installation logic (official installer only); the packages layer contains none.
-
-**Starship installation (official installer only).**
-
-- The terminal layer installs Starship using the official non-interactive installer, exactly: `curl -sS https://starship.rs/install.sh | sh -s -- -y`.
-- The same command works across Fedora, Debian, and Arch families; no distro-specific method replaces it.
-- Starship must not appear in any distro-specific package array and must never be installed via `dnf`, `apt`, `pacman`, `yay`, COPR, or GitHub release binaries.
-- In dry-run, read-only presence checks run and the exact installer line is printed only when Starship is missing; it is never executed. Real runs skip installation when `starship` is already present (idempotent) and fail nonzero if installation fails or `starship` is still missing after the installer.
-- `curl` is already in all three package arrays, so the prerequisite comes from the package step itself.
-
-**Complete Oh My Posh removal.**
-
-- All Oh My Posh installation and configuration logic, theme-repository references, rc-file lines, documentation mentions, and comments are removed.
-- `grep -RniE 'oh-my-pos[h]|poshtheme[s]' .` must return no matches (the brackets only keep this line from matching its own grep); no dead code or stale documentation referring to the tool may remain.
-- Starship and Oh My Posh are never both installed or configured.
-
-**Language, aliases, fonts, dev.**
-
-- Language restores the interactive prompt with the approved text: the language menu with `1) English` / `2) Arabic`, `Default: English`, and `You have 10 seconds to choose.`, a 10-second input timeout, English default on timeout, empty, or invalid input, and English default for non-TTY input. Unknown distributions keep failing nonzero with a stderr message; the locale-file backup and prerequisite guards are kept.
-- Aliases are installed as one managed block per shell rc file (bash always; zsh and fish when present) delimited by `# >>> linux-postinstall aliases >>>` and `# <<< linux-postinstall aliases <<<`, stripped and re-appended on rerun so the block appears exactly once and content outside it is never modified. Definitions are embedded in the module (migrated from `additions/shell_conf`), with correct quoting for bash, zsh, and fish and distro-family-specific aliases baked in.
-- Font installation stays in the existing fonts module; Starship's Nerd Font requirement is satisfied by that module, never by installer logic.
-- `dev` exists as a placeholder module (prints that the development environment is not yet defined, exit 0) and is part of the default install flow now, so its future content joins the flow automatically. It also runs standalone via `./setup dev`.
-
-**Dry-run, idempotency, and module hygiene.**
-
-- Every mutating command runs through `run`/`run_root`, or behind an explicit module-level dry-run branch where a pipeline or redirect cannot be wrapped; probes and reads stay direct.
-- Countdown `3…2…1` and `sleep 1` blocks are removed from all modules (AGENTS.md §7).
-- The recursive `bash "$0"` re-open loop in `gnome_extensions` is removed; it becomes a single pass, with manual URLs printed on non-TTY input and one bounded prompt on a TTY.
-- All `read -p` and `select` prompts are TTY-guarded so unattended runs skip cleanly instead of failing under `set -e`.
-- Reruns must remain safe: no duplicate rc lines, no duplicated favorites, shortcuts, or sidebar bookmarks, and no repeated download damage.
-
-**Documentation.**
-
-- README usage is updated to the new commands, and stale `./setup.sh` / `chmod +x setup.sh` references are fixed. Stale documentation of already-removed behavior (the sudoers timestamp section) is dropped.
-- The module README moves with `modules/` and is updated (Starship instead of Oh My Posh, managed-block aliases, `dev`, `bash modules/…` examples).
-- `additions/shell_conf` keeps its alias content as a legacy reference with its Oh My Posh section removed; it is no longer applied to the user's rc files.
-
-### Implementation decisions (approved)
-
-- **Starship channel:** the official starship.rs installer for every supported family. Verified from the installer source: `-y` skips prompts, and the installer self-elevates with `sudo` only when `/usr/local/bin` is not writable, so the exact pipeline works both for a normal user and as root.
-- **Rejected Starship channels:** distro package arrays (no official Fedora package exists anyway), COPR (a persistent third-party repository plus an extra dependency), and GitHub release binaries.
-- **Placement:** the installer step lives in the terminal layer together with shell selection, Atuin, and `chsh`; the packages layer no longer installs Starship.
-- **`dev` scoping:** placeholder now, wired into the default install; its stack is deliberately undefined (“do not invent the stack yet”).
-- **Names:** command names come from the approved CLI; existing script file names are kept inside `modules/` (`install_apps.sh` remains the `packages` layer and `terminal_themes.sh` implements the terminal stack).
-- **CLI extras:** `-v`/`--version` is kept (the original CLI had it); `list` is dropped; old group commands and `install <group>` arguments are removed.
-- **GNOME order:** the existing relative order is kept; the spec's example listing was treated as illustrative.
-- **Alias source of truth:** definitions are embedded in the aliases module (robust, no parsing); `additions/shell_conf` becomes legacy reference data. The remote-execution `terminal-theme` alias is not migrated (P3-T02).
-- **Terminal guards:** real runs install Starship when missing (official installer) and fail nonzero with a clear message if the installer leaves it missing; dry-run performs only read-only presence checks and prints would-run lines.
-- **`chsh` and Atuin:** retained; `chsh` targets the selected shell instead of always bash.
-- **Centralized sudo authentication:** every privileged command goes through `run_root`, which authenticates lazily via `ensure_sudo` — a native `sudo -n -v` probe (credential check plus timestamp refresh) and, only when that fails, one interactive `sudo -v`. `setup` exports a marker file only after a successful interactive `sudo -v` and an EXIT trap runs `sudo -k` only when that marker exists, on both success and failure, so a credential timestamp that predates the run is never cleared. Dry-run never invokes or authenticates sudo.
-- **Shell verification and fallback:** a selected Zsh/Fish install is verified after the package-manager attempt; failure of any kind (including sudo authentication failure at that stage) is recovered with a warning and a fallback to Bash before configuration or `chsh`. Authentication failure in non-recoverable steps (`language`, `chsh`) still hard-fails.
-- **Bookmarks rerun:** the `~/Github` sidebar line gets an existence guard so reruns do not duplicate it.
-- **Roadmap alignment:** the P3-T02 Oh My Posh reference is updated to Starship as part of recording this plan (authorized by the same instruction that directed updating this file).
-
-### Validation criteria
-
-All validation is sandboxed: fake `HOME`, PATH tripwire commands, `OS_RELEASE_FILE` substitutions, and pseudoterminals where interaction is required. No real package installation, sudo, locale writes, `chsh`, gsettings, or network mutation runs on the live machine.
-
-1. `bash -n` passes for `setup`, `lib/common.sh`, and every `modules/*.sh`.
-2. `help`, `-h`, and `--help` exit 0 with commands and options sections; `version` and `-v` exit 0; invalid commands (`bogus`, `list`, `all`, `install_apps`, the empty string) exit nonzero with a usage hint on stderr.
-3. Dry-run matrix: every command with `--dry-run` in both positions exits 0, prints would-run lines including the exact `curl -sS https://starship.rs/install.sh | sh -s -- -y` line from the terminal layer, triggers no mutating tripwire commands (`sudo`, `dnf`, `apt-get`, `pacman`, `yay`, `wget`, `curl`, `chsh`, `locale-gen`, `localectl`, `gsettings`, install-mode `flatpak`), and leaves the sandbox HOME untouched.
-4. `./setup --dry-run` output is identical to `./setup install --dry-run`.
-5. Desktop scenarios: `XDG_CURRENT_DESKTOP=GNOME` includes all seven GNOME steps; Hyprland, KDE, and empty desktop values run normal steps only plus the skip line; the detected environment is printed.
-6. Language scenarios: piped input → English; pseudoterminal with `2` → Arabic; pseudoterminal with no input → English after about 10 seconds; invalid input → English; unreadable or foreign `OS_RELEASE_FILE` → nonzero with stderr.
-7. Package matrix: Fedora, Debian, and Arch `OS_RELEASE_FILE` substitutions produce the correct family commands; `yay` and `pacman` never appear off-Arch; Starship is absent from all three arrays and packages output contains no Starship line.
-8. Aliases: two runs against a fake HOME leave exactly one marker pair and preserve pre-existing user content; zsh and fish stubs on PATH receive their own blocks; dry-run writes nothing.
-9. Terminal: selects a shell, installs the selected shell/Atuin/Starship when missing, verifies the selected shell and falls back to Bash when it cannot be verified (no configuration or `chsh` for the failed shell), appends only the selected shell's exact init strings, and changes the default shell only when needed; no Oh My Posh state exists.
-10. `grep -RniE 'oh-my-pos[h]|poshtheme[s]' .` returns no matches; a supplementary case-insensitive `Oh My Posh` scan finds nothing outside git history.
-11. Failure propagation: a stubbed required module failure exits nonzero, names the failed step, and prints no success message; `dev` exits 0 with its placeholder message in both modes.
-12. `git status` shows only intended paths (`setup`, `lib/`, `modules/`, `README.md`, `additions/shell_conf`, plus the authorized `AGENTS.md` and `ROADMAP.md` recording).
-13. Diff review confirms no unrelated functionality changed.
-
-### Deferred work and known-unverified items
-
-- The actual `dev` stack (toolchains, containers, databases, IDEs) — intentionally undefined until specified.
-- Fresh or disposable per-family validation (P5-T03) — still required before strengthening support claims.
-- Fish rc quoting is validated only if fish is present on the host.
-- No live package installs, real locale/`chsh`/gsettings changes, or real GNOME session are exercised by this work's validation.
-- `config/` directory creation remains conditional guidance in AGENTS.md §2, not part of this plan.
-
-### Constraints and out-of-scope
-
-- Do not commit unless explicitly requested (none was).
-- Do not install Starship through distro package managers, COPR, or GitHub release binaries; never leave dual Oh My Posh/Starship state.
-- Do not add a `list` command, dev stack content, or any feature outside this plan.
-- Do not build frameworks, registries, state databases, or package-provider abstractions (AGENTS.md §7).
-- Do not move font installation into installer logic; do not duplicate Starship installation logic across layers.
-- Do not overwrite user shell configuration outside the project's managed blocks.
-- Keep the existing multi-distro package architecture intact.
-- Keep AGENTS.md as the persistent engineering instructions and ROADMAP.md as this roadmap and future-work record; updating both with this plan is the authorized exception to any earlier read-only treatment.
-
-## Phase 1 — Safe Entry Point and Failure Contract
-
-**Goal:** Make CLI invocation predictable and failures truthful.
-
-**Why:** Later module work needs a reliable launcher that does not make hidden changes before the user selects an operation.
-
-### P1-T01 — Replace launcher preflight side effects
-
-- **Description:** Parse the command before performing privileged, network, or system-changing operations. Remove sudoers modification and automatic GitHub `git ls-remote`/`git pull`. Support `./setup`, `./setup help`, `./setup install`, and `./setup install <group>...`. No arguments and `install` both run the full setup. Invalid commands must fail nonzero.
-- **Acceptance criteria:** Help works without sudo or network and performs no changes. No command silently pulls code or edits sudoers. No arguments and `install` both run the documented full setup. Invalid commands exit nonzero with a usage hint.
-- **Senior review focus:** Confirm there are no side effects before argument validation, no hidden network activity, and no sudoers mutation.
-- **Dependencies:** None.
-
-### P1-T02 — Define launcher failure propagation
-
-- **Description:** Required module failures must propagate; required failure stops installation. Overall success is printed only after all required operations succeed. Optional skips and failures are distinguishable.
-- **Acceptance criteria:** A failing required module produces nonzero status, identifies the failed step, prevents later dependent required work, and never prints full success. Optional skips are identified as skips.
-- **Senior review focus:** Inspect pipelines, conditionals, `||`, subshells, command substitutions, and child-script return codes for masked failures.
-- **Dependencies:** P1-T01.
-
-**Phase gate:** No pre-command side effects; a required module failure cannot yield overall success.
-
-## Phase 2 — Distro and Package Installation
-
-**Goal:** Make the required package path explicit and reliable for the three supported families.
-
-**Why:** Package installation is central to the fresh-machine goal, and one shared package list cannot represent three package managers reliably.
-
-### P2-T01 — Simplify distro-family detection
-
-- **Description:** Detect Fedora, Debian, or Arch family using `/etc/os-release` data. Return a clear unsupported result otherwise.
-- **Acceptance criteria:** Representative Fedora, Debian/Ubuntu/Mint, and Arch/CachyOS identifiers resolve as intended. Unsupported or unreadable identification fails clearly. Detection does not claim support for every derivative.
-- **Senior review focus:** Check `ID`/`ID_LIKE` handling and ensure unsupported values cannot proceed as a supported family.
-- **Dependencies:** P1-T02.
-
-### P2-T02 — Separate and validate family package lists
-
-- **Description:** Replace the shared cross-family package list with appropriate package names and install commands for each family. Keep lists minimal and personal.
-- **Acceptance criteria:** Each retained package name is checked for its target family. Package-manager failure returns nonzero and cannot be hidden by per-package logging. Already-installed packages are harmless.
-- **Senior review focus:** Check list accuracy, package-manager invocation, and truthful status reporting.
-- **Dependencies:** P2-T01.
-
-### P2-T03 — Make Flatpak installation explicit and safe
-
-- **Description:** Make Flatpak and Flathub prerequisites explicit, keep the selected app list editable, and install it repeatably.
-- **Acceptance criteria:** Missing Flatpak or Flathub is clearly handled according to whether Flatpaks are required or optional. Failed required app installs are visible and produce nonzero status. Reruns do not damage or duplicate installation state.
-- **Senior review focus:** Check remote setup/scope, privilege use, and error propagation.
-- **Dependencies:** P2-T02.
-
-### P2-T04 — Decide vendor-download and AUR scope
-
-- **Description:** Decide which current VS Code, Chrome, and AUR installation paths provide enough value to retain. Remove unused paths. Retained paths must be explicit and architecture-aware.
-- **Acceptance criteria:** No retained installer relies on a fixed `/tmp` directory. Unsupported architecture and download/install failures are reported clearly. AUR helper bootstrapping is intentional and not hidden in a required path without review.
-- **Senior review focus:** Check source trust, architecture assumptions, cleanup, interruption/rerun behavior, and whether the feature is worth its maintenance cost.
-- **Dependencies:** P2-T02, P2-T03.
-
-**Phase gate:** Family detection is reliable; required package failures propagate; Flatpak behavior is explicit and rerunnable; vendor/AUR behavior is an intentional decision.
-
-## Phase 3 — Shell and User Configuration
-
-**Goal:** Configure the user's shell and personal assets without destroying user data or breaking startup.
-
-**Why:** The current shell configuration replaces `.bashrc` and initializes tools whether or not they installed successfully.
-
-### P3-T01 — Replace destructive shell configuration
-
-- **Description:** Preserve existing `.bashrc` content. Install a separate project-owned file with one guarded source line, or use another equally simple non-destructive approach.
-- **Acceptance criteria:** Existing user content survives. Repeated runs do not duplicate source lines or overwrite the only backup with generated content. Behavior is documented.
-- **Senior review focus:** Check fresh, existing-custom, and rerun cases.
-- **Dependencies:** P1-T02.
-
-### P3-T02 — Make optional shell tools safe
-
-- **Description:** Make Atuin installation/configuration and Starship initialization failures explicit. Optional initialization must not break shell startup if a tool or config is absent. Remove the remote-execution alias.
-- **Acceptance criteria:** Interactive shell startup works with either tool absent. Repeated runs do not duplicate init commands. Failed required downloads/installs return nonzero. Supported shell assumptions are explicit.
-- **Senior review focus:** Check installation ordering, `SHELL` assumptions, and startup behavior after partial failure.
-- **Dependencies:** P3-T01, P2-T02.
-
-### P3-T03 — Make fonts and wallpaper predictable
-
-- **Description:** Retain useful font and wallpaper setup with project-relative paths, clear prerequisite checks, and safe reruns.
-- **Acceptance criteria:** Missing files or required commands are reported; project assets can be copied regardless of the caller's working directory; repeated runs do not duplicate or alter unrelated user files. GNOME-only setting skips cleanly outside GNOME.
-- **Senior review focus:** Check paths, copy destinations, command failures, and GNOME detection.
-- **Dependencies:** P1-T02.
-
-**Phase gate:** Existing user configuration is preserved; shell startup tolerates missing optional tools; rerunning asset setup is safe.
-
-## Phase 4 — Optional GNOME Preferences
-
-**Goal:** Keep valuable GNOME preferences optional, simple, and rerunnable.
-
-**Why:** GNOME is a reasonable personal target but should not block the core setup on other desktops.
-
-### P4-T01 — Consolidate and simplify GNOME preferences
-
-- **Description:** Retain only useful shortcuts, favorites, wallpaper, icon, cursor, or theme settings. Group them behind an optional GNOME command. Use explicit desktop IDs instead of fuzzy discovery.
-- **Acceptance criteria:** GNOME work detects the session and skips clearly elsewhere. Invalid app IDs are reported. Repeated runs do not duplicate favorites/bookmarks. Shortcut paths are valid, or the shortcut feature is removed. Whole-list replacement behavior is documented.
-- **Senior review focus:** Check GNOME schema paths, session detection, existing user values, and rerun behavior.
-- **Dependencies:** P1-T02, P3-T03.
-
-### P4-T02 — Remove risky/manual workflows from default install
-
-- **Description:** Remove direct DNS file mutation and immutable flags. Remove recursive extension browsing and keep manual theme/archive workflows out of default install. Retain a named optional helper only if it has clear personal value.
-- **Acceptance criteria:** No code changes `/etc/resolv.conf` or applies `chattr +i`. Default install does not wait for manual downloads/confirmations or recursively launch itself. Any retained optional workflow is bounded and documented.
-- **Senior review focus:** Search for remaining DNS mutation, recursive invocation, archive deletion, or manual prompts in the required path.
-- **Dependencies:** P1-T01, P4-T01.
-
-**Phase gate:** GNOME work is optional; non-GNOME systems skip cleanly; DNS mutation and recursive/manual workflows are absent from default install; reruns are safe.
-
-## Phase 5 — Validation, Documentation, and Support Claim
-
-**Goal:** Validate the behavior and document the real fresh-install workflow.
-
-**Why:** Support claims must match observed behavior, and the user should be able to rebuild without reverse-engineering scripts.
-
-### P5-T01 — Add minimal high-value validation
-
-- **Description:** Add proportionate checks for shell syntax, CLI behavior, failure propagation, distro-family detection, and rerun-sensitive configuration. Use command stubs where useful; do not create a test framework.
-- **Acceptance criteria:** Checks run without root or network, never invoke real package installation, and fail when their target behavior regresses. No unnecessary test infrastructure is added.
-- **Senior review focus:** Check behavior coverage, test isolation, and whether tests could change the host.
-- **Dependencies:** P2-T01 through P4-T02.
-
-### P5-T02 — Align README and CLI help
-
-- **Description:** Document prerequisites, supported distro families, the fresh-install command, optional GNOME behavior, network requirements, editable configuration, rerun behavior, and known limitations. Remove stale documentation if redundant.
-- **Acceptance criteria:** Every documented command exists; a user can clone and run without guessing; deleted features and unsupported claims are absent.
-- **Senior review focus:** Cross-check documentation against actual CLI and behavior.
-- **Dependencies:** P5-T01.
-
-### P5-T03 — Validate on fresh or disposable systems
-
-- **Description:** Run the required path on fresh/disposable Fedora, Debian-family, and Arch-family systems and adjust only demonstrated problems.
-- **Acceptance criteria:** Each claimed family completes the required path, or documentation explicitly narrows the support claim. Evidence comes from clean/disposable environments, not the user's daily machine.
-- **Senior review focus:** Check that validation was genuinely fresh and that failures were not hidden.
-- **Dependencies:** P5-T01, P5-T02.
-
-**Phase gate:** Checks pass; docs match implementation; every claimed distro family has actual validation or a clearly stated limitation.
-
-## Task and phase review workflow
-
-Implement one task at a time. Senior reviews each task against its acceptance criteria and may return it for correction. A PASS is required before starting the next task. At each phase gate, Senior reviews the combined phase changes before work proceeds to the next phase. If an implementation proves a planned item unnecessary, simplify it and have the Manager update this roadmap rather than adding infrastructure to preserve the plan literally.
-
-## Dependency order
-
-```text
-P1-T01 → P1-T02
-             ↓
-P2-T01 → P2-T02 → P2-T03 → P2-T04
-             ↓
-P3-T01 → P3-T02
-P3-T03 ───────────────┐
-                      ↓
-             P4-T01 → P4-T02
-                      ↓
-             P5-T01 → P5-T02 → P5-T03
-```
-
-P3-T03 depends only on P1-T02 and may proceed once that foundation is accepted; P4-T01 waits for both P3-T03 and the launcher contract. Keep task order mostly linear so each change has a clear review boundary.
-
-## Explicitly out of scope
-
-Do not add plugin architecture, dependency injection, module registries, state databases, rollback systems, package-provider abstractions, universal distro support, generic configuration engines, or enterprise provisioning features. Do not treat this roadmap as permission to expand the project beyond the personal rebuild goal.
+# ROADMAP — `./setup dev` implementation
+
+This roadmap is the **persistent source of truth** for building the self-contained
+`./setup dev` command. If work is interrupted, re-read this file, note the
+`## Current state` section, inspect the repository, and resume at the first task
+whose `Senior review` is not `PASS`.
+
+## Status legend
+
+- **Senior:** `NOT REVIEWED` → `FAIL` (fix, re-review) → `PASS` (done, gated).
+- **Commit:** `NOT AUTHORIZED` until the user authorizes a commit. No commit
+  happens during this project unless the user explicitly asks for one.
+- **Validation result:** recorded exactly as run by Developer and by Senior.
+
+## Current state
+
+- **Commits:** none made during this effort (awaiting user authorization).
+- **Completed tasks:** T01, D01, D02, D03, D04, D05, D06, D07, D08, D09, D10.
+- **In progress:** none.
+- **Failed tasks:** none (D07 and D09 each had one FAIL→fix→PASS cycle).
+- **Remaining:** none.
+- **Next task:** none — all tasks complete; awaiting user commit authorization.
+
+## Fixed context (from the approved plan)
+
+- `./setup dev` must be **fully self-contained**: fresh supported distro →
+  complete development environment, no dependency on `./setup packages`.
+- Every dependency: **installed → skip, missing → install**. Idempotency beats
+  avoiding duplication. Duplication with `modules/install_apps.sh` is allowed
+  and intentional. **Do not modify `modules/install_apps.sh`.**
+- **Locked decisions:**
+  - mise manages **Python only**; Node.js/Go stay distro packages.
+  - Python 3.13 via mise; JupyterLab via pipx; Codex via npm user-prefix;
+    OpenCode via official installer (`--no-modify-path`, `XDG_BIN_DIR`);
+    DBeaver via Flatpak; VS Code = official Microsoft `.rpm`/`.deb`, Arch =
+    `visual-studio-code-bin` via yay with automatic yay bootstrap from AUR;
+    Debian `fdfind` → `~/.local/bin/fd` user symlink.
+  - C#/.NET deferred; no yq; no Docker/Podman/k8s/cloud CLIs; no PostgreSQL
+    server requirement.
+  - Arch installs use `pacman -S --needed --noconfirm <missing>` only; **never
+    `pacman -Syu`** (no forced full system upgrade).
+  - SSH: install OpenSSH **client and server**; **never** enable/start the
+    service; **never** touch sshd_config/firewall/auth/keys/passwords; document
+    the manual enable command only. `sshd` presence verified via `command -v sshd`.
+  - Sudo: only `ensure_sudo()`/`run_root()` from `lib/common.sh`. No second
+    mechanism, no `sudo -S`, no stored passwords. User-level tools stay
+    user-level (`~/.local/bin`).
+  - Failure policy: unsupported distro, index refresh failure, package install
+    failure, VS Code download/install/verify failure, Arch yay bootstrap
+    failure, Flathub/DBeaver failure, mise/installer failure, python install
+    failure, pipx missing, Jupyter/Codex/OpenCode install-or-verify failure →
+    all **fatal** (nonzero, step named, no success message). No warning-only
+    path for missing dev dependencies.
+- **Files that may change:** `modules/dev.sh`, `ROADMAP.md`, `AGENTS.md`,
+  `README.md`, `modules/README.md`, sandbox harness under `/tmp/opencode/vt`.
+- **Files that must stay unchanged** (only change if a real blocker is found):
+  `modules/install_apps.sh`, `setup`, `lib/common.sh`,
+  `modules/set_aliases.sh`, `modules/terminal_themes.sh`.
+- **No framework, no abstraction layer**, no `lib/packages.sh`. Code must
+  mirror existing repo conventions (see `modules/set_aliases.sh`,
+  `modules/install_apps.sh`, `lib/common.sh`).
+- **Sandbox tests only.** Never run package installs, sudo authentication, or
+  network operations against the live machine. All real-mode testing happens in
+  sandbox HOMEs with tripwire/fake PATHs under `/tmp/opencode/vt`.
+
+---
+
+## T01 — Rebuild ROADMAP.md (dev-focused)
+
+- **Objective:** Replace the old roadmap with this persistent, task-driven
+  roadmap for the `./setup dev` project. Done (created with this file).
+- **Scope/files:** `ROADMAP.md`.
+- **Implementation requirements:** Records the fixed context above, task-by-task
+  plan (D01–D10), per-task ID / objective / scope / requirements / validation /
+  senior-review status / commit status, and the current-state block.
+- **Validation/tests:** Re-read the file; confirm every task has the seven
+  fields and the current-state block identifies the next task.
+- **Senior review:** PASS (orchestrator-created; contains the review gates for
+  all later tasks).
+- **Commit:** NOT AUTHORIZED.
+
+---
+
+## D01 — System development packages + SSH (dev.sh system step)
+
+- **Objective:** Implement the system-package stage of `dev.sh`: per-family
+  binary-presence matrix, build a missing-package list, one install transaction
+  per family with index refresh, post-install verification with fatal
+  propagation, dry-run support, and unsupported-distro handling. Includes SSH
+  client+server installation (verified installed, never enabled/started).
+- **Scope/files:** `modules/dev.sh` (scaffold: header, `distribution()`,
+  dry-run plumbing, system step only — later tasks add their sections);
+  `/tmp/opencode/vt/run_dev.sh` (new harness group for the system step);
+  `run_abc.sh` (replace the placeholder-assertion in group A with a safe
+  dry-run dev smoke check).
+- **Implementation requirements:**
+  - dev.sh must source `lib/common.sh` the same way `install_apps.sh` does,
+    and must fail clearly on unsupported distro.
+  - Binary→package matrix (add only when `command -v <binary>` is missing):
+    - common families: `ssh`→openssh client, `sshd`→openssh server, `git`,
+      `gcc`, `g++`, `clang`, `make`, `cmake`, `gdb`, `python3`, `pip3`,
+      `pipx`, `node`, `npm`, `go`, `vim`, `nvim`, `fzf`, `rg`, `fd`/`fdfind`,
+      `jq`, `tmux`, `sqlite3`, `psql`, `curl`, `wget`, `flatpak`.
+    - Fedora: `openssh-clients`, `openssh-server`, `gcc-c++` (g++),
+      `python3-pip` (pip3), `pipx`, `golang`, `fd-find` (fd binary),
+      `sqlite`, `postgresql` (psql). `python3`/`nodejs`/`npm`/etc. as needed.
+    - Debian/Ubuntu/Mint: `openssh-client`, `openssh-server`, `g++` (g++),
+      `python3-pip` (pip3), `python3-venv` (always included on Debian, no
+      binary probe; package-manager idempotent), `pipx`, `golang-go`,
+      `fd-find` (fdfind binary), `sqlite3`, `postgresql-client` (psql).
+    - Arch: `openssh` (covers client+server via one package), `gcc` (includes
+      g++), `python-pip` (pip), `python-pipx`, `go`, `fd`, `sqlite`,
+      `postgresql` (psql).
+  - Build one `missing_packages` list; when non-empty:
+    - Fedora: `run_root dnf makecache` then `run_root dnf install -y …`.
+    - Debian: `run_root apt-get update` then `run_root apt-get install -y …`.
+    - Arch: `run_root pacman -S --needed --noconfirm …` (no `-Syu`).
+    - Index refresh happens **only** when the list is non-empty (no network on
+      idle reruns).
+  - Post-install verification: for every binary that was missing, re-run
+    `command -v`; any still missing → fatal error naming the missing tools.
+    In dry-run, verification is skipped.
+  - Dry-run: print `would run: sudo dnf makecache`/`sudo apt-get update` and
+    `would run: sudo dnf|apt-get|pacman install … <missing list>`; if nothing
+    missing print an "all required system tools present" message. Never
+    executes anything, never authenticates, never refreshes indexes.
+  - SSH: install client+server exactly as above. **Never** run
+    `systemctl enable/start/restart`, never edit sshd_config. A final module
+    message documents the manual enable command per family (text only; this can
+    live in D10's message polish, but emitting the note in dev.sh belongs to
+    this step's intent — keep it minimal: a simple guidance line is acceptable).
+  - No raw `sudo` in dev.sh; only `run_root`. No `sudo -S` anywhere.
+  - `bash -n modules/dev.sh` must pass.
+- **Validation/tests** (new `/tmp/opencode/vt/run_dev.sh`, group DEV-SYS; test
+  must be safe to rerun):
+  - Fedora/Debian/Arch `--dry-run dev` via `OS_RELEASE_FILE` + sandbox PATH
+    without the dev binaries: exact `would run:` install lines including the
+    correct per-family package names and SSH client/server packages; rc 0.
+  - Fedora/Debian/Arch dry-run: tripwire log has no HARD/FAIL lines; sandbox
+    HOME untouched; both argument orders (`--dry-run dev`, `dev --dry-run`).
+  - Real-mode fresh install with a fake package manager that materializes stub
+    binaries in a sandbox bin dir on PATH (dir pre-created empty): all systems
+    tools verified present afterwards; install ran once.
+  - Re-run with all binaries present: rc 0, no install lines, no index refresh.
+  - Fake pkg manager failing install → nonzero, `Failed at step 'dev'`, no
+    completion message.
+  - Post-install verification failure (fake installs nothing): fatal exit.
+  - Unsupported distro (osrel/nixos or gentoo): nonzero, "Unknown or
+    unsupported distribution".
+  - SSH: after a real mode run, `sshd` present; **no** `systemctl`/enable/start
+    anywhere in the log or output of dev-only tests.
+  - Group A in `run_abc.sh`: dev placeholder assertion replaced with a safe
+    deterministic dev dry-run smoke check (sandbox PATH + osrel fedora), rc 0.
+- **Validation result:** Developer + Senior ran `bash -n` (all ok);
+  `run_dev.sh` DEV-SYS `pass=59 fail=0` (x2, rerun-safe); `run_abc.sh`
+  A/B/C/K `pass=43 fail=0`; hygiene greps (prompt-tool phrases, raw `sudo`,
+  `sudo -S`, `systemctl`/`sshd_config`) all empty. Install-failure is
+  exercised via the index-refresh branch (T4 uses `DEVSOFT_RC` on
+  `makecache`); the `dnf install` failure branch is covered by inspection
+  (identical `if ! run_root … exit 1` pattern). Non-blocking.
+- **Senior review:** PASS.
+- **Commit:** NOT AUTHORIZED.
+
+---
+
+## D02 — VS Code (vendor/AUR) + Arch yay bootstrap
+
+- **Objective:** Add the VS Code stage to dev.sh. `code` present → skip; `code`
+  missing → install the official Microsoft build per family (Fedora `.rpm`
+  via dnf, Debian `.deb` via apt, Arch AUR `visual-studio-code-bin` via yay),
+  verify `code`, failure → fatal. On Arch, bootstrap yay automatically
+  (non-interactive) when missing.
+- **Scope/files:** `modules/dev.sh` (VS Code section), `/tmp/opencode/vt/run_dev.sh`
+  (group DEV-VSCODE).
+- **Implementation requirements:**
+  - Mirror the vendor-install pattern from `install_apps.sh` lines 128–265
+    (x86_64 gate via `uname -m`, `mktemp -d` + cleanup trap, `wget` the
+    official URL, `run_root`/`run` install). Dry-run prints the same style of
+    would-run lines as `install_apps.sh` (adapt for the separate dev flow).
+  - Arch yay bootstrap (only when `code` missing **and** `yay` missing):
+    - Ensure `base-devel` via `run_root pacman -S --needed --noconfirm base-devel`
+      (idempotent; only invoked when a build is actually required).
+    - `mktemp -d` (real mode only), `run git clone --depth 1 https://aur.archlinux.org/yay.git …`,
+      then `(cd <dir> && run makepkg -si --noconfirm)`; non-root builder (setup
+      already rejects EUID 0); internal sudo uses the cached credentials from
+      the earlier `ensure_sudo`. Verify `command -v yay`; failure → fatal.
+    - Then `run yay -S --needed --noconfirm visual-studio-code-bin`; verify
+      `command -v code`; failure → fatal.
+  - Dry-run must print the yay-bootstrap would-run lines (clone + makepkg)
+    without creating directories or running anything.
+- **Validation/tests:** fedora `.rpm` dry/real path; debian `.deb` dry/real
+  path; arch dry shows base-devel + clone + makepkg + yay install lines; arch
+  real with fake git/curl/makepkg/yay materializing `yay`/`code` stubs in the
+  sandbox bin dir; `code` pre-present → skip with no install; vendor download
+  failure → fatal; arch without a successful yay build → fatal.
+- **Validation result:** Developer + Senior ran `bash -n` (all ok); `run_dev.sh`
+  DEV-SYS 59/0 + DEV-VSCODE 56/0 (x3, rerun-safe, self-healing after fakes
+  mutated); `run_abc.sh` 43/0; `run_de.sh` 31/0. `run_fgh.sh` 260/4 and
+  `run_ijl.sh` 38/1 remain — the expected pre-D10 gaps only (S3/S6 bin-hard
+  fixture does not materialize dev tools `pipx fd psql`; group L flags
+  ` M ROADMAP.md` + stray `?? TODO.md`). No new failures. Hygiene greps
+  (prompt-tool phrases, raw `sudo`, `sudo -S`, `systemctl`/`sshd_config`)
+  empty. Ad-hoc Senior checks confirm wget failure and makepkg-without-yay
+  failures are fatal with correct messages. Non-blocking: vendor-download
+  failure and Arch non-x86_64 gate are covered by inspection/behavior, not by
+  a dedicated suite case (`require_vendor_arch` not called on the Arch path).
+- **Senior review:** PASS (two minor, non-blocking notes recorded above).
+- **Commit:** NOT AUTHORIZED.
+
+---
+
+## D03 — DBeaver via Flatpak/Flathub
+
+- **Objective:** Add the DBeaver stage. Install `io.dbeaver.DBeaverCommunity`
+  via the system Flatpak if not present; add the Flathub remote only if
+  missing; verify; failure → fatal.
+- **Scope/files:** `modules/dev.sh` (DBeaver section), `/tmp/opencode/vt/run_dev.sh`
+  (group DEV-DBEAVER).
+- **Implementation requirements:** mirror `install_apps.sh` flathub-remote +
+  per-app install pattern (lines 75–124) for the single DBeaver id, using
+  `flatpak info io.dbeaver.DBeaverCommunity` as the idempotency probe and
+  post-install verification. Flatpak command is part of the D01 system set;
+  if it is still missing, that is fatal. Dry-run prints the would-run
+  remote-add + install lines. No service, no permission changes.
+- **Validation/tests:** dry-run remote-add+install; real install with remote-add
+  before app install; already-installed (no ops); verify-failure → fatal;
+  remote already exists → no remote-add.
+- **Validation result:** Developer + Senior ran `bash -n` (ok); `run_dev.sh`
+  DEV-SYS 59/0, DEV-VSCODE 56/0, DEV-DBEAVER 34/0 (x2, rerun-safe). Suites:
+  `run_abc.sh` 43/0, `run_de.sh` 31/0; `run_fgh.sh` 260/4, `run_ijl.sh` 38/1
+  unchanged (expected pre-D10). Hygiene greps empty; no sudo/systemctl
+  references in dev.sh. Behavior verified live with `--dry-run dev`.
+- **Senior review:** PASS.
+- **Commit:** NOT AUTHORIZED.
+
+---
+
+## D04 — mise + Python 3.13
+
+- **Objective:** Add the runtime-manager stage. Install mise (user-level,
+  `~/.local/bin`) via the official installer unless already present; install
+  and set Python 3.13 through mise; verify both; failure → fatal.
+- **Scope/files:** `modules/dev.sh` (mise + python section), `/tmp/opencode/vt/run_dev.sh`
+  (group DEV-MISE).
+- **Implementation requirements:** user-level mise to `~/.local/bin` via the
+  official installer (`curl -fsSL https://mise.jdx.dev/install.sh | sh`) unless
+  already present (`command -v mise` or `$HOME/.local/bin/mise` exists). In
+  dry-run print that exact pipeline; in real mode run it and verify mise is
+  available, else fatal. Once mise is present, run `mise use -g python@3.13`
+  and verify `python --version` starts with `Python 3.13` and `mise which
+  python` returns a non-empty path; dry-run prints that command; idempotent if
+  already satisfied; fatal on failure. PATH must include `$HOME/.local/bin`
+  and `$HOME/.mise/shims` for real-mode checks/runs. No system package
+  installs for mise/Python.
+- **Validation/tests:** dry-run prints installer and python use lines; real fresh
+  installs mise then sets Python 3.13; mise already present → skip installer;
+  Python 3.13 already configured → skip `mise use`; installer failure →
+  fatal; `mise use` failure → fatal; bad Python version → fatal.
+- **Validation result:** Developer + Senior ran `bash -n` (ok); `run_dev.sh`
+  DEV-SYS 59/0, DEV-VSCODE 56/0, DEV-DBEAVER 34/0, DEV-MISE 48/0 (x2,
+  rerun-safe, outputs identical). Suites: `run_abc.sh` 43/0, `run_de.sh` 31/0;
+  `run_fgh.sh` 260/4, `run_ijl.sh` 38/1 unchanged (expected pre-D10).
+  Hygiene: prompt-tool grep empty; no `sudo`/`systemctl`/`sshd_config` in
+  dev.sh; no `-Syu` except comment. Code follows the task-specified
+  verification (not the older `mise ls`+explicit `$HOME/.local/bin/mise`
+  variant).
+- **Senior review:** PASS.
+- **Commit:** NOT AUTHORIZED.
+
+---
+
+## D05 — JupyterLab via pipx
+
+- **Objective:** Add the data-tooling stage. Install JupyterLab into an isolated
+  pipx venv (system pip never polluted), running under the mise Python, with
+  ipykernel injected; verify; failure → fatal.
+- **Scope/files:** `modules/dev.sh` (pipx/jupyter section), `/tmp/opencode/vt/run_dev.sh`
+  (group DEV-JUPYTER).
+- **Implementation requirements:**
+  - Probe `[ -x "$HOME/.local/bin/jupyter" ]`; when missing:
+    `pipx install --python "$(~/.local/bin/mise which python)" jupyterlab`
+    then `pipx inject jupyterlab ipykernel`. Real mode only; dry-run prints
+    both lines. If `command -v pipx` is missing (system step failed), fatal
+    with a clear message.
+  - Post-verify `[ -x "$HOME/.local/bin/jupyter" ]`; fatal on failure.
+- **Validation/tests:** dry prints both lines; real fresh install+inject; already
+  present → skip; pipx missing → fatal; jupyter binary not created → fatal.
+- **Validation result:** Developer + Senior ran `bash -n` (ok);
+  `run_dev.sh` totals 235 PASS/0 FAIL (DEV-SYS 59/0, DEV-VSCODE 56/0,
+  DEV-DBEAVER 34/0, DEV-MISE 48/0, DEV-JUPYTER 38/0), identical over 2 runs.
+  Suites: `run_abc.sh` 43/0, `run_de.sh` 31/0, `run_fgh.sh` 260/4 (unchanged),
+  `run_ijl.sh` 37/2 (unchanged baseline: includes `ROADMAP.md:263` hygiene
+  hit added earlier + pre-existing untracked files). No new failures.
+  Hygiene greps clean in changed files; no commits.
+- **Senior review:** PASS.
+- **Commit:** NOT AUTHORIZED.
+
+---
+
+## D06 — Codex via npm user-prefix
+
+- **Objective:** Add the AI-tool stage. Install Codex user-level
+  (`~/.local/bin/codex`) via `npm install -g --prefix` into `~/.local`, with
+  an idempotently-managed `prefix=$HOME/.local` line in `~/.npmrc`; verify;
+  failure → fatal.
+- **Scope/files:** `modules/dev.sh` (codex section), `/tmp/opencode/vt/run_dev.sh`
+  (group DEV-CODEX).
+- **Implementation requirements:**
+  - Probe `[ -x "$HOME/.local/bin/codex" ]`; when present → skip message.
+    Always ensure `~/.npmrc` has exactly one `prefix=$HOME/.local` line
+    (strip existing `prefix=` lines, append the managed one — non-destructive
+    to other lines); when codex missing, run
+    `npm install -g --prefix "$HOME/.local" @openai/codex`. Real mode only;
+    dry-run prints one would-run line for the `.npmrc` change plus the
+    install would-run line.
+  - Post-verify `[ -x "$HOME/.local/bin/codex" ]`; fatal on failure.
+- **Validation/tests:** dry lines; real with fake npm creating the binary;
+  `.npmrc` contains exactly one managed prefix line and preserves unrelated
+  lines; already-present → skip; fake npm failure → fatal.
+- **Validation result:** Developer + Senior ran `bash -n` (ok); `run_dev.sh`
+  297 PASS/0 FAIL (DEV-SYS 59/0, DEV-VSCODE 56/0, DEV-DBEAVER 34/0,
+  DEV-MISE 48/0, DEV-JUPYTER 38/0, DEV-CODEX 62/0), x2 identical. Suites:
+  `run_abc.sh` 43/0, `run_de.sh` 31/0, `run_fgh.sh` 260/4, `run_ijl.sh` 37/2
+  (unchanged pre-existing baselines). Ad-hoc rerun idempotency on junk
+  `.npmrc`: unrelated lines preserved, single prefix line after each run. No
+  sudo/systemctl; no commits.
+- **Senior review:** PASS.
+- **Commit:** NOT AUTHORIZED.
+
+---
+
+## D07 — OpenCode CLI
+
+- **Objective:** Add the OpenCode CLI stage. Install user-level
+  (`~/.local/bin/opencode`) via the official installer with `--no-modify-path`
+  and `XDG_BIN_DIR`; verify; failure → fatal.
+- **Scope/files:** `modules/dev.sh` (opencode section), `/tmp/opencode/vt/run_dev.sh`
+  (group DEV-OPENCODE).
+- **Implementation requirements:**
+  - Probe `[ -x "$HOME/.local/bin/opencode" ]`; when missing, run exactly:
+    `XDG_BIN_DIR="$HOME/.local/bin" curl -fsSL https://opencode.ai/install | bash -s -- --no-modify-path`.
+    Real mode only; dry-run prints that exact line and never executes it.
+  - Post-verify `[ -x "$HOME/.local/bin/opencode" ]`; fatal on failure.
+- **Validation/tests:** exact dry line; real with fake curl emitting a script
+  that creates the binary; already-present → skip; installer produces nothing →
+  fatal; curl-side pipeline failure → fatal (pipefail in subshell).
+- **Validation result:** Developer + Senior ran `bash -n` (ok); `run_dev.sh`
+  332 PASS/0 FAIL (DEV-SYS 59/0, DEV-VSCODE 56/0, DEV-DBEAVER 34/0,
+  DEV-MISE 48/0, DEV-JUPYTER 38/0, DEV-CODEX 62/0, DEV-OPENCODE 35/0),
+  x2 identical. Suites: `run_abc.sh` 43/0, `run_de.sh` 31/0, `run_fgh.sh`
+  260/4, `run_ijl.sh` 38/1 (unchanged baselines). Hygiene greps clean.
+- **Senior review:** FAIL (comment token) → fix (comment reworded to
+  "unprivileged as the current user") → re-review PASS.
+- **Commit:** NOT AUTHORIZED.
+
+---
+
+## D08 — Debian fd symlink + dev rc block
+
+- **Objective:** Add the final dev.sh stages: the Debian-family
+  `fdfind` → `~/.local/bin/fd` user symlink, and the managed dev shell-config
+  rc block (PATH + mise activation) per present shell. Deterministic and
+  idempotent re-runs.
+- **Scope/files:** `modules/dev.sh` (fd symlink + rc block section), dev.sh
+  final completion message (reload + SSH manual-enable note), `/tmp/opencode/vt/run_dev.sh`
+  (groups DEV-FD, DEV-RC).
+- **Implementation requirements:**
+  - fd symlink (Debian family only): if `command -v fdfind` and
+    `[ ! -e "$HOME/.local/bin/fd" ]` → create `~/.local/bin` (real mode) and
+    `run ln -s "$(command -v fdfind)" "$HOME/.local/bin/fd"`. Dry-run prints
+    the would-run line only. Not run on Fedora/Arch.
+  - rc block: mirror `set_aliases.sh` structure exactly (BLOCK_BEGIN/END
+    delimiters `# >>> linux-postinstall dev >>>` / `# <<< linux-postinstall dev <<<`,
+    strip-and-re-append via `run sed -i`, bash always, zsh/fish when present),
+    but with dev content:
+    - bash/zsh: `export PATH="$HOME/.local/bin:$PATH"` then
+      `eval "$(~/.local/bin/mise activate bash)"` (zsh: `… zsh)`.
+    - fish: `fish_add_path "$HOME/.local/bin"` then
+      `~/.local/bin/mise activate fish | source`.
+    - The block must not duplicate the aliases block or terminal lines.
+  - Completion message: brief reload guidance (text only, never executes
+    anything privileged). The SSH manual-enable commands (Fedora/Arch
+    `sudo systemctl enable --now sshd`; Debian `sudo systemctl enable --now
+    ssh`) are **documented in README.md by D09, not printed by dev.sh**:
+    Manager decision (D08 review) — keeping dev.sh free of any
+    sudo/systemctl text lets T7, the D10 source hygiene grep, and the
+    README-pointer message coexist without routing text to stderr.
+- **Validation/tests:** debian real → symlink created, fd reachable through
+  `~/.local/bin`; fedora/arch → no symlink; dry prints symlink line; rc block
+  exactly once per rc after two runs, coexists with aliases block, pre-existing
+  user lines preserved, dry-run reports targets and writes nothing; bash/zsh/
+  fish discovery via presence stubs; completion prints reload guidance and
+  README pointer, never systemctl/sudo text (stdout or stderr).
+- **Validation result:** Developer + Senior ran `bash -n` (ok); `run_dev.sh`
+  424 PASS/0 FAIL (59/56/34/48/38/62/35/35/57), x2 identical. Suites:
+  `run_abc.sh` 43/0, `run_de.sh` 31/0, `run_fgh.sh` 260/4, `run_ijl.sh` 38/1
+  (unchanged baselines). `grep -nE 'sudo|systemctl' modules/dev.sh` empty;
+  prompt-tool hygiene clean; no `-Syu` except comment. Senior note folded in:
+  `tail` added to run_dev.sh corebin so the trailing-newline guard is actually
+  exercised in-sandbox (rc1.err now clean; counts unchanged).
+- **Senior review:** PASS.
+- **Commit:** NOT AUTHORIZED.
+
+---
+
+## D09 — Documentation
+
+- **Objective:** Update the repo docs to describe the real dev module,
+  standalone usage, sudo/dry-run/idempotency contract, SSH install-only policy,
+  and the ownership rule (duplication with packages is intentional).
+- **Scope/files:** `AGENTS.md`, `README.md`, `modules/README.md`.
+- **Implementation requirements:**
+  - `AGENTS.md`: replace/update the dev-related binding bullets in the approved
+    plan section (self-contained dev; SSH server installed but never
+    enabled/started; sudo via `ensure_sudo`/`run_root` only; no `sudo -S`;
+    duplication with `install_apps.sh` allowed).
+  - `README.md`: `dev` bullet becomes real; add a short "Development
+    environment" section (what it installs, standalone `./setup dev`, manual
+    SSH enable, reload note) without bloating the file.
+  - `modules/README.md`: `dev.sh` bullet becomes real.
+  - Do not advertise features that do not exist; no OMP references; preserve
+    existing doc style.
+- **Validation/tests:** `bash -n`; grep hygiene greps still empty; docs mention
+  SSH manual-enable; no claim that dev enables sshd; no leftover
+  "placeholder" wording for dev in docs.
+- **Validation result:** Developer + Senior ran all suites — `run_dev.sh`
+  424/0, `run_abc.sh` 43/0, `run_de.sh` 31/0, `run_fgh.sh` 260/4,
+  `run_ijl.sh` 38/1 (group L only: doc modifications, allowlist updated by
+  D10); hygiene and `systemctl`-in-code greps empty; `bash -n` ok. First
+  Senior review FAILed on two AGENTS claims (DBeaver "duplication" with
+  `install_apps.sh` — it has no DBeaver; "every stage" post-verify — rc/fd/
+  npmrc are write stages). Fixed to "VS Code install + Flathub-pattern
+  mirror" and "every **install** stage"; re-review PASS.
+- **Senior review:** PASS (after one FAIL/fix cycle).
+- **Commit:** NOT AUTHORIZED.
+
+---
+
+## D10 — Integration: sandbox harness updates + full suite
+
+- **Objective:** Make the existing sandbox suites reflect a real dev module and
+  run the complete regression: A/B/C/K, D/E, F/G/H/S, I/J/L plus the new dev
+  groups. Adjust harness fixtures so full `./setup install` real-mode tests
+  stay deterministic now that dev installs (or skips) real tooling.
+- **Scope/files:** `/tmp/opencode/vt/run_fgh.sh` (S3/S6: pre-seed sandbox
+  `~/.local/bin` with mise/jupyter/codex/opencode stubs, a `bin-dev` stub dir
+  on the stub PATH containing the dev-tool binaries, and a `FAKE_DBEAVER`
+  flag so the soft flatpak fake reports DBeaver installed), `/tmp/opencode/vt/run_ijl.sh`
+  (group L allowed-changes list updated for the head-of-worktree state:
+  modified `AGENTS.md`/`README.md`/`modules/README.md`, untracked
+  `modules/dev.sh`), `/tmp/opencode/vt/run_abc.sh` (A-dev dev smoke already
+  converted in D01), and any other assertion the changes break. Sandbox files
+  only — no repo code changes.
+- **Implementation requirements:**
+  - Pre-seeding decisions must keep dev fully idempotent-skip inside S3/S6
+    (all system tools present, user-level binaries present, DBeaver present),
+    so the full install exercises the auth/cleanup path without new installs.
+  - Dry-run groups (B, K, S9) must remain green: dev dry-run prints only; no
+    files created; no sudo/auth; no network.
+  - Group L: allowlist the exact head-of-worktree status (modified docs,
+    untracked dev.sh, deleted/recreated ROADMAP as applicable).
+- **Validation/tests:** run all suites to completion and record the full pass
+  grid: `run_abc.sh` (A/B/C/K), `run_de.sh` (D/E), `run_fgh.sh` (F/G/H/S),
+  `run_ijl.sh` (I/J/L), `run_dev.sh` (all DEV groups). Also:
+  `for f in modules/dev.sh setup lib/common.sh modules/*.sh; do bash -n "$f"; done`;
+  prompt-tool hygiene greps empty (per AGENTS Validation section); `sudo -S`
+  empty everywhere; raw `sudo` in module code only as `set_aliases.sh` alias
+  text and `lib/common.sh` plumbing (README may quote the documented SSH
+  activation commands); `grep -nE 'sudo|systemctl' modules/dev.sh` empty
+  (README documents the activation commands, dev.sh must not); both dry-run
+  argument orders covered.
+- **Validation result:** Developer + Senior, all suites run twice each with
+  byte-identical output — `run_abc.sh` 43/0, `run_de.sh` 31/0,
+  `run_fgh.sh` 264/0 (S3/S6 fixed by `bin-dev` stub matrix + seeded
+  `~/.local/bin` + `FAKE_DBEAVER`, all dev stages skip, 0 network tripwires,
+  S3 cold 1×`sudo -v`/1×`sudo -k`+marker removed, S6 warm 0/0),
+  `run_ijl.sh` 39/0 (group L exact six-entry allowlist, rejects anything
+  else), `run_dev.sh` 424/0 → **801/0 total, zero FAIL**. Pre→post delta
+  confined to exactly the 5 expected FAIL→PASS flips; no assertions weakened.
+  `bash -n` all repo + harness scripts ok; hygiene greps (`oh-my-pos[h]`,
+  `sudo -S` in code, `sudo|systemctl` in dev.sh) empty; both dry-run orders
+  byte-identical, 0 files, 0 auth, 0 network. Senior non-blocking notes:
+  group L is one-directional (rejects unexpected entries; subset passes),
+  harness is unversioned (mtime/assertion-name heuristics used for evidence),
+  prose `sudo`/`systemctl` in docs is intentional.
+- **Senior review:** PASS.
+- **Commit:** NOT AUTHORIZED.
+
+---
+
+## Done — all tasks above PASS; commits NOT AUTHORIZED.
+
+## Final pre-commit review (2026-10-08)
+
+Independent Senior review of the complete dev implementation (T01, D01–D10):
+**FAIL** initially on F1 (AGENTS.md claimed a `ROADMAP.md` "Approved
+restoration plan" section that the T01 rewrite removed). Fixed in the same
+pass: F1 (pointer now cites the binding bullets + git history, verified
+`HEAD:ROADMAP.md` holds the plan), F2 (`ROADMAP.md` Done heading), F3
+(`dev.sh` dry-run prints the pipx line literally instead of evaluating the
+mise substitution on a fresh HOME). Focused Senior re-review: **PASS**.
+Full grid rerun twice: run_abc 43/0, run_de 31/0, run_fgh 264/0,
+run_ijl 39/0, run_dev 424/0 → **801/0**, zero FAIL. Hygiene/syntax/repo
+state clean. Non-blocking observations: harness `S7 took Ns` wall-clock line
+and real-`flatpak` dry-run cache skeleton are pre-existing/environmental.
+Commit remains NOT AUTHORIZED pending explicit user authorization.

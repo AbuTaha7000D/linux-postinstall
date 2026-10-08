@@ -64,7 +64,7 @@ Debian-family support expects Debian 13 (trixie) or newer, or Ubuntu 25.10 or ne
     - `fonts`        : Install user fonts from additions/fonts
     - `aliases`      : Write the managed alias block to Bash (and Zsh/Fish when present)
     - `terminal`     : Select the default shell (Bash/Zsh/Fish), install it if missing (falling back to Bash if the install cannot be verified), configure Atuin and Starship for it, and set it as the default shell (chsh)
-    - `dev`          : Development environment module (placeholder)
+    - `dev`          : Install the development environment (system toolchain including the OpenSSH client and server, VS Code, DBeaver, mise-managed Python 3.13, JupyterLab, Codex, OpenCode) and write the managed dev shell configuration block
     - `gnome`        : Run the GNOME group (wallpaper, themes, icons/cursors, favorites, shortcuts, extensions)
     - `shortcuts`    : Add custom GNOME keyboard shortcuts
     - `favorites`    : Set favorite apps in the GNOME dock
@@ -88,6 +88,17 @@ Debian-family support expects Debian 13 (trixie) or newer, or Ubuntu 25.10 or ne
     ./setup gnome
     ./setup aliases
     ```
+
+## Development environment
+
+`./setup dev` is fully standalone: it works without running `./setup packages` first, reruns are safe (every install stage skips what is already installed and verifies what it installs), sudo is used only through the same lazy `ensure_sudo`/`run_root` path as the rest of setup, and `--dry-run` only prints what would run. It installs the system development toolchain (including the OpenSSH client and server), VS Code, DBeaver, mise with Python 3.13, JupyterLab, Codex, OpenCode, and a managed dev shell block (PATH and mise activation).
+
+The SSH server is installed but deliberately never enabled or started by the script — no sshd configuration, firewall, or authentication changes are made, and sign-in remains manual. To activate it:
+
+- Fedora/Arch: `sudo systemctl enable --now sshd`
+- Debian/Ubuntu: `sudo systemctl enable --now ssh`
+
+After `./setup dev`, open a new shell (or run `exec bash`) so `~/.local/bin` and mise activation are picked up.
 
 ## Additions Directory
 
