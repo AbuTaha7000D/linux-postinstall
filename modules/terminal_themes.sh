@@ -116,7 +116,7 @@ fi
 
 # Stage 3: ensure Atuin is installed (official installer only).
 atuin_present() {
-    command -v atuin >/dev/null 2>&1 || [ -x "$HOME/.local/bin/atuin" ]
+    command -v atuin >/dev/null 2>&1 || [ -x "$HOME/.atuin/bin/atuin" ]
 }
 
 if atuin_present; then
@@ -158,8 +158,14 @@ fi
 
 # Stages 5 and 6: configure Atuin and Starship in the selected shell's file
 # only. Exact-line guards; user content outside the appended lines is kept.
-ensure_init_line() { # $1=file, $2=line, $3=label
-    if grep -qxF "$2" "$1" 2>/dev/null; then
+ensure_init_line() { # $1=file, $2=line, $3=label, $4=optional broader detection substring
+    local found=0
+    if [ -n "${4:-}" ]; then
+        if grep -qF "$4" "$1" 2>/dev/null; then found=1; fi
+    else
+        if grep -qxF "$2" "$1" 2>/dev/null; then found=1; fi
+    fi
+    if [ "$found" -eq 1 ]; then
         echo "$3 init already present in $1."
     elif [ "$DRY" -eq 1 ]; then
         echo "would run: add '$2' to $1"
@@ -173,7 +179,16 @@ if [ "$shell_key" = "fish" ] && [ "$DRY" -eq 0 ]; then
     mkdir -p "$HOME/.config/fish"
 fi
 
-ensure_init_line "$rc_file" "$atuin_init" "Atuin"
+# The official Atuin installer may already have written a guarded Fish block
+# (`if status is-interactive` ... `atuin init fish | source` ... `end`). Detect
+# the broader `atuin init fish` substring for Fish so it never receives a
+# second Atuin init, while the canonical exact line is still what terminal
+# writes when no Atuin init is present.
+atuin_detect=""
+if [ "$shell_key" = "fish" ]; then
+    atuin_detect="atuin init fish"
+fi
+ensure_init_line "$rc_file" "$atuin_init" "Atuin" "$atuin_detect"
 ensure_init_line "$rc_file" "$starship_init" "Starship"
 
 # Stage 7: make the selected shell the default, after all configuration

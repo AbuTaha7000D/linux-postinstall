@@ -14,12 +14,14 @@ whose `Senior review` is not `PASS`.
 
 ## Current state
 
-- **Commits:** none made during this effort (awaiting user authorization).
-- **Completed tasks:** T01, D01, D02, D03, D04, D05, D06, D07, D08, D09, D10.
+- **Commits:** dev implementation `1bd1793`, dev/terminal specs `583855d`;
+  T02 fix pending explicit commit authorization.
+- **Completed tasks:** T01, D01, D02, D03, D04, D05, D06, D07, D08, D09, D10, T02.
 - **In progress:** none.
-- **Failed tasks:** none (D07 and D09 each had one FAIL→fix→PASS cycle).
+- **Failed tasks:** none (D07 and D09 each had one FAIL→fix→PASS cycle; T02 passed review first time).
 - **Remaining:** none.
-- **Next task:** none — all tasks complete; awaiting user commit authorization.
+- **Next task:** none — T02 PASS; awaiting authorization to commit it plus the
+  documentation follow-up.
 
 ## Fixed context (from the approved plan)
 
@@ -504,3 +506,52 @@ run_ijl 39/0, run_dev 424/0 → **801/0**, zero FAIL. Hygiene/syntax/repo
 state clean. Non-blocking observations: harness `S7 took Ns` wall-clock line
 and real-`flatpak` dry-run cache skeleton are pre-existing/environmental.
 Commit remains NOT AUTHORIZED pending explicit user authorization.
+
+---
+
+## T02 — Atuin official-path detection + Fish init dedupe (2026-10-09)
+
+- **Objective:** Correct the terminal Atuin presence check to the official
+  installer's real install location and make Fish Atuin initialization
+  idempotent against the installer-written guarded block, without changing the
+  AGENTS §8 exact-init-line contract, PATH ownership, `run_root`, Starship, or
+  Bash/Zsh exact-line behavior.
+- **Scope/files:** `modules/terminal_themes.sh` only, plus this roadmap entry.
+- **Root cause:** The official Atuin installer (`https://setup.atuin.sh` →
+  `atuin-installer.sh`) installs to `$HOME/.atuin/bin/atuin` and owns PATH via
+  `$HOME/.atuin/bin/env`, sourced from the shell rc. The module checked
+  `$HOME/.local/bin/atuin`, so a fresh install was present but unverified and
+  `setup terminal` exited 1 with a false "Atuin installation failed". For Fish
+  the installer writes a guarded block (`if status is-interactive` … `atuin
+  init fish | source` … `end`); the exact-line guard did not match it, so
+  terminal appended a second Atuin init.
+- **Implementation requirements:**
+  - `atuin_present()` (and the post-install verification that reuses it) is
+    `command -v atuin >/dev/null 2>&1 || [ -x "$HOME/.atuin/bin/atuin" ]`.
+  - `ensure_init_line` gains an optional broader-detection substring; the Fish
+    Atuin call passes `atuin init fish`, so an installer-written guarded block
+    suppresses a second append. The canonical exact line
+    (`eval "$(atuin init bash|zsh)"`, `atuin init fish | source`) is unchanged
+    and is still what terminal writes when no Atuin init is present.
+  - No PATH ownership, no `run_root` change, no Starship/Bash/Zsh change.
+- **Validation/tests:** `bash -n setup lib/common.sh modules/*.sh`; full sandbox
+  grid twice (A/B/C/K, D/E, F/G/H/S, I/J/L, DEV). New F/G/H/S cases: H24 (fresh
+  Bash Atuin install — installer creates `~/.atuin/bin/atuin` + env line,
+  process PATH unchanged; assert no false failure, exactly one init,
+  byte-identical rerun) and H25 (Fish installer guarded block; assert terminal
+  appends no second Atuin init).
+- **Validation result:** Full grid run twice (timing-normalized byte-identical):
+  `run_abc.sh` 43/0, `run_de.sh` 31/0, `run_fgh.sh` 286/0 (was 264; +22 new
+  H24/H25 Atuin cases), `run_ijl.sh` 39/0, `run_dev.sh` 424/0
+  (59/56/34/48/38/62/35/35/57) → **823/0 total, zero FAIL**. New cases: H24
+  fresh Bash Atuin install (official installer creates `~/.atuin/bin/atuin` +
+  `env` line, process PATH unchanged) → rc0 with no false failure, exactly one
+  init line, env line preserved, byte-identical rerun; H25 Fish installer
+  guarded block → exactly one Atuin init, no raw second line, no installer
+  attempted. `bash -n setup lib/common.sh modules/*.sh` ok; hygiene greps empty
+  (`oh-my-pos[h]|poshtheme[s]`); harness group L/J allowlists updated to the
+  current worktree (docs' allowed spaced prompt-tool mention,
+  `modules/terminal_themes.sh` modification).
+- **Senior review:** PASS (independent review; no blocking findings).
+- **Commit:** `fix: detect Atuin at its official install path and dedupe fish init`
+  (this file is committed with that change; hash recorded in git history).
