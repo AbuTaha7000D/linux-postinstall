@@ -1,0 +1,4 @@
+# Distro-specific aliases (Arch family)
+alias supdate='sudo pacman -Syu --noconfirm && flatpak update -y && yay -Sua --noconfirm'
+alias install='sudo pacman -S'
+alias remove='sudo pacman -Rns'

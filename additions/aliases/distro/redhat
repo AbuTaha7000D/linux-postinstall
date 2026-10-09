@@ -1,0 +1,5 @@
+# Distro-specific aliases (Red Hat family)
+alias supdate='sudo dnf update -y && sudo dnf upgrade -y && flatpak update -y && sudo dnf autoremove -y'
+alias install='sudo dnf install'
+alias remove='sudo dnf remove'
+alias update-grub='sudo grub2-mkconfig -o /boot/grub2/grub.cfg'

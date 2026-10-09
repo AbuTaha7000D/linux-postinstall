@@ -1,0 +1,12 @@
+# Common aliases
+alias ls='eza -al --color=always --group-directories-first --icons'
+alias grep='grep --color=auto'
+alias pingo='ping 8.8.8.8'
+alias ff='fastfetch'
+alias efrc='nano $HOME/.config/fish/config.fish'
+alias ebrc='nano $HOME/.zshrc'
+alias update-fonts='fc-cache -f -v'
+alias finstall='sudo flatpak install'
+
+# Shell-specific aliases
+alias refresh='source $HOME/.zshrc'

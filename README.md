@@ -106,6 +106,7 @@ The `additions` directory should contain the following:
 
 - **`additions/fonts/`** — Place your `.ttf` or `.otf` font files here.
 - **`additions/icons/`** — Place any custom icon files (e.g., `folder-github.svg`) here.
+- **`additions/aliases/`** — Alias definitions applied by `./setup aliases`: one file per shell (`bash`, `zsh`, `fish`) plus shared `distro/` fragments (`debian`, `redhat`, `arch`); the selected shell file and matching distro fragment are concatenated into the managed block. Existing rc files keep their permission mode, ACLs, extended attributes, and SELinux context; newly created files are owner-only (`0600`).
 - **`additions/shell_conf`** — Legacy reference for the managed alias block (not applied directly).
 - **`additions/wallpaper.jpg`** — Your preferred wallpaper image.
 

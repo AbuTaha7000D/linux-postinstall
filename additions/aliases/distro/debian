@@ -1,0 +1,4 @@
+# Distro-specific aliases (Debian family)
+alias supdate='sudo apt-get update -y && sudo apt-get upgrade -y && flatpak update -y && sudo apt-get autoremove -y'
+alias install='sudo apt-get install'
+alias remove='sudo apt-get remove'
