@@ -23,15 +23,18 @@ terminal command nor the aliases command.
   with one command: system development packages, VS Code, DBeaver, mise with
   Python 3.13, JupyterLab, Codex, OpenCode, and the managed dev shell block.
 - **Standalone:** yes. `./setup dev` does **not** require `./setup packages` to
-  run first; it installs everything it needs itself. Some work duplicates
-  `modules/install_apps.sh` on purpose (VS Code, and the Flathub remote/install
-  pattern), and that duplication is allowed.
+  run first; it installs everything it needs itself. Some work intentionally
+  duplicates `modules/install_apps.sh`: dev installs VS Code itself and mirrors
+  the Flathub remote-add + per-app install pattern. DBeaver and dev's user-level
+  Flatpak usage are owned only by dev.
 - **Part of the full flow:** yes. It is the sixth step of `./setup install`
   (packages → language → fonts → aliases → terminal → **dev** → GNOME group).
 - **Relationship with other commands:**
-  - `packages` (`modules/install_apps.sh`) also installs VS Code/Chrome and
-    Flatpak apps; dev deliberately duplicates only VS Code and the Flathub
-    pattern, and leaves `install_apps.sh` untouched.
+  - `packages` (`modules/install_apps.sh`) also installs VS Code/Chrome and a
+    curated Flatpak app list (system-wide, `--system`); dev duplicates the
+    VS Code install and mirrors only the Flathub remote-add + per-app install
+    pattern, but owns DBeaver independently and uses user-level Flatpak. dev
+    leaves `install_apps.sh` untouched.
   - `terminal` (`modules/terminal_themes.sh`) installs shells/Atuin/Starship and
     writes exact init lines. dev writes its own managed PATH/mise block; the two
     coexist and never duplicate each other.
@@ -94,7 +97,8 @@ Fixed stage order:
 1. **Source + detect.** Source `lib/common.sh`; compute `dtype` via
    `distribution()`.
 2. **D01 — system packages.** Build the missing-package list from the
-   binary-presence matrix, install the set in one transaction, then re-verify
+   binary-presence matrix, install the missing set in a single package-manager
+   install invocation (after a separate index refresh on Debian), then re-verify
    every missing binary.
 3. **D02 — VS Code.** Skip if `code` present; otherwise vendor install on
    Fedora/Debian (x86_64 only) or `yay`/AUR install on Arch, then verify `code`.
@@ -379,14 +383,17 @@ Both `./setup --dry-run dev` and `./setup dev --dry-run` behave identically.
 
 - Package installation or index refresh (`dnf`/`apt-get`/`pacman`/`yay`).
 - Network access (no vendor download, AUR clone, mise/OpenCode installers).
-- File writes or directory creation (`~/.npmrc`, `~/.local`, `~/.bashrc`,
-  `~/.zshrc`, fish config, fd symlink).
+- File writes or directory creation performed by the setup scripts (`~/.npmrc`,
+  `~/.local`, `~/.bashrc`, `~/.zshrc`, fish config, fd symlink).
 - `sudo` invocation or credential authentication (`run_root` and `ensure_sudo`
   only print/return early).
 - Service or firewall changes (never performed in any mode).
 
-Dry-run must be testable with a sandboxed `HOME` and PATH tripwires: assert zero
-files created, zero installers run, zero sudo, and only would-run output.
+Dry-run must be testable with a sandboxed `HOME` and PATH tripwires: assert the
+setup scripts create zero files, zero installers run, zero sudo, and only
+would-run output. Read-only third-party probes listed above (the real `flatpak`
+binary) may initialize their own cache directories; those are environmental, not
+script mutations.
 
 ---
 
@@ -503,8 +510,8 @@ A Senior reviewer should verify, on a sandboxed `HOME` and PATH:
 **Positive behavior**
 
 - Each stage skips when its artifact is present and installs when missing.
-- D01 installs exactly the missing family packages in one transaction and
-  re-verifies every previously-missing binary.
+- D01 installs exactly the missing family packages in a single package-manager
+  install invocation and re-verifies every previously-missing binary.
 - VS Code vendor install on Fedora/Debian; yay bootstrap + AUR install on Arch.
 - DBeaver installs via Flatpak/Flathub and is verified with `flatpak info`.
 - mise/Python 3.13, JupyterLab (+ipykernel), Codex (`~/.npmrc` managed prefix),
@@ -515,8 +522,8 @@ A Senior reviewer should verify, on a sandboxed `HOME` and PATH:
 
 **Negative ("must NOT happen")**
 
-- Dry-run: no package install, no network, no file/directory creation, no sudo
-  authentication, no service changes.
+- Dry-run: no package install, no network, no file/directory creation by the
+  setup scripts, no sudo authentication, no service changes.
 - `sshd` is not enabled or started; no `sshd_config`, firewall, or
   authentication change.
 - PostgreSQL server is not initialized or started (`initdb`, `pg_ctl`,
@@ -540,7 +547,7 @@ A Senior reviewer should verify, on a sandboxed `HOME` and PATH:
 | Partially installed | Only missing stages run; present stages report "already installed" |
 | Fully installed (idempotent) | All stages skip; one dev block per rc; no reinstall; exit 0 |
 | Second run | No duplicate block, no duplicate `prefix=` line, no recreated fd symlink |
-| Dry-run `--dry-run dev` | Would-run lines only; zero mutations; no sudo/network |
+| Dry-run `--dry-run dev` | Would-run lines only; zero script mutations; no sudo/network |
 | Dry-run `dev --dry-run` | Byte-identical to the other order |
 | Unsupported distro | Fatal, nonzero, before any install |
 | D01 install failure / partial install | Fatal after re-verify |

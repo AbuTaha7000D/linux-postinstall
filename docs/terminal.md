@@ -18,11 +18,11 @@ See `docs/dev.md` for the development-environment contract.
 - **Equivalent dry-run invocations (identical):**
   - `./setup --dry-run terminal`
   - `./setup terminal --dry-run`
-- **Purpose:** own the terminal stack for the current user: choose the default
-  login shell, install the selected shell when it is missing (with a documented
-  fallback to Bash), install Atuin and Starship when missing, add the guarded
-  init lines for the selected shell only, and change the login shell with
-  `chsh`.
+- **Purpose:** own the terminal stack for the current user: select and configure
+  the default shell, install the selected shell when it is missing (with a
+  documented fallback to Bash), install Atuin and Starship when missing, add the
+  guarded init lines for the selected shell only, and set that shell as the
+  login shell with `chsh`.
 - **Standalone:** yes. `./setup terminal` runs the terminal stack on its own and
   has no dependency on any other command.
 - **Part of the full flow:** yes. It is the fifth step of `./setup install`
@@ -95,11 +95,13 @@ Related commands that must **not** be modified to implement terminal behavior:
      with `command -v`. On failure or unverified install, warn, fall back to
      Bash, re-run selection mapping, and verify Bash exists (fatal if not).
 5. **Atuin installation.** Skip if present (`command -v atuin` or
-   `~/.local/bin/atuin`); dry-run prints the official-installer line; otherwise
-   run the official installer and re-verify (fatal on failure).
+   `~/.atuin/bin/atuin`, the official installer's location); dry-run prints the
+   official-installer line; otherwise run the official installer and re-verify
+   (fatal on failure).
 6. **Starship installation.** Skip if present (`command -v starship`); dry-run
-   prints the exact official-installer line; otherwise `ensure_sudo` first, run
-   the official installer, and re-verify (fatal on failure).
+   prints the exact official-installer line; otherwise pre-cache credentials
+   with `ensure_sudo`, run the official installer unprivileged (it self-elevates
+   internally), and re-verify (fatal on failure).
 7. **Init lines.** Ensure the fish config directory exists (fish only, real
    mode). Append the Atuin init line and the Starship init line to the selected
    shell's rc file, each guarded by an exact-line check.
@@ -131,7 +133,7 @@ install selected shell:
         ELSE → shell confirmed
 
 atuin:
-    IF `command -v atuin` OR `-x ~/.local/bin/atuin` → skip
+    IF `command -v atuin` OR `-x ~/.atuin/bin/atuin` → skip
     ELSE IF dry-run → print official-installer line
     ELSE run installer; IF fails OR still absent → fatal
 
@@ -175,7 +177,7 @@ Key functions inside `modules/terminal_themes.sh`:
 - `install_shell_package <pkg>` — family-specific privileged install; returns
   nonzero (with a warning) on failure and on unsupported distributions.
 - `atuin_present` / `starship_present` — presence predicates
-  (`command -v`, plus `~/.local/bin/atuin` for Atuin).
+  (`command -v`, plus `~/.atuin/bin/atuin` for Atuin).
 - `ensure_init_line <file> <line> <label>` — exact-line guard, then append.
 
 Constants and environment:
@@ -230,7 +232,9 @@ installed from distro packages. `chsh` is distro-independent.
 Notes:
 
 - Init lines are appended one line at a time and only when the exact line is not
-  already present. No managed block markers are used by this command.
+  already present; for Fish, an existing installer-written `atuin init fish`
+  block also suppresses the Atuin append. No managed block markers are used by
+  this command.
 - Existing rc content outside the two appended init lines is never rewritten.
 - Terminal does **not** touch `/etc/shells`, `sshd_config`, firewall rules, or
   any service.
@@ -252,8 +256,9 @@ must guarantee:
 - Printing intended actions: shell install lines, the Atuin installer line, the
   exact Starship installer line, `would run: add '<line>' to <file>`, and the
   `chsh` sudo line.
-- Read-only probes: `command -v` (shells, Atuin, Starship), `getent passwd`
-  (current login shell), and `id -un` (target username).
+- Read-only probes: `command -v` (shells, Atuin, Starship), `-x` path tests
+  (Atuin at `~/.atuin/bin/atuin`), `getent passwd` (current login shell), and
+  `id -un` (target username).
 
 **Forbidden:**
 
@@ -278,8 +283,9 @@ zero installers, authenticates no sudo, and prints only would-run lines.
 - **Shell install:** `command -v` gate means a second run does not reinstall.
 - **Atuin/Starship:** presence predicates gate installation; second and
   subsequent runs report "already installed".
-- **Init lines:** `grep -qxF` exact-line guard means reruns add nothing and do
-  not duplicate.
+- **Init lines:** exact-line guards mean reruns add nothing and do not
+  duplicate. For Fish, Atuin detection also recognizes the installer's guarded
+  `atuin init fish` block, so terminal does not append a second Atuin init.
 - **Login shell:** `getent` comparison means reruns report "already the default
   shell" and skip `chsh`.
 - Repeating the command (and every step inside it) is safe: no duplicate rc
@@ -320,11 +326,15 @@ this run created them, on both success and failure.
   and `chsh`. Both use `run_root`.
 - `chsh` is invoked as `chsh -s <path> <user>` (root plus explicit username) so
   it is non-interactive.
-- The Starship official installer self-elevates to write `/usr/local/bin`;
-  terminal calls `ensure_sudo` first so the password prompt happens at a clean
-  point, not mid-pipeline.
+- The Starship official installer performs its own privilege elevation (its
+  internal `sudo`) to write `/usr/local/bin`. Terminal runs the installer
+  unprivileged and calls `ensure_sudo` first only to pre-cache credentials, so
+  that prompt does not occur mid-pipeline; `run_root` is not used for the
+  installer.
 - Atuin is installed user-level by its official installer and does not require
-  sudo.
+  sudo. The installer places the binary at `~/.atuin/bin` and owns PATH via
+  `~/.atuin/bin/env`, sourced from the selected shell's rc; terminal itself does
+  not modify PATH.
 - `setup` refuses to run as root (`EUID 0`).
 - No service is enabled or started, no firewall rule is changed, and no
   authentication configuration is modified by this command.
@@ -337,7 +347,7 @@ this run created them, on both success and failure.
 | Dependency | Used for | Notes |
 | --- | --- | --- |
 | `dnf` / `apt-get` / `pacman` | install Zsh/Fish when missing | privileged, via `run_root` |
-| Atuin official installer (`https://setup.atuin.sh`) | install Atuin | user-level; network |
+| Atuin official installer (`https://setup.atuin.sh`) | install Atuin | user-level to `~/.atuin/bin`; owns PATH via `~/.atuin/bin/env`; network |
 | Starship official installer (`https://starship.rs/install.sh`) | install Starship | exact command `curl -sS https://starship.rs/install.sh \| sh -s -- -y`; network |
 | Network | Atuin/Starship installers | only when the tool is missing and not dry-run |
 | `command -v` | presence detection | shells, Atuin, Starship |
@@ -375,7 +385,8 @@ A Senior reviewer should verify, on a sandboxed `HOME` and PATH:
 
 - Dry-run: no installers run, no files created, no directory created, no
   `chsh`, no `sudo`/`ensure_sudo` authentication, no network.
-- Reruns: exactly one Atuin line and one Starship line; no second `chsh`.
+- Reruns: exactly one Atuin line and one Starship line (Fish included, despite
+  the installer's guarded block); no second `chsh`.
 - No references to the removed line prompt tool (Oh My Posh) or its theme
   repository anywhere:
   `grep -RniE 'oh-my-pos[h]|poshtheme[s]' .` returns no matches.
@@ -430,6 +441,10 @@ A Senior reviewer should verify, on a sandboxed `HOME` and PATH:
 
 - **No mismatches found** between the approved contract above and the current
   `modules/terminal_themes.sh` as reviewed for this specification.
+- Informational: the Atuin presence predicate matches the official installer's
+  real location (`~/.atuin/bin/atuin`) and its PATH-owning `env` file; Fish
+  init-idempotency also recognizes the installer's guarded `atuin init fish`
+  block.
 - Informational: the Debian branch runs `apt-get update` on each shell install;
   this is idempotent and matches the rest of the project's apt convention.
 - Informational: fish config-directory creation happens only in real mode and
