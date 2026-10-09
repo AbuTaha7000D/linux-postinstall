@@ -10,7 +10,7 @@ Shared helpers (distribution/family detection, desktop-environment detection, `r
 ## Available Scripts
 
 - `add_custom_shortcut.sh` — Add custom GNOME keyboard shortcuts
-- `change_language.sh` — Set system language (English/Arabic, 10-second interactive prompt)
+- `change_language.sh` — Set system language (English/Arabic, 5-second interactive prompt; verifies the selected locale is available via `locale -a` before any change, backs up the locale file, and rewrites only `LANG`/`LC_ALL` through `run_root`)
 - `dev.sh` — Development environment: install missing system development packages (binary-presence matrix, OpenSSH client and server included) in a single family-specific transaction with post-verification, then VS Code (official vendor builds on Fedora/Debian, AUR on Arch), DBeaver via Flatpak, mise with Python 3.13, JupyterLab via pipx, Codex into the npm user prefix, and the OpenCode CLI via the official installer; finally the Debian `fdfind` → `fd` symlink in `~/.local/bin` and the managed dev block (`# >>> linux-postinstall dev >>>` … `# <<< linux-postinstall dev <<<`) with PATH and mise activation for Bash (and Zsh/Fish when present), ending with reload guidance. Standalone (no `packages` prerequisite) and idempotent; the SSH server is installed but never enabled or started
 - `gnome_extensions.sh` — Open recommended GNOME extensions in your browser
 - `gnome_themes.sh` — User-driven GNOME theme selection and application

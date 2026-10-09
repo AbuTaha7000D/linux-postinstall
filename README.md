@@ -18,7 +18,7 @@ This script automates the initial setup and configuration of a Linux system, str
   - Installs distribution-specific applications (VS Code, Chrome).
   - Installs flatpak applications (Brave Browser, Discord, etc.).
 - **System Configuration:**
-  - Sets the system language to English (US) or Arabic, with a 10-second interactive prompt.
+  - Sets the system language to English (US) or Arabic, with a 5-second interactive prompt.
   - Installs fonts for improved visual appearance.
   - Configures the terminal: selects your default shell (Bash, Zsh, or Fish), installs it if missing (falling back to Bash when the install cannot be verified), and configures Atuin and Starship for that shell.
   - Sets up aliases for common commands as a managed block in your shell configuration.
@@ -60,7 +60,7 @@ Debian-family support expects Debian 13 (trixie) or newer, or Ubuntu 25.10 or ne
 
     - `install`      : Full setup in fixed order: packages, language, fonts, aliases, terminal, dev, then the GNOME group (wallpaper, gnome_themes, icons_and_cursors, favorites, shortcuts, extensions) when the desktop is GNOME
     - `packages`     : Install system, Flatpak, and vendor applications
-    - `language`     : Set system language (English/Arabic, 10-second prompt)
+    - `language`     : Set system language (English/Arabic, 5-second prompt; verifies the locale is installed before applying)
     - `fonts`        : Install user fonts from assets/fonts
     - `aliases`      : Write the managed alias block to Bash (and Zsh/Fish when present)
     - `terminal`     : Select the default shell (Bash/Zsh/Fish), install it if missing (falling back to Bash if the install cannot be verified), configure Atuin and Starship for it, and set it as the default shell (chsh)
