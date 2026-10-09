@@ -1,6 +1,6 @@
 #!/bin/bash
 # Manage the project's alias block in shell rc files (idempotent, non-destructive).
-# Alias definitions live in additions/aliases/: one file per shell plus a shared
+# Alias definitions live in config/aliases/: one file per shell plus a shared
 # distro fragment. This module only detects targets, composes the managed block,
 # validates it, backs up once, and replaces the block atomically.
 set -e
@@ -11,7 +11,7 @@ source "$SCRIPT_DIR/lib/common.sh"
 
 BLOCK_BEGIN="# >>> linux-postinstall aliases >>>"
 BLOCK_END="# <<< linux-postinstall aliases <<<"
-ALIASES_DIR="$SCRIPT_DIR/additions/aliases"
+ALIASES_DIR="$SCRIPT_DIR/config/aliases"
 FAMILY="$(distribution)"
 
 # Shell config files that can receive the block.

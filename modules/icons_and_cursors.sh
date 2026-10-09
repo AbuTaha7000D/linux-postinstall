@@ -5,7 +5,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$SCRIPT_DIR/lib/common.sh"
 
-ICON_SRC_DIR="$SCRIPT_DIR/additions/icons"
+ICON_SRC_DIR="$SCRIPT_DIR/assets/icons"
 BOOKMARKS_FILE="$HOME/.config/gtk-3.0/bookmarks"
 GITHUB_BOOKMARK="file://$HOME/Github"
 
@@ -17,7 +17,7 @@ fi
 
 # Dry-run: report planned work, write nothing
 if [ "${SETUP_DRY_RUN:-0}" = "1" ]; then
-    echo "would run: create ~/.icons, copy additions/icons, create ~/Github, add the Files sidebar bookmark"
+    echo "would run: create ~/.icons, copy assets/icons, create ~/Github, add the Files sidebar bookmark"
     echo "would run: select cursor theme and set cursor-theme/icon-theme (gsettings)"
     exit 0
 fi
@@ -69,12 +69,12 @@ else
     echo "Icon theme is already Adwaita."
 fi
 
-# Copy all icons from additions/icons/ to ~/.icons
+# Copy all icons from assets/icons/ to ~/.icons
 if [ -d "$ICON_SRC_DIR" ]; then
     run cp -r "$ICON_SRC_DIR"/* "$HOME/.icons/"
-    echo "All icons from additions/icons/ copied to ~/.icons."
+    echo "All icons from assets/icons/ copied to ~/.icons."
 else
-    echo "No additions/icons/ directory found, skipping icon copy."
+    echo "No assets/icons/ directory found, skipping icon copy."
 fi
 
 # Create ~/Github/ if it doesn't exist and add to sidebar

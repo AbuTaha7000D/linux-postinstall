@@ -28,7 +28,7 @@ usage() {
     echo "  aliases      Set the project aliases in shell configuration files"
     echo "  packages     Install system packages, Flatpaks, and vendor applications"
     echo "  language     Set system language (English/Arabic)"
-    echo "  fonts        Install user fonts from additions/fonts"
+    echo "  fonts        Install user fonts from assets/fonts"
     echo "  dev          Set up the development environment"
     echo "  gnome        Run the GNOME desktop configuration steps"
     echo "  shortcuts    Add custom GNOME keyboard shortcuts"

@@ -17,7 +17,7 @@ See `docs/terminal.md` and `docs/dev.md` for the other commands.
 - **Equivalent dry-run invocations (identical):**
   - `./setup --dry-run fonts`
   - `./setup fonts --dry-run`
-- **Purpose:** copy the bundled fonts under `additions/fonts/` into the current
+- **Purpose:** copy the bundled fonts under `assets/fonts/` into the current
   user's font directory and refresh the font cache.
 - **Standalone:** yes. `./setup fonts` has no dependency on any other command.
 - **Part of the full flow:** yes. It is the third step of `./setup install`
@@ -30,14 +30,14 @@ See `docs/terminal.md` and `docs/dev.md` for the other commands.
 
 | Role | Path |
 | --- | --- |
-| Source | `<repo>/additions/fonts/` |
+| Source | `<repo>/assets/fonts/` |
 | Destination | `${XDG_DATA_HOME:-$HOME/.local/share}/fonts` |
 
 - The destination honors `XDG_DATA_HOME`; when it is unset (or empty) the
   default `~/.local/share/fonts` is used.
 - The source is resolved relative to the module location, so the command works
   regardless of the caller's current directory.
-- Files are copied **flat** into the destination; no `additions/fonts` level is
+- Files are copied **flat** into the destination; no `assets/fonts` level is
   recreated beneath it.
 - fontconfig reads the XDG font directory (`$XDG_DATA_HOME/fonts`); the legacy
   `~/.fonts` directory is not used.
@@ -109,7 +109,7 @@ printed after a failure.
   place; nothing is deleted.
 - Limitations:
   - Same-named files in the destination are overwritten, including user edits.
-  - Fonts removed from `additions/fonts/` are **not** removed from the
+  - Fonts removed from `assets/fonts/` are **not** removed from the
     destination; the command never deletes.
   - Font files are not validated, and successful registration is not verified
     (`fc-list` is not used); only the `fc-cache` exit status is checked.

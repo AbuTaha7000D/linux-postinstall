@@ -61,7 +61,7 @@ Debian-family support expects Debian 13 (trixie) or newer, or Ubuntu 25.10 or ne
     - `install`      : Full setup in fixed order: packages, language, fonts, aliases, terminal, dev, then the GNOME group (wallpaper, gnome_themes, icons_and_cursors, favorites, shortcuts, extensions) when the desktop is GNOME
     - `packages`     : Install system, Flatpak, and vendor applications
     - `language`     : Set system language (English/Arabic, 10-second prompt)
-    - `fonts`        : Install user fonts from additions/fonts
+    - `fonts`        : Install user fonts from assets/fonts
     - `aliases`      : Write the managed alias block to Bash (and Zsh/Fish when present)
     - `terminal`     : Select the default shell (Bash/Zsh/Fish), install it if missing (falling back to Bash if the install cannot be verified), configure Atuin and Starship for it, and set it as the default shell (chsh)
     - `dev`          : Install the development environment (system toolchain including the OpenSSH client and server, VS Code, DBeaver, mise-managed Python 3.13, JupyterLab, Codex, OpenCode) and write the managed dev shell configuration block
@@ -100,15 +100,14 @@ The SSH server is installed but deliberately never enabled or started by the scr
 
 After `./setup dev`, open a new shell (or run `exec bash`) so `~/.local/bin` and mise activation are picked up.
 
-## Additions Directory
+## Assets and Configuration
 
-The `additions` directory should contain the following:
+Static assets live under `assets/`, and the editable alias data lives under `config/aliases/`:
 
-- **`additions/fonts/`** — Place your `.ttf` or `.otf` font files here.
-- **`additions/icons/`** — Place any custom icon files (e.g., `folder-github.svg`) here.
-- **`additions/aliases/`** — Alias definitions applied by `./setup aliases`: one file per shell (`bash`, `zsh`, `fish`) plus shared `distro/` fragments (`debian`, `redhat`, `arch`); the selected shell file and matching distro fragment are concatenated into the managed block. Existing rc files keep their permission mode, ACLs, extended attributes, and SELinux context; newly created files are owner-only (`0600`).
-- **`additions/shell_conf`** — Legacy reference for the managed alias block (not applied directly).
-- **`additions/wallpaper.jpg`** — Your preferred wallpaper image.
+- **`assets/fonts/`** — Place your `.ttf` or `.otf` font files here.
+- **`assets/icons/`** — Place any custom icon files (e.g., `folder-github.svg`) here.
+- **`assets/wallpaper/wallpaper.jpg`** — Your preferred wallpaper image.
+- **`config/aliases/`** — Alias definitions applied by `./setup aliases`: one file per shell (`bash`, `zsh`, `fish`) plus shared `distro/` fragments (`debian`, `redhat`, `arch`); the selected shell file and matching distro fragment are concatenated into the managed block. Existing rc files keep their permission mode, ACLs, extended attributes, and SELinux context; newly created files are owner-only (`0600`).
 
 ## Contributing
 

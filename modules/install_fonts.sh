@@ -1,11 +1,11 @@
 #!/bin/bash
-# Install user fonts from additions/fonts
+# Install user fonts from assets/fonts
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$SCRIPT_DIR/lib/common.sh"
 
-FONT_DIR="$SCRIPT_DIR/additions/fonts"
+FONT_DIR="$SCRIPT_DIR/assets/fonts"
 FONT_DEST="${XDG_DATA_HOME:-$HOME/.local/share}/fonts"
 
 if [ "${SETUP_DRY_RUN:-0}" = "1" ]; then
