@@ -7,121 +7,246 @@ source "$SCRIPT_DIR/lib/common.sh"
 
 dtype=$(distribution)
 
-# System packages; one list per family, only names that exist in that family's repos
-fedora_packages=(
-    git nano btop htop fzf fastfetch bat vim neovim
-    python3 python3-pip nodejs npm gnupg2
-    unzip wget curl xdg-utils
-    gcc make cmake clang xdotool flatpak
-    thunderbird bleachbit fish
-    gnome-tweaks gnome-shell-extensions
-    gnome-shell-extension-user-theme gnome-shell-extension-dash-to-dock
-)
+# Package lists
+#
+# Native packages live in config/packages/<family>.txt and Flatpak IDs in
+# config/flatpak.txt (one entry per line; blank lines and text after '#' are
+# ignored). A missing or unreadable list file is fatal before anything is
+# installed; a readable list with no entries is skipped without invoking a
+# package manager.
 
-debian_packages=(
-    git nano btop htop fzf fastfetch bat vim neovim
-    python3 python3-pip nodejs npm gpg
-    unzip wget curl xdg-utils
-    gcc make cmake clang xdotool flatpak
-    vlc thunderbird obs-studio bleachbit screenkey
-    fish gnome-tweaks gnome-shell-extensions
-)
+# cfg_load_list <file> <array-name>: load a required list file into <array>.
+cfg_load_list() {
+    local file="$1"
+    local -n _cfg_out="$2"
+    if [ ! -f "$file" ]; then
+        echo "Error: required config file not found: $file" >&2
+        exit 1
+    fi
+    if [ ! -r "$file" ]; then
+        echo "Error: required config file is not readable: $file" >&2
+        exit 1
+    fi
+    _cfg_out=()
+    local line
+    while IFS= read -r line || [ -n "$line" ]; do
+        line="${line%%#*}"
+        line="${line#"${line%%[![:space:]]*}"}"
+        line="${line%"${line##*[![:space:]]}"}"
+        if [ -n "$line" ]; then
+            _cfg_out+=("$line")
+        fi
+    done < "$file"
+    return 0
+}
 
-arch_packages=(
-    git nano btop htop fzf fastfetch bat vim neovim
-    python python-pip nodejs gnupg
-    unzip wget curl xdg-utils
-    gcc make cmake clang xdotool flatpak
-    vlc thunderbird obs-studio bleachbit
-    fish gnome-tweaks gnome-shell-extensions
-)
-
-echo "Installing system packages..."
 case "$dtype" in
-    "redhat")
-        if ! run_root dnf makecache; then
-            echo "Error: dnf failed to refresh the package index (Fedora family)." >&2
-            exit 1
-        fi
-        if ! run_root dnf install -y "${fedora_packages[@]}"; then
-            echo "Error: dnf failed to install the Fedora package set." >&2
-            exit 1
-        fi
-        ;;
-    "debian")
-        if ! run_root apt-get update; then
-            echo "Error: apt-get failed to refresh the package index (Debian family)." >&2
-            exit 1
-        fi
-        if ! run_root apt-get install -y "${debian_packages[@]}"; then
-            echo "Error: apt-get failed to install the Debian package set." >&2
-            exit 1
-        fi
-        ;;
-    "arch")
-        if ! run_root pacman -Syu --noconfirm "${arch_packages[@]}"; then
-            echo "Error: pacman failed to refresh and install the Arch package set." >&2
-            exit 1
-        fi
-        ;;
+    "redhat") package_file="$SCRIPT_DIR/config/packages/fedora.txt" ;;
+    "debian") package_file="$SCRIPT_DIR/config/packages/debian.txt" ;;
+    "arch")   package_file="$SCRIPT_DIR/config/packages/arch.txt" ;;
     *)
         echo "Unknown or unsupported distribution: $dtype" >&2
         exit 1
         ;;
 esac
 
+cfg_load_list "$package_file" package_list
+cfg_load_list "$SCRIPT_DIR/config/flatpak.txt" flatpak_apps
+
+# pkg_probe <package>: 0 installed, 1 missing, 2 probe error. Detection
+# errors are never treated as absence. Probe output is read with LC_ALL=C so
+# that the parsed absence text is locale-independent. SETUP_PKG_PROBE
+# overrides detection in tests (called as: <probe> <package>).
+pkg_probe() {
+    if [ -n "${SETUP_PKG_PROBE:-}" ]; then
+        if "$SETUP_PKG_PROBE" "$1"; then return 0; else return $?; fi
+    fi
+    local out
+    case "$dtype" in
+        "redhat")
+            if ! command -v rpm >/dev/null 2>&1; then
+                echo "Error: rpm not found; cannot detect installed packages." >&2
+                return 2
+            fi
+            if out=$(LC_ALL=C rpm -q "$1" 2>&1); then return 0; fi
+            # A few Fedora catalog names exist only as virtual provides
+            # (`wget` is provided by `wget2-wget`), which `rpm -q "$1"` never
+            # matches. Query a provide only for those known names so that an
+            # unrelated installed package's capability cannot mask a real
+            # package. Output is captured with LC_ALL=C because the absence
+            # text below is matched literally (probe messages are localized).
+            case "$1" in
+                wget)
+                    if LC_ALL=C rpm -q --whatprovides "$1" >/dev/null 2>&1; then return 0; fi
+                    ;;
+            esac
+            case "$out" in
+                *"is not installed"*) return 1 ;;
+                *) echo "Error: rpm probe failed for '$1': $out" >&2; return 2 ;;
+            esac
+            ;;
+        "debian")
+            if ! command -v dpkg >/dev/null 2>&1; then
+                echo "Error: dpkg not found; cannot detect installed packages." >&2
+                return 2
+            fi
+            if out=$(LC_ALL=C dpkg -s "$1" 2>&1); then return 0; fi
+            case "$out" in
+                *"is not installed"*) return 1 ;;
+                *) echo "Error: dpkg probe failed for '$1': $out" >&2; return 2 ;;
+            esac
+            ;;
+        "arch")
+            if ! command -v pacman >/dev/null 2>&1; then
+                echo "Error: pacman not found; cannot detect installed packages." >&2
+                return 2
+            fi
+            if out=$(LC_ALL=C pacman -Q "$1" 2>&1); then return 0; fi
+            case "$out" in
+                *"was not found"*) return 1 ;;
+                *) echo "Error: pacman probe failed for '$1': $out" >&2; return 2 ;;
+            esac
+            ;;
+    esac
+}
+
+echo "Installing system packages..."
+
+missing_packages=()
+declare -A planned_native=()
+for pkg in "${package_list[@]}"; do
+    if pkg_probe "$pkg"; then
+        echo "$pkg is already installed."
+    else
+        rc=$?
+        if [ "$rc" -eq 2 ]; then
+            echo "Error: could not determine whether '$pkg' is installed." >&2
+            exit 1
+        fi
+        missing_packages+=("$pkg")
+        planned_native["$pkg"]=1
+    fi
+done
+
+if [ "${#package_list[@]}" -eq 0 ]; then
+    echo "No native packages listed in $package_file; skipping package install."
+elif [ "${#missing_packages[@]}" -eq 0 ]; then
+    echo "All native packages from $package_file are already installed."
+else
+    echo "${#missing_packages[@]} missing native package(s); installing..."
+    case "$dtype" in
+        "redhat")
+            if ! run_root dnf makecache; then
+                echo "Error: dnf failed to refresh the package index (Fedora family)." >&2
+                exit 1
+            fi
+            if ! run_root dnf install -y "${missing_packages[@]}"; then
+                echo "Error: dnf failed to install the Fedora package set." >&2
+                exit 1
+            fi
+            ;;
+        "debian")
+            if ! run_root apt-get update; then
+                echo "Error: apt-get failed to refresh the package index (Debian family)." >&2
+                exit 1
+            fi
+            if ! run_root apt-get install -y "${missing_packages[@]}"; then
+                echo "Error: apt-get failed to install the Debian package set." >&2
+                exit 1
+            fi
+            ;;
+        "arch")
+            if ! run_root pacman -Syu --noconfirm "${missing_packages[@]}"; then
+                echo "Error: pacman failed to refresh and install the Arch package set." >&2
+                exit 1
+            fi
+            ;;
+    esac
+fi
+
 echo -e "\nInstalling Flatpak applications..."
 
-if ! command -v flatpak >/dev/null 2>&1; then
-    echo "Error: flatpak command not found (required to install Flatpak applications)." >&2
-    exit 1
-fi
+# flatpak_probe <app>: 0 installed (user or system scope), 1 missing,
+# 2 probe error. Detection errors are never treated as absence. Probe output
+# is read with LC_ALL=C so the parsed absence text is locale-independent.
+# SETUP_FLATPAK_PROBE overrides detection in tests.
+flatpak_probe() {
+    if [ -n "${SETUP_FLATPAK_PROBE:-}" ]; then
+        if "$SETUP_FLATPAK_PROBE" "$1"; then return 0; else return $?; fi
+    fi
+    if flatpak info "$1" >/dev/null 2>&1; then return 0; fi
+    if flatpak info --user "$1" >/dev/null 2>&1; then return 0; fi
+    local out
+    out=$(LC_ALL=C flatpak info "$1" 2>&1) || true
+    case "$out" in
+        *"not installed"*|*"No such ref"*) return 1 ;;
+    esac
+    out=$(LC_ALL=C flatpak info --user "$1" 2>&1) || true
+    case "$out" in
+        *"not installed"*|*"No such ref"*) return 1 ;;
+    esac
+    echo "Error: flatpak probe failed for '$1'." >&2
+    return 2
+}
 
-if ! flatpak remotes --system | grep -qE '^flathub([[:space:]]|$)'; then
-    if ! run_root flatpak remote-add --system --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo; then
-        echo "Error: failed to add the Flathub remote." >&2
+# Explicit cross-source mappings: a Flatpak app is skipped when the same
+# application is reliably installed natively. Keep this list small and exact.
+flatpak_native_equivalent() {
+    case "$1" in
+        "org.mozilla.thunderbird_esr") echo "thunderbird" ;;
+        "com.obsproject.Studio") echo "obs-studio" ;;
+        *) echo "" ;;
+    esac
+}
+
+if [ "${#flatpak_apps[@]}" -eq 0 ]; then
+    echo "No Flatpak applications listed in config/flatpak.txt; skipping."
+else
+    if ! command -v flatpak >/dev/null 2>&1; then
+        echo "Error: flatpak command not found (required to install Flatpak applications)." >&2
         exit 1
     fi
-fi
 
-flatpak_apps=(
-    com.brave.Browser
-    com.discordapp.Discord
-    com.bitwarden.desktop
-    com.github.jeromerobert.pdfarranger
-    com.github.rajsolai.textsnatcher
-	org.strawberrymusicplayer.strawberry
-    com.microsoft.Edge
-    com.rtosta.zapzap
-    com.spotify.Client
-    net.nokyan.Resources
-    org.nickvision.tubeconverter
-    org.pipewire.Helvum
-    com.github.joseexposito.touche
-    com.mattjakeman.ExtensionManager
-    io.gitlab.theevilskeleton.Upscaler
-    org.gnome.Extensions
-    org.gnome.NetworkDisplays
-    org.kde.KStyle.Adwaita
-    org.libreoffice.LibreOffice
-    org.standardnotes.standardnotes
-    org.localsend.localsend_app
-    org.mozilla.Thunderbird
-    org.qbittorrent.qBittorrent
-)
-
-
-# Install Flatpak apps
-for app in "${flatpak_apps[@]}"; do
-    if flatpak info "$app" > /dev/null 2>&1; then
-        echo "$app is already installed."
-    else
-        if ! run_root flatpak install --system flathub "$app" -y; then
-            echo "Error: failed to install Flatpak app $app" >&2
+    if ! flatpak remotes --system | grep -qE '^flathub([[:space:]]|$)'; then
+        if ! run_root flatpak remote-add --system --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo; then
+            echo "Error: failed to add the Flathub remote." >&2
             exit 1
         fi
     fi
-done
+
+    for app in "${flatpak_apps[@]}"; do
+        native="$(flatpak_native_equivalent "$app")"
+        if [ -n "$native" ]; then
+            if pkg_probe "$native"; then
+                echo "Skipping Flatpak $app: native $native is installed."
+                continue
+            else
+                rc=$?
+                if [ "$rc" -eq 2 ]; then
+                    echo "Error: failed to detect native package '$native'." >&2
+                    exit 1
+                fi
+                if [ -n "${planned_native[$native]:-}" ]; then
+                    echo "Skipping Flatpak $app: native $native will be installed by this run."
+                    continue
+                fi
+            fi
+        fi
+        if flatpak_probe "$app"; then
+            echo "$app is already installed."
+        else
+            rc=$?
+            if [ "$rc" -eq 2 ]; then
+                echo "Error: failed to detect Flatpak app '$app'." >&2
+                exit 1
+            fi
+            if ! run_root flatpak install --system flathub "$app" -y; then
+                echo "Error: failed to install Flatpak app $app" >&2
+                exit 1
+            fi
+        fi
+    done
+fi
 
 echo -e "\nInstalling Google Chrome and Visual Studio Code..."
 

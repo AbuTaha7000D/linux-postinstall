@@ -1,0 +1,71 @@
+# Native Fedora / RHEL-family packages (dnf), one per line.
+# Blank lines and text after '#' are ignored.
+#
+# These are the exact catalog names for the Fedora family. Vendor
+# applications (VS Code, Google Chrome, ChatGPT, Motrix Turbo, Warp
+# Terminal, Zoom, .NET SDK) are not Fedora repository packages and are
+# handled by the separate vendor step in modules/install_apps.sh or are
+# out of scope; see docs/packages.md.
+7zip
+bat
+bleachbit
+btop
+clang
+cmake
+cockpit
+curl
+easyeffects
+eza
+fastfetch
+firefox
+fish
+flatpak
+fzf
+gcc
+gcc-c++
+gdb
+gh
+git
+golang
+htop
+inkscape
+jq
+jupyterlab
+kitty
+libvirt
+make
+meson
+mpv
+mtr
+nano
+neovim
+net-tools
+ninja-build
+nmap-ncat
+nodejs22
+nodejs24
+# npm is provided by nodejs22/nodejs24 (nodejsXX-npm), already listed above;
+# Fedora has no standalone "npm" package.
+openconnect
+openvpn
+pandoc-cli
+podman
+python3
+python3-pip
+qemu-kvm
+ripgrep
+ruby
+screenkey
+skopeo
+tar
+timeshift
+traceroute
+typescript
+unzip
+vim-enhanced
+virt-manager
+vlc
+vpnc
+wget
+zoxide
+zsh

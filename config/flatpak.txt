@@ -1,0 +1,30 @@
+# Flatpak application IDs from the system Flathub remote, one per line.
+# Blank lines and text after '#' are ignored.
+app.drey.EarTag
+com.bitwarden.desktop
+com.brave.Browser
+com.discordapp.Discord
+com.github.jeromerobert.pdfarranger
+com.github.ryonakano.reco
+com.konstantintutsch.Lock
+com.mattjakeman.ExtensionManager
+com.obsproject.Studio
+com.rtosta.zapzap
+com.spotify.Client
+com.super_productivity.SuperProductivity
+io.github.realmazharhussain.GdmSettings
+md.obsidian.Obsidian
+net.nokyan.Resources
+org.gnome.Extensions
+org.gnome.NetworkDisplays
+org.gnome.design.Lorem
+org.libreoffice.LibreOffice
+org.localsend.localsend_app
+org.mozilla.thunderbird_esr
+org.pipewire.Helvum
+org.qbittorrent.qBittorrent
+org.standardnotes.standardnotes
+org.strawberrymusicplayer.strawberry
+org.telegram.desktop
+page.codeberg.libre_menu_editor.LibreMenuEditor
+page.tesk.Refine

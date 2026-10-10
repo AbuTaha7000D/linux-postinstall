@@ -1,0 +1,66 @@
+# Native Debian / Ubuntu-family packages (apt-get), one per line.
+# Blank lines and text after '#' are ignored.
+#
+# Derived from the Fedora catalog with documented per-family equivalents
+# (see docs/packages.md). Supported baseline: Debian 13 "trixie" /
+# Ubuntu 24.04 LTS "noble" or newer. Entries the baseline cannot supply are
+# omitted: nodejs22, nodejs24 (use nodejs), jupyterlab, typescript, and
+# fastfetch (Ubuntu 24.04 LTS lacks it; present on Debian 13+ / Ubuntu 25.10+).
+7zip
+bat
+bleachbit
+btop
+clang
+cmake
+cockpit
+curl
+easyeffects
+eza
+firefox-esr
+fish
+flatpak
+fzf
+gcc
+g++
+gdb
+gh
+git
+golang-go
+htop
+inkscape
+jq
+kitty
+libvirt-daemon-system
+make
+meson
+mpv
+mtr
+nano
+ncat
+neovim
+net-tools
+ninja-build
+nodejs
+npm
+openconnect
+openvpn
+pandoc
+podman
+python3
+python3-pip
+qemu-system-x86
+ripgrep
+ruby
+screenkey
+skopeo
+tar
+timeshift
+traceroute
+unzip
+vim
+virt-manager
+vlc
+vpnc
+wget
+zoxide
+zsh

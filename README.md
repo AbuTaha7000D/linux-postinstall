@@ -108,6 +108,8 @@ Static assets live under `assets/`, and the editable alias data lives under `con
 - **`assets/icons/`** — Place any custom icon files (e.g., `folder-github.svg`) here.
 - **`assets/wallpaper/wallpaper.jpg`** — Your preferred wallpaper image.
 - **`config/aliases/`** — Alias definitions applied by `./setup aliases`: one file per shell (`bash`, `zsh`, `fish`) plus shared `distro/` fragments (`debian`, `redhat`, `arch`); the selected shell file and matching distro fragment are concatenated into the managed block. Existing rc files keep their permission mode, ACLs, extended attributes, and SELinux context; newly created files are owner-only (`0600`).
+- **`config/packages/`** — Native package lists for `./setup packages`, one file per family (`fedora.txt`, `debian.txt`, `arch.txt`); one package per line, blank lines and `#` comments ignored. Only the file for the detected family is read; a missing or unreadable required file is fatal.
+- **`config/flatpak.txt`** — Flatpak application IDs installed by `./setup packages`, one per line. `./setup packages` installs only what is missing; see [docs/packages.md](docs/packages.md).
 
 ## Contributing
 

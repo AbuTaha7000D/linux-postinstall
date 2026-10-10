@@ -15,7 +15,7 @@ Shared helpers (distribution/family detection, desktop-environment detection, `r
 - `gnome_extensions.sh` — Open recommended GNOME extensions in your browser
 - `gnome_themes.sh` — User-driven GNOME theme selection and application
 - `icons_and_cursors.sh` — Set up user icons and cursor themes, copy icons, set cursor, set icon theme to Adwaita, and add ~/Github to the sidebar
-- `install_apps.sh` — Install system, Flatpak, and AUR (Arch) applications, including Chrome and VS Code
+- `install_apps.sh` — Install missing native packages (lists under `config/packages/`), Flatpak apps (`config/flatpak.txt`; detection checks the user and system scopes, installation uses the existing system scope), and AUR (Arch) applications, including Chrome and VS Code; native packages are detected with the family package manager, and cross-source duplicates (native Thunderbird/OBS) are skipped. A missing required list file is fatal; comment-only lists are skipped
 - `install_fonts.sh` — Install user fonts from the assets/fonts directory
 - `set_aliases.sh` — Write the managed alias block (`# >>> linux-postinstall aliases >>>` … `# <<< linux-postinstall aliases <<<`) to Bash (and Zsh/Fish when present)
 - `set_favorite_apps.sh` — Set favorite apps in the GNOME dock

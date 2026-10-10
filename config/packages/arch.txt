@@ -1,0 +1,65 @@
+# Native Arch-family packages (pacman), one per line.
+# Blank lines and text after '#' are ignored.
+#
+# Derived from the Fedora catalog with documented per-family equivalents
+# (see docs/packages.md). Entries intentionally omitted here: nodejs22,
+# nodejs24 (use nodejs) and typescript.
+7zip
+bat
+bleachbit
+btop
+clang
+cmake
+cockpit
+curl
+easyeffects
+eza
+fastfetch
+firefox
+fish
+flatpak
+fzf
+gcc
+gdb
+gh
+git
+go
+htop
+inkscape
+jq
+jupyterlab
+kitty
+libvirt
+make
+meson
+mpv
+mtr
+nano
+neovim
+net-tools
+ninja
+nmap
+nodejs
+npm
+openconnect
+openvpn
+pandoc
+podman
+python
+python-pip
+qemu-system-x86
+ripgrep
+ruby
+screenkey
+skopeo
+tar
+timeshift
+traceroute
+unzip
+vim
+virt-manager
+vlc
+vpnc
+wget
+zoxide
+zsh
