@@ -1,0 +1,23 @@
+# GNOME dock favorite applications applied by ./setup favorites, in this order.
+# One desktop-file ID per line; blank lines and text after '#' are ignored.
+# IDs are matched exactly against the desktop entries available on the system
+# (XDG application directories, including Flatpak/Snap exports). An entry whose
+# desktop file is not installed is skipped without being removed from this file.
+org.gnome.Nautilus.desktop
+com.microsoft.VSCode.desktop
+org.mozilla.firefox.desktop
+google-chrome.desktop
+com.bitwarden.desktop.desktop
+com.discordapp.Discord.desktop
+md.obsidian.Obsidian.desktop
+com.spotify.Client.desktop
+org.strawberrymusicplayer.strawberry.desktop
+chatgpt.desktop
+org.telegram.desktop.desktop
+org.mozilla.thunderbird_esr.desktop
+org.localsend.localsend_app.desktop
+com.mattjakeman.ExtensionManager.desktop
+org.kde.kdeconnect.app.desktop
+com.super_productivity.SuperProductivity.desktop
+org.gnome.Software.desktop
+org.gnome.TextEditor.desktop

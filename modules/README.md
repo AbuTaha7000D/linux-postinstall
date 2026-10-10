@@ -18,7 +18,7 @@ Shared helpers (distribution/family detection, desktop-environment detection, `r
 - `install_apps.sh` — Install missing native packages (lists under `config/packages/`), Flatpak apps (`config/flatpak.txt`; detection checks the user and system scopes, installation uses the existing system scope), and AUR (Arch) applications, including Chrome and VS Code; native packages are detected with the family package manager, and cross-source duplicates (native Thunderbird/OBS) are skipped. A missing required list file is fatal; comment-only lists are skipped
 - `install_fonts.sh` — Install user fonts from the assets/fonts directory
 - `set_aliases.sh` — Write the managed alias block (`# >>> linux-postinstall aliases >>>` … `# <<< linux-postinstall aliases <<<`) to Bash (and Zsh/Fish when present)
-- `set_favorite_apps.sh` — Set favorite apps in the GNOME dock
+- `set_favorite_apps.sh` — Set the GNOME dock favorites from `config/favorites.txt`, matching each desktop-file ID exactly against installed desktop entries (XDG application directories, including Flatpak/Snap exports); missing apps are skipped and never added, order is preserved, and the write is skipped when the dock already matches
 - `set_wallpaper.sh` — Set GNOME wallpaper from assets/wallpaper/wallpaper.jpg
 - `terminal_themes.sh` — Terminal stack: select the default shell, install and verify the selected shell when missing (falling back to Bash when it cannot be verified), install Atuin and Starship when missing, configure the selected shell, and change the default shell with `chsh` (non-interactive, via `run_root`)
 

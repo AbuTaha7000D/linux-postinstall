@@ -1,8 +1,6 @@
 #!/bin/bash
-# Set favorite apps in the GNOME dock
-
-# safer bash
-set -uo pipefail
+# Set favorite apps in the GNOME dock from config/favorites.txt
+set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$SCRIPT_DIR/lib/common.sh"
@@ -17,178 +15,136 @@ if ! command -v gsettings >/dev/null 2>&1 || [ "$(desktop_environment)" != "gnom
 	exit 0
 fi
 
-# Dry-run: report planned work, resolve nothing, write nothing
-if [ "${SETUP_DRY_RUN:-0}" = "1" ]; then
-	echo "would run: set org.gnome.shell favorite-apps (resolve configured apps to .desktop files and apply the list)"
+# cfg_load_list <file> <array-name>: load a required list file into <array>.
+# One entry per line; blank lines and text after '#' are ignored. Mirrors the
+# install_apps.sh/gnome_extensions.sh convention; a missing or unreadable list
+# is fatal. The file is only ever read, never written.
+cfg_load_list() {
+	local file="$1"
+	local -n _cfg_out="$2"
+	if [ ! -f "$file" ]; then
+		echo "Error: required config file not found: $file" >&2
+		exit 1
+	fi
+	if [ ! -r "$file" ]; then
+		echo "Error: required config file is not readable: $file" >&2
+		exit 1
+	fi
+	_cfg_out=()
+	local line
+	while IFS= read -r line || [ -n "$line" ]; do
+		line="${line%%#*}"
+		line="${line#"${line%%[![:space:]]*}"}"
+		line="${line%"${line##*[![:space:]]}"}"
+		if [ -n "$line" ]; then
+			_cfg_out+=("$line")
+		fi
+	done < "$file"
+	return 0
+}
+
+# Print the XDG application directories to search, one per line. Uses the XDG
+# data dirs (each contributing an 'applications' subdirectory) plus the Flatpak
+# and Snap exports for environments where those are not already on XDG_DATA_DIRS.
+desktop_directories() {
+	local d ifs_bak="$IFS" dirs
+	printf '%s\n' "${XDG_DATA_HOME:-$HOME/.local/share}/applications"
+	dirs="${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+	local IFS=':'
+	for d in $dirs; do
+		[ -n "$d" ] && printf '%s\n' "${d%/}/applications"
+	done
+	IFS="$ifs_bak"
+	printf '%s\n' \
+		"$HOME/.local/share/flatpak/exports/share/applications" \
+		"/var/lib/flatpak/exports/share/applications" \
+		"/var/lib/snapd/desktop/applications"
+}
+
+# An app is pinnable iff its desktop file exists by exact name in one of the
+# application directories. No package-manager probing and no fuzzy matching.
+desktop_entry_exists() {
+	local id="$1" dir
+	while IFS= read -r dir; do
+		[ -n "$dir" ] || continue
+		if [ -f "$dir/$id" ]; then
+			return 0
+		fi
+	done < <(desktop_directories)
+	return 1
+}
+
+config_file="$SCRIPT_DIR/config/favorites.txt"
+cfg_load_list "$config_file" favorites
+
+if [ "${#favorites[@]}" -eq 0 ]; then
+	log "No favorite apps listed in $config_file; skipping."
 	exit 0
 fi
 
-log "Setting favorite apps in the dock..."
-
-# 1) simple app names (case-insensitive matching)
-app_names=(
-	'gnome.Nautilus'
-	'code'
-	'firefox'
-	'zapzap'
-	'chrome'
-	'bitwarden'
-	'spotify'
-	'strawberry'
-	'Discord'
-	'Thunderbird'
-)
-
-# search locations
-xdg_local_apps="$HOME/.local/share/applications"
-usr_apps="/usr/share/applications"
-usr_local_apps="/usr/local/share/applications"
-flatpak_apps_user="$HOME/.local/share/flatpak/exports/share/applications"
-flatpak_apps_system="/var/lib/flatpak/exports/share/applications"
-snap_apps="/var/lib/snapd/desktop/applications"
-
-# Only primary search paths as requested (used first)
-primary_search_dirs=(
-	"$usr_apps"
-	"/usr/local/share/applications"
-	"$xdg_local_apps"
-)
-
-# Additional sources used when resolving Flatpak/Snap desktop files
-extra_search_dirs=(
-	"$flatpak_apps_user"
-	"$flatpak_apps_system"
-	"$snap_apps"
-)
-
-# Return first matching .desktop file path (case-insensitive) within provided dirs
-find_desktop_in_dirs_ci() {
-	local query="$1"; shift
-	local dir
-	for dir in "$@"; do
-		[ -d "$dir" ] || continue
-		# find first match, case-insensitive, not following symlinks recursion is fine at maxdepth 1
-		local match
-		match=$(find "$dir" -maxdepth 1 -type f -iname "*${query}*.desktop" 2>/dev/null | head -n1 || true)
-		if [ -n "$match" ]; then
-			echo "$match"
-			return 0
-		fi
-	done
-	return 1
-}
-
-# Resolve a simple name to a .desktop filename
-resolve_desktop_filename() {
-	local name="$1"
-	local name_lc
-	name_lc=$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]')
-
-	# 1) Try primary search dirs by file name
-	local path
-	path=$(find_desktop_in_dirs_ci "$name" "${primary_search_dirs[@]}") || true
-	if [ -n "$path" ]; then
-		basename "$path"
-		return 0
-	fi
-
-	# 2) Try Flatpak: look up installed app IDs and map to <id>.desktop
-	if command -v flatpak >/dev/null 2>&1; then
-		local fp_id
-		# list application IDs; ignore runtimes; tolerate no installations
-		while IFS= read -r fp_id; do
-			[ -n "$fp_id" ] || continue
-			local fp_id_lc
-			fp_id_lc=$(printf '%s' "$fp_id" | tr '[:upper:]' '[:lower:]')
-			case "$fp_id_lc" in
-				*"$name_lc"*)
-					# verify via flatpak info if possible
-					if flatpak info "$fp_id" >/dev/null 2>&1; then
-						# try to find the actual .desktop from known locations
-						local candidate
-						candidate=$(find_desktop_in_dirs_ci "$fp_id" "${primary_search_dirs[@]}" "${extra_search_dirs[@]}") || true
-						if [ -n "$candidate" ]; then
-							basename "$candidate"
-							return 0
-						fi
-						# fallback to <id>.desktop
-						printf '%s.desktop\n' "$fp_id"
-						return 0
-					fi
-					;;
-			esac
-		done < <(flatpak list --app --columns=application 2>/dev/null | awk 'NF>0')
-	fi
-
-	# 3) Try Snap: search desktop entries shipped by snapd for matching package
-	if command -v snap >/dev/null 2>&1; then
-		local snap_pkg
-		while IFS= read -r snap_pkg; do
-			[ -n "$snap_pkg" ] || continue
-			local snap_pkg_lc
-			snap_pkg_lc=$(printf '%s' "$snap_pkg" | tr '[:upper:]' '[:lower:]')
-			case "$snap_pkg_lc" in
-				*"$name_lc"*)
-					# snap desktop files usually look like snap.<pkg>.<command>.desktop
-					local snap_path
-					snap_path=$(find_desktop_in_dirs_ci "$snap_pkg" "$snap_apps") || true
-					if [ -n "$snap_path" ]; then
-						basename "$snap_path"
-						return 0
-					fi
-					;;
-			esac
-		done < <(snap list 2>/dev/null | awk 'NR>1{print $1}' | awk 'NF>0')
-	fi
-
-	# Not found
-	return 1
-}
-
-# Build favorites list
-favorite_desktops=()
-seen_map=""
-
-add_unique_desktop() {
-	local desktop="$1"
-	# ensure it ends with .desktop
-	case "$desktop" in
-		*.desktop) ;;
-		*) desktop="${desktop}.desktop" ;;
+# Build the filtered, de-duplicated list preserving configured order. Entries
+# missing a desktop file are warned about and skipped, never removed from config.
+available=()
+seen=""
+for entry in "${favorites[@]}"; do
+	case "$entry" in
+		*.desktop) id="$entry" ;;
+		*) id="${entry}.desktop" ;;
 	esac
-	# de-duplicate
-	if printf '%s\n' "$seen_map" | grep -Fqx "$desktop"; then
-		return 0
+	if printf '%s\n' "$seen" | grep -Fqx "$id"; then
+		continue
 	fi
-	seen_map=$(printf '%s\n%s' "$seen_map" "$desktop")
-	favorite_desktops+=("$desktop")
-}
-
-for name in "${app_names[@]}"; do
-	if desktop_file=$(resolve_desktop_filename "$name"); then
-		add_unique_desktop "$desktop_file"
-		log "Resolved '$name' -> $desktop_file"
+	seen=$(printf '%s\n%s' "$seen" "$id")
+	if desktop_entry_exists "$id"; then
+		available+=("$id")
 	else
-		warn "Could not resolve app name: $name"
+		warn "Skipping '$id': no matching desktop entry found."
 	fi
 done
 
-# If nothing resolved, do not attempt to set
-if [ ${#favorite_desktops[@]} -eq 0 ]; then
-	warn "No favorites resolved. Skipping gsettings update."
+# An empty result must not clear or change the Dock.
+if [ "${#available[@]}" -eq 0 ]; then
+	warn "No configured favorite apps are available. Leaving the dock unchanged."
 	exit 0
 fi
 
-# Build gsettings value: array of quoted strings
-# Example: ['org.gnome.Nautilus.desktop', 'code.desktop']
+# Build the gsettings value: a quoted array of the available IDs.
 gsettings_value="["
-for i in "${!favorite_desktops[@]}"; do
-	gsettings_value+="'${favorite_desktops[$i]}'"
-	if [ "$i" -lt $((${#favorite_desktops[@]} - 1)) ]; then
+for i in "${!available[@]}"; do
+	gsettings_value+="'${available[$i]}'"
+	if [ "$i" -lt $((${#available[@]} - 1)) ]; then
 		gsettings_value+=", "
 	fi
 done
 gsettings_value+="]"
+
+# Dry-run: report the planned change and stop. Nothing is read or written.
+if [ "${SETUP_DRY_RUN:-0}" = "1" ]; then
+	run gsettings set org.gnome.shell favorite-apps "$gsettings_value"
+	exit 0
+fi
+
+# Idempotency: skip the write when the Dock already matches the filtered list.
+current=$(gsettings get org.gnome.shell favorite-apps 2>/dev/null || true)
+current_ids=()
+if [ -n "$current" ]; then
+	while IFS= read -r cid; do
+		[ -n "$cid" ] && current_ids+=("$cid")
+	done < <(printf '%s' "$current" | grep -o "'[^']*'" | tr -d "'")
+fi
+if [ "${#current_ids[@]}" -eq "${#available[@]}" ]; then
+	same=1
+	for i in "${!available[@]}"; do
+		if [ "${current_ids[$i]}" != "${available[$i]}" ]; then
+			same=0
+			break
+		fi
+	done
+	if [ "$same" = "1" ]; then
+		log "Favorite apps are already set. Nothing to do."
+		exit 0
+	fi
+fi
 
 if ! run gsettings set org.gnome.shell favorite-apps "$gsettings_value"; then
 	warn "Error setting favorite apps in the dock"

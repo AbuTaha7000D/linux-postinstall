@@ -23,7 +23,7 @@ This script automates the initial setup and configuration of a Linux system, str
   - Configures the terminal: selects your default shell (Bash, Zsh, or Fish), installs it if missing (falling back to Bash when the install cannot be verified), and configures Atuin and Starship for that shell.
   - Sets up aliases for common commands as a managed block in your shell configuration.
   - Configures custom keyboard shortcuts.
-  - Sets favorite applications in the GNOME Shell dock (if applicable).
+  - Sets the GNOME Shell dock favorites from `config/favorites.txt`, skipping apps whose desktop entry is not installed (if applicable).
   - Installs GNOME themes for a customized desktop experience (if applicable).
   - Sets up user icons and cursor themes, with Adwaita fallback and sidebar integration (if applicable).
 - **Modular Design:** Setup operations live in `modules/`, shared helpers in `lib/common.sh`, and the `setup` launcher owns the CLI and step order.
@@ -67,7 +67,7 @@ Debian-family support expects Debian 13 (trixie) or newer, or Ubuntu 25.10 or ne
     - `dev`          : Install the development environment (system toolchain including the OpenSSH client and server, VS Code, DBeaver, mise-managed Python 3.13, JupyterLab, Codex, OpenCode) and write the managed dev shell configuration block
     - `gnome`        : Run the GNOME group (wallpaper, themes, icons/cursors, favorites, shortcuts, extensions)
     - `shortcuts`    : Add custom GNOME keyboard shortcuts
-    - `favorites`    : Set favorite apps in the GNOME dock
+    - `favorites`    : Set the GNOME dock favorites listed in `config/favorites.txt` (missing apps are skipped)
     - `extensions`   : Install and enable the extensions listed in `config/gnome-extensions.txt`, fetching a release compatible with the running GNOME Shell
     - `help`         : Show help
     - `version`      : Show version
@@ -111,6 +111,7 @@ Static assets live under `assets/`, and the editable alias data lives under `con
 - **`config/packages/`** — Native package lists for `./setup packages`, one file per family (`fedora.txt`, `debian.txt`, `arch.txt`); one package per line, blank lines and `#` comments ignored. Only the file for the detected family is read; a missing or unreadable required file is fatal.
 - **`config/flatpak.txt`** — Flatpak application IDs installed by `./setup packages`, one per line. `./setup packages` installs only what is missing; see [docs/packages.md](docs/packages.md).
 - **`config/gnome-extensions.txt`** — GNOME Shell extension UUIDs managed by `./setup extensions`, one per line. Already-enabled extensions are left alone; missing ones are downloaded from extensions.gnome.org (using a release compatible with the running GNOME Shell) and enabled in the user scope. Only runs on GNOME.
+- **`config/favorites.txt`** — Desktop-file IDs pinned to the GNOME dock by `./setup favorites`, in order, one per line. Entries whose desktop file is not installed are skipped without being removed from the file; only runs on GNOME. See [docs/favorites.md](docs/favorites.md).
 
 ## Contributing
 
