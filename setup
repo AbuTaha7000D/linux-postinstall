@@ -68,8 +68,6 @@ cleanup_sudo() {
 # GNOME-only steps, in order
 run_gnome_steps() {
     run_step "$SETUP_DIR/modules/set_wallpaper.sh" "set_wallpaper"
-    run_step "$SETUP_DIR/modules/gnome_themes.sh" "gnome_themes"
-    run_step "$SETUP_DIR/modules/icons_and_cursors.sh" "icons_and_cursors"
     run_step "$SETUP_DIR/modules/set_favorite_apps.sh" "set_favorite_apps"
     run_step "$SETUP_DIR/modules/add_custom_shortcut.sh" "add_custom_shortcut"
     run_step "$SETUP_DIR/modules/gnome_extensions.sh" "gnome_extensions"

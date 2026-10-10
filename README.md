@@ -24,8 +24,6 @@ This script automates the initial setup and configuration of a Linux system, str
   - Sets up aliases for common commands as a managed block in your shell configuration.
   - Configures custom keyboard shortcuts from `config/shortcuts.txt` (if applicable).
   - Sets the GNOME Shell dock favorites from `config/favorites.txt`, skipping apps whose desktop entry is not installed (if applicable).
-  - Installs GNOME themes for a customized desktop experience (if applicable).
-  - Sets up user icons and cursor themes, with Adwaita fallback and sidebar integration (if applicable).
 - **Modular Design:** Setup operations live in `modules/`, shared helpers in `lib/common.sh`, and the `setup` launcher owns the CLI and step order.
 - **Error Handling:** Required failures stop the run and name the failed step; no success is reported after a failure.
 - **Interactive Prompts:** Asks the user for confirmation and input during certain steps (skipped when run non-interactively).
@@ -58,14 +56,14 @@ Debian-family support expects Debian 13 (trixie) or newer, or Ubuntu 25.10 or ne
 
     Commands:
 
-    - `install`      : Full setup in fixed order: packages, language, fonts, aliases, terminal, dev, then the GNOME group (wallpaper, gnome_themes, icons_and_cursors, favorites, shortcuts, extensions) when the desktop is GNOME
+    - `install`      : Full setup in fixed order: packages, language, fonts, aliases, terminal, dev, then the GNOME group (wallpaper, favorites, shortcuts, extensions) when the desktop is GNOME
     - `packages`     : Install system, Flatpak, and vendor applications
     - `language`     : Set system language (English/Arabic, 5-second prompt; verifies the locale is installed before applying)
     - `fonts`        : Install user fonts from assets/fonts
     - `aliases`      : Write the managed alias block to Bash (and Zsh/Fish when present)
     - `terminal`     : Select the default shell (Bash/Zsh/Fish), install it if missing (falling back to Bash if the install cannot be verified), configure Atuin and Starship for it, and set it as the default shell (chsh)
     - `dev`          : Install the development environment (system toolchain including the OpenSSH client and server, VS Code, DBeaver, mise-managed Python 3.13, JupyterLab, Codex, OpenCode) and write the managed dev shell configuration block
-    - `gnome`        : Run the GNOME group (wallpaper, themes, icons/cursors, favorites, shortcuts, extensions)
+    - `gnome`        : Run the GNOME group (wallpaper, favorites, shortcuts, extensions)
     - `shortcuts`    : Add the custom GNOME keyboard shortcuts listed in `config/shortcuts.txt`
     - `favorites`    : Set the GNOME dock favorites listed in `config/favorites.txt` (missing apps are skipped)
     - `extensions`   : Install and enable the extensions listed in `config/gnome-extensions.txt`, fetching a release compatible with the running GNOME Shell
