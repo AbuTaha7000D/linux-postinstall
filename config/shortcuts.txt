@@ -1,0 +1,9 @@
+# GNOME custom keyboard shortcuts applied by ./setup shortcuts, in this order.
+# One shortcut per line, three tab-separated fields: Name<TAB>Keybinding<TAB>Command.
+# Blank lines and text after '#' are ignored. Fields are trimmed of surrounding
+# whitespace. Example:
+# Toggle Mic	<Alt>1	amixer set Capture toggle
+Resources	<Ctrl><Shift>Escape	flatpak run net.nokyan.Resources
+Settings	<Super>I	gnome-control-center
+Terminal	<Alt>T	gnome-terminal
+Toggle Mic	<Alt>1	amixer set Capture toggle
