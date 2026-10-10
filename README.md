@@ -68,7 +68,7 @@ Debian-family support expects Debian 13 (trixie) or newer, or Ubuntu 25.10 or ne
     - `gnome`        : Run the GNOME group (wallpaper, themes, icons/cursors, favorites, shortcuts, extensions)
     - `shortcuts`    : Add custom GNOME keyboard shortcuts
     - `favorites`    : Set favorite apps in the GNOME dock
-    - `extensions`   : Open recommended GNOME extensions in your browser
+    - `extensions`   : Install and enable the extensions listed in `config/gnome-extensions.txt`, fetching a release compatible with the running GNOME Shell
     - `help`         : Show help
     - `version`      : Show version
 
@@ -110,6 +110,7 @@ Static assets live under `assets/`, and the editable alias data lives under `con
 - **`config/aliases/`** — Alias definitions applied by `./setup aliases`: one file per shell (`bash`, `zsh`, `fish`) plus shared `distro/` fragments (`debian`, `redhat`, `arch`); the selected shell file and matching distro fragment are concatenated into the managed block. Existing rc files keep their permission mode, ACLs, extended attributes, and SELinux context; newly created files are owner-only (`0600`).
 - **`config/packages/`** — Native package lists for `./setup packages`, one file per family (`fedora.txt`, `debian.txt`, `arch.txt`); one package per line, blank lines and `#` comments ignored. Only the file for the detected family is read; a missing or unreadable required file is fatal.
 - **`config/flatpak.txt`** — Flatpak application IDs installed by `./setup packages`, one per line. `./setup packages` installs only what is missing; see [docs/packages.md](docs/packages.md).
+- **`config/gnome-extensions.txt`** — GNOME Shell extension UUIDs managed by `./setup extensions`, one per line. Already-enabled extensions are left alone; missing ones are downloaded from extensions.gnome.org (using a release compatible with the running GNOME Shell) and enabled in the user scope. Only runs on GNOME.
 
 ## Contributing
 

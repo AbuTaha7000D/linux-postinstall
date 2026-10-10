@@ -33,7 +33,7 @@ usage() {
     echo "  gnome        Run the GNOME desktop configuration steps"
     echo "  shortcuts    Add custom GNOME keyboard shortcuts"
     echo "  favorites    Set favorite apps in the GNOME dock"
-    echo "  extensions   Open recommended GNOME extensions in your browser"
+    echo "  extensions   Install and enable recommended GNOME extensions"
     echo "  help         Show this help message"
     echo "  version      Show version"
     echo

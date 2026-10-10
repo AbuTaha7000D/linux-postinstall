@@ -1,0 +1,23 @@
+# GNOME Shell extensions installed and enabled by ./setup extensions.
+# One extension UUID per line; blank lines and text after '#' are ignored.
+# UUIDs match extensions.gnome.org; the running GNOME Shell version decides
+# which compatible release is fetched at install time.
+dash-to-dock@micxgx.gmail.com
+dash-to-panel@jderose9.github.com
+pip-on-top@rafostar.github.com
+app-hider@lynith.dev
+caffeine@patapon.info
+appindicatorsupport@rgcjonas.gmail.com
+custom-hot-corners-extended@G-dH.github.com
+clipboard-indicator@tudmotu.com
+quick-settings-audio-panel@rayzeq.github.io
+top-bar-organizer@julian.gse.jsts.xyz
+middleclickclose@paolo.tranquilli.gmail.com
+user-theme@gnome-shell-extensions.gcampax.github.com
+athan@goodm4ven
+CoverflowAltTab@palatis.blogspot.com
+arcmenu@arcmenu.com
+system-monitor@gnome-shell-extensions.gcampax.github.com
+tilingshell@ferrarodomenico.com
+gsconnect@andyholmes.github.io
+color-picker@tuberry
