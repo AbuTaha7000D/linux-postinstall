@@ -53,6 +53,7 @@ Debian-family support expects Debian 13 (trixie) or newer, or Ubuntu 25.10 or ne
     ```
 
     With no arguments, `install` runs (the same code path as `./setup install`).
+    See [docs/install.md](docs/install.md) for the full order and behavior.
 
     Commands:
 
@@ -63,7 +64,7 @@ Debian-family support expects Debian 13 (trixie) or newer, or Ubuntu 25.10 or ne
     - `aliases`      : Write the managed alias block to Bash (and Zsh/Fish when present)
     - `terminal`     : Select the default shell (Bash/Zsh/Fish), install it if missing (falling back to Bash if the install cannot be verified), configure Atuin and Starship for it, and set it as the default shell (chsh)
     - `dev`          : Install the development environment (system toolchain including the OpenSSH client and server, VS Code, DBeaver, mise-managed Python 3.13, JupyterLab, Codex, OpenCode) and write the managed dev shell configuration block
-    - `gnome`        : Run the GNOME group (wallpaper, favorites, shortcuts, extensions)
+    - `gnome`        : Run the GNOME group (wallpaper, favorites, shortcuts, extensions); see [docs/gnome.md](docs/gnome.md)
     - `shortcuts`    : Add the custom GNOME keyboard shortcuts listed in `config/shortcuts.txt`
     - `favorites`    : Set the GNOME dock favorites listed in `config/favorites.txt` (missing apps are skipped)
     - `extensions`   : Install and enable the extensions listed in `config/gnome-extensions.txt`, fetching a release compatible with the running GNOME Shell
