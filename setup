@@ -6,7 +6,7 @@
 ################################################################################
 
 # Version
-VERSION="v2.1.1"
+VERSION="v3.0.0"
 
 SETUP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib/common.sh
