@@ -1,9 +1,10 @@
 # `./setup favorites`
 
-Sets the GNOME Shell dock favorites to the desktop-file IDs listed in
-`config/favorites.txt`, in that order. The command is idempotent: it compares
-the filtered list with the current dock and skips the write when they already
-match.
+Sets the GNOME Shell dock favorites to the available desktop-file IDs listed in
+`config/favorites.txt`, in that order. This is the desired complete dock list:
+the existing favorites are replaced when the configured list differs. The
+command is idempotent: it compares the filtered list with the current dock and
+skips the write when they already match.
 
 ## Configuration
 
@@ -51,8 +52,9 @@ exports `com.bitwarden.desktop.desktop`).
 
 ## GNOME only
 
-The command requires GNOME and `gsettings`. On any other desktop (or when
-`gsettings` is missing) it prints a skip message and exits successfully.
+The command requires GNOME and `gsettings`. On any other desktop it prints a
+skip message and exits successfully. If GNOME is detected but `gsettings` is
+missing, it reports an error and exits nonzero.
 
 ## Dry run
 

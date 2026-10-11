@@ -38,8 +38,11 @@ The file is only ever read, never written.
   `custom-keybindings` list.
 - An entry whose name, command, or keybinding already exists is skipped, so
   rerunning the command does not create duplicates.
-- If adding a shortcut fails, the command exits nonzero instead of reporting
-  success.
+- Each shortcut is attempted even when an earlier configured shortcut fails;
+  the command reports the failures and exits nonzero if any entry failed.
+- Each new shortcut is written to the standard relocatable GNOME keybinding
+  path before its path is added to the active keybinding list, avoiding a
+  visible half-created entry when a property write fails.
 
 ## GNOME only
 

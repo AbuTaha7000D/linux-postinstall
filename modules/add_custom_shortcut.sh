@@ -34,17 +34,25 @@ load_shortcuts() {
     while IFS= read -r line || [ -n "$line" ]; do
         lineno=$((lineno + 1))
         line="${line%%#*}"
-        line="${line#"${line%%[![:space:]]*}"}"
-        line="${line%"${line##*[![:space:]]}"}"
-        [ -z "$line" ] && continue
-        local IFS=$'\t'
-        local -a fields=()
-        read -r -a fields <<< "$line"
-        if [ "${#fields[@]}" -ne 3 ]; then
-            echo "Error: $file line $lineno: expected 3 tab-separated fields (name, keybinding, command), got ${#fields[@]}" >&2
+        [[ "$line" =~ ^[[:space:]]*$ ]] && continue
+
+        # Split on literal tabs so empty or trailing columns are not collapsed
+        # as they would be when tab is used as IFS whitespace with read -a.
+        if [[ "$line" != *$'\t'* ]]; then
+            echo "Error: $file line $lineno: expected 3 tab-separated fields (name, keybinding, command)" >&2
             exit 1
         fi
-        local name="${fields[0]}" binding="${fields[1]}" command="${fields[2]}"
+        local name="${line%%$'\t'*}" remainder="${line#*$'\t'}" binding command
+        if [[ "$remainder" != *$'\t'* ]]; then
+            echo "Error: $file line $lineno: expected 3 tab-separated fields (name, keybinding, command)" >&2
+            exit 1
+        fi
+        binding="${remainder%%$'\t'*}"
+        command="${remainder#*$'\t'}"
+        if [[ "$command" == *$'\t'* ]]; then
+            echo "Error: $file line $lineno: expected 3 tab-separated fields (name, keybinding, command)" >&2
+            exit 1
+        fi
         name="${name#"${name%%[![:space:]]*}"}"; name="${name%"${name##*[![:space:]]}"}"
         binding="${binding#"${binding%%[![:space:]]*}"}"; binding="${binding%"${binding##*[![:space:]]}"}"
         command="${command#"${command%%[![:space:]]*}"}"; command="${command%"${command##*[![:space:]]}"}"
@@ -61,31 +69,75 @@ add_shortcut() {
     local name="$1"
     local command="$2"
     local binding="$3"
-    current_bindings=$(gsettings get org.gnome.settings-daemon.plugins.media-keys custom-keybindings)
-    new_binding="custom$(echo "$current_bindings" | grep -o 'custom[0-9]*' | sed 's/custom//' | sort -n | tail -n 1 | awk '{print $1+1}')"
-    [ -z "$new_binding" ] && new_binding="custom0"
-    if [[ "$current_bindings" != "@as []" ]]; then
-        existing_bindings=$(echo "$current_bindings" | grep -o 'custom[0-9]*')
-        for custom_binding in $existing_bindings; do
-            existing_name=$(gsettings get org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:/$custom_binding/ name | sed "s/'//g")
-            existing_command=$(gsettings get org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:/$custom_binding/ command | sed "s/'//g")
-            existing_binding=$(gsettings get org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:/$custom_binding/ binding | sed "s/'//g")
-            if [[ "$existing_name" == "$name" ]] || [[ "$existing_command" == "$command" ]] || [[ "$existing_binding" == "$binding" ]]; then
-                echo "Shortcut with name, command, or binding already exists, skipping."
-                return 0
-            fi
-        done
+    local current_bindings remaining_bindings custom_binding next_index=0 new_binding new_path
+    local existing_name existing_command existing_binding updated_bindings base_bindings
+    local root_path="/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings"
+    local schema="org.gnome.settings-daemon.plugins.media-keys.custom-keybinding"
+    local -a existing_bindings=()
+    local -A used_indices=()
+
+    if ! current_bindings=$(gsettings get org.gnome.settings-daemon.plugins.media-keys custom-keybindings); then
+        echo "Error: could not read the current custom keybindings." >&2
+        return 1
     fi
-    if [[ "$current_bindings" == "@as []" ]]; then
-        run gsettings set org.gnome.settings-daemon.plugins.media-keys custom-keybindings "['/$new_binding/']"
+    remaining_bindings="$current_bindings"
+    while [[ "$remaining_bindings" =~ custom([0-9]+) ]]; do
+        existing_bindings+=("${BASH_REMATCH[0]}")
+        used_indices["${BASH_REMATCH[1]}"]=1
+        remaining_bindings="${remaining_bindings#*"${BASH_REMATCH[0]}"}"
+    done
+
+    for custom_binding in "${existing_bindings[@]}"; do
+        local existing_path="$root_path/$custom_binding/"
+        if ! existing_name=$(gsettings get "$schema:$existing_path" name) ||
+            ! existing_command=$(gsettings get "$schema:$existing_path" command) ||
+            ! existing_binding=$(gsettings get "$schema:$existing_path" binding); then
+            echo "Error: could not inspect existing GNOME shortcut $custom_binding." >&2
+            return 1
+        fi
+        existing_name="${existing_name#\'}"; existing_name="${existing_name%\'}"
+        existing_command="${existing_command#\'}"; existing_command="${existing_command%\'}"
+        existing_binding="${existing_binding#\'}"; existing_binding="${existing_binding%\'}"
+        if [[ "$existing_name" == "$name" ]] || [[ "$existing_command" == "$command" ]] || [[ "$existing_binding" == "$binding" ]]; then
+            echo "Shortcut with name, command, or binding already exists, skipping."
+            return 0
+        fi
+    done
+
+    while [ -n "${used_indices[$next_index]:-}" ]; do
+        next_index=$((next_index + 1))
+    done
+    new_binding="custom$next_index"
+    new_path="$root_path/$new_binding/"
+
+    # Configure the relocatable shortcut before publishing its path in the
+    # active keybinding list, so failed property writes do not leave a broken
+    # entry in custom-keybindings.
+    if ! run gsettings set "$schema:$new_path" name "$name"; then
+        echo "Error setting the name for shortcut: $name" >&2
+        return 1
+    fi
+    if ! run gsettings set "$schema:$new_path" command "$command"; then
+        echo "Error setting the command for shortcut: $name" >&2
+        return 1
+    fi
+    if ! run gsettings set "$schema:$new_path" binding "$binding"; then
+        echo "Error setting the keybinding for shortcut: $name" >&2
+        return 1
+    fi
+
+    if [[ "$current_bindings" == "@as []" || "$current_bindings" == "[]" ]]; then
+        updated_bindings="['$new_path']"
     else
-        updated_bindings=$(echo "$current_bindings" | sed "s/]$/, '\/\$new_binding\/'']/")
-        run gsettings set org.gnome.settings-daemon.plugins.media-keys custom-keybindings "$updated_bindings"
+        if [[ "$current_bindings" == "@as "* ]]; then
+            base_bindings="${current_bindings#@as }"
+        else
+            base_bindings="$current_bindings"
+        fi
+        updated_bindings="${base_bindings%]}, '$new_path']"
     fi
-    run gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:/$new_binding/ name "$name"
-    run gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:/$new_binding/ command "$command"
-    if ! run gsettings set org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:/$new_binding/ binding "$binding"; then
-        echo "Error creating shortcut: $name"
+    if ! run gsettings set org.gnome.settings-daemon.plugins.media-keys custom-keybindings "$updated_bindings"; then
+        echo "Error registering shortcut: $name" >&2
         return 1
     fi
 }
@@ -104,11 +156,16 @@ if [ "${SETUP_DRY_RUN:-0}" = "1" ]; then
     exit 0
 fi
 
+failures=0
 for i in "${!names[@]}"; do
     if ! add_shortcut "${names[$i]}" "${commands[$i]}" "${bindings[$i]}"; then
         echo "Error adding shortcut: ${names[$i]}" >&2
-        exit 1
+        failures=$((failures + 1))
     fi
 done
 
-echo "Shortcuts added successfully."
+if [ "$failures" -gt 0 ]; then
+    echo "Shortcut setup incomplete: $failures shortcut(s) failed; remaining entries were still attempted." >&2
+    exit 1
+fi
+echo "Shortcuts added or already present."

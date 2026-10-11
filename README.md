@@ -1,121 +1,150 @@
-# Linux System Setup Script
+# Linux Post-Install
 
-## Overview
+A personal Linux post-install and rebuild tool. It installs the packages,
+applications, development tools, shell setup, fonts, and optional GNOME settings
+used on the author's systems. It is a small Bash project, not a universal
+provisioning framework; signing in to applications and accounts remains manual.
 
-This script automates the initial setup and configuration of a Linux system, streamlining the process of installing common applications, configuring system settings, and customizing the desktop environment. It supports multiple distributions (Fedora-based, Debian-based, and Arch-based) and provides options for installing a wide range of tools and customizing the user experience.
+The version printed by `./setup version` is **v3.1.0** (defined in `setup`).
 
-<p align="center">
-  <img src="https://img.shields.io/github/license/abutaha7000d/linux-postinstall?label=license" alt="License"/>
-  <img src="https://img.shields.io/badge/release-v3.0.0-blue" alt="Release"/>
-  <img src="https://img.shields.io/github/repo-size/abutaha7000d/linux-postinstall?label=code%20size" alt="Code Size"/>
-</p>
+## Supported systems and requirements
 
-## Features
+The project targets these distribution families and baselines:
 
-- **Distribution Detection:** Automatically identifies the Linux distribution based on `/etc/os-release`.
-- **Application Installation:**
-  - Installs a set of essential applications (git, nano, btop, etc.).
-  - Installs distribution-specific applications (VS Code, Chrome).
-  - Installs flatpak applications (Brave Browser, Discord, etc.).
-- **System Configuration:**
-  - Sets the system language to English (US) or Arabic, with a 5-second interactive prompt.
-  - Installs fonts for improved visual appearance.
-  - Configures the terminal: selects your default shell (Bash, Zsh, or Fish), installs it if missing (falling back to Bash when the install cannot be verified), and configures Atuin and Starship for that shell.
-  - Sets up aliases for common commands as a managed block in your shell configuration.
-  - Configures custom keyboard shortcuts from `config/shortcuts.txt` (if applicable).
-  - Sets the GNOME Shell dock favorites from `config/favorites.txt`, skipping apps whose desktop entry is not installed (if applicable).
-- **Modular Design:** Setup operations live in `modules/`, shared helpers in `lib/common.sh`, and the `setup` launcher owns the CLI and step order.
-- **Error Handling:** Required failures stop the run and name the failed step; no success is reported after a failure.
-- **Interactive Prompts:** Asks the user for confirmation and input during certain steps (skipped when run non-interactively).
-- **Dry Run:** `--dry-run` prints the commands that would run without executing them.
+- Fedora and Nobara.
+- Debian 13 (trixie) or newer.
+- Ubuntu 24.04 LTS (noble) or newer; Linux Mint releases based on a supported
+  Ubuntu version.
+- Arch Linux and CachyOS.
 
-## Requirements
+Derivative support depends on its `/etc/os-release` identity and compatible
+repositories; this is not a claim that every release or derivative has been
+tested. For Arch/CachyOS, `./setup packages` requires `yay` when Chrome or VS
+Code is missing and does not bootstrap it. The separate `./setup dev` command
+can bootstrap `yay` when its VS Code stage needs it. Chrome and VS Code vendor
+installers support x86_64 only. The Debian-family package list retains
+`firefox-esr` for Debian and selects Ubuntu's `firefox`; `fastfetch` is omitted
+because it is unavailable in the Ubuntu 24.04 baseline.
 
-- A Linux system (Fedora-based, Debian-based, or Arch-based).
-- Internet connection.
-- GNOME desktop environment for certain GNOME-specific features.
+Run the launcher as a regular user with Bash. Privileged steps use `sudo` on
+demand, through the system's normal sudo timestamp policy. A working native
+package manager and network connection are needed for installation. GNOME is
+needed only for GNOME-specific configuration. The tool does not install
+packages when run with `--dry-run`.
 
-Debian-family support expects Debian 13 (trixie) or newer, or Ubuntu 25.10 or newer. Older releases such as Debian 12 (bookworm) and Ubuntu 24.04 (noble) are not supported, because `fastfetch`, which is part of the package list, is not in their archives.
+## Get started
 
-## Usage
+```bash
+git clone https://github.com/AbuTaha7000D/linux-postinstall.git
+cd linux-postinstall
+./setup --dry-run       # inspect the full planned run
+./setup                 # same as ./setup install
+```
 
-1.  **Clone the repository:**
+Run an individual command with `./setup <command>`. `--dry-run` is global and
+may appear before or after the command:
 
-    ```bash
-    git clone https://github.com/AbuTaha7000D/linux-postinstall.git
-    cd linux-postinstall
-    ```
+```bash
+./setup --dry-run packages
+./setup terminal --dry-run
+./setup help
+./setup version
+```
 
-2.  **Run the setup:**
+The CLI accepts one command at a time. `-h`/`--help` and `-v`/`--version` are
+also accepted; unsupported options, unknown commands, and extra commands fail
+with a usage hint.
 
-    ```bash
-    ./setup [--dry-run] [command]
-    ```
+## Commands
 
-    With no arguments, `install` runs (the same code path as `./setup install`).
-    See [docs/install.md](docs/install.md) for the full order and behavior.
+| Command | Purpose |
+| --- | --- |
+| `install` (default) | Full sequence described below. |
+| `packages` | Install configured native packages, Flatpak applications, Chrome, and VS Code. |
+| `language` | Select English or Arabic and update the system locale configuration. |
+| `fonts` | Copy bundled fonts into the user's font directory and refresh the font cache. |
+| `aliases` | Install the configured managed alias block for detected shells. |
+| `terminal` | Select Bash, Zsh, or Fish; install/configure Atuin and Starship; set the login shell. |
+| `dev` | Install the development toolchain and applications, then configure the managed dev shell block. |
+| `gnome` | Run wallpaper, favorites, shortcuts, and extensions steps. |
+| `shortcuts` | Register configured custom GNOME keyboard shortcuts. |
+| `favorites` | Set the GNOME dock favorites from installed desktop entries. |
+| `extensions` | Install and enable configured GNOME Shell extensions. |
+| `help` | Print CLI usage. |
+| `version` | Print the current version. |
 
-    Commands:
+See the command guides for details: [installation](docs/install.md),
+[packages](docs/packages.md), [language](docs/language.md), [fonts](docs/fonts.md),
+[aliases](docs/aliases.md), [terminal](docs/terminal.md), [development](docs/dev.md),
+and [GNOME configuration](docs/gnome.md). The GNOME commands also have focused
+guides for [favorites](docs/favorites.md) and
+[shortcuts](docs/shortcuts.md).
 
-    - `install`      : Full setup in fixed order: packages, language, fonts, aliases, terminal, dev, then the GNOME group (wallpaper, favorites, shortcuts, extensions) when the desktop is GNOME
-    - `packages`     : Install system, Flatpak, and vendor applications
-    - `language`     : Set system language (English/Arabic, 5-second prompt; verifies the locale is installed before applying)
-    - `fonts`        : Install user fonts from assets/fonts
-    - `aliases`      : Write the managed alias block to Bash (and Zsh/Fish when present)
-    - `terminal`     : Select the default shell (Bash/Zsh/Fish), install it if missing (falling back to Bash if the install cannot be verified), configure Atuin and Starship for it, and set it as the default shell (chsh)
-    - `dev`          : Install the development environment (system toolchain including the OpenSSH client and server, VS Code, DBeaver, mise-managed Python 3.13, JupyterLab, Codex, OpenCode) and write the managed dev shell configuration block
-    - `gnome`        : Run the GNOME group (wallpaper, favorites, shortcuts, extensions); see [docs/gnome.md](docs/gnome.md)
-    - `shortcuts`    : Add the custom GNOME keyboard shortcuts listed in `config/shortcuts.txt`
-    - `favorites`    : Set the GNOME dock favorites listed in `config/favorites.txt` (missing apps are skipped)
-    - `extensions`   : Install and enable the extensions listed in `config/gnome-extensions.txt`, fetching a release compatible with the running GNOME Shell
-    - `help`         : Show help
-    - `version`      : Show version
+## Full installation
 
-    Options:
+`./setup` and `./setup install` run these steps in order:
 
-    - `--dry-run`    : Print the commands that would run; execute nothing (usable in any position)
-    - `-h`, `--help` : Show help
-    - `-v`, `--version` : Show version
+1. Packages and applications.
+2. Language.
+3. Fonts.
+4. Aliases.
+5. Terminal and default shell.
+6. Development environment.
+7. On GNOME only: wallpaper, favorites, shortcuts, then extensions.
 
-    **Examples:**
+If a general step fails, the launcher names it, returns its failure status, and
+stops before later general steps. The GNOME group attempts all four independent
+steps, reports failures, and returns nonzero if any failed. The packages step
+also continues independent application installs where safe, summarizes
+successes, failures, and skips, and returns nonzero for an incomplete result.
+Completed changes are not rolled back. A successful command prints a completion
+message; it is not printed after a reported failure.
 
-    ```bash
-    ./setup install
-    ./setup --dry-run
-    ./setup packages
-    ./setup language
-    ./setup gnome
-    ./setup aliases
-    ```
+`--dry-run` propagates to the modules, which print planned operations without
+installation, sudo authentication, or configuration writes. Modules may still
+read local configuration or inspect state when their dry-run behavior requires
+it; see each command guide for specific details.
 
-## Development environment
+## Configuration and bundled files
 
-`./setup dev` is fully standalone: it works without running `./setup packages` first, reruns are safe (every install stage skips what is already installed and verifies what it installs), sudo is used only through the same lazy `ensure_sudo`/`run_root` path as the rest of setup, and `--dry-run` only prints what would run. It installs the system development toolchain (including the OpenSSH client and server), VS Code, DBeaver, mise with Python 3.13, JupyterLab, Codex, OpenCode, and a managed dev shell block (PATH and mise activation).
+- `config/packages/fedora.txt`, `debian.txt`, and `arch.txt` list native
+  packages. Use one package name per line; blank lines and `#` comments are
+  ignored.
+- `config/flatpak.txt` lists Flatpak application IDs.
+- `config/aliases/` contains shell-specific and distro-specific alias text.
+- `config/starship.toml` is installed as `~/.config/starship.toml` by
+  `./setup terminal`; an existing file is backed up once before replacement.
+- `config/favorites.txt`, `config/shortcuts.txt`, and
+  `config/gnome-extensions.txt` configure GNOME favorites, keyboard shortcuts,
+  and extensions, respectively.
+- `assets/fonts/` contains bundled fonts. `assets/wallpaper/wallpaper.jpg` is
+  the wallpaper used by the GNOME step.
 
-The SSH server is installed but deliberately never enabled or started by the script — no sshd configuration, firewall, or authentication changes are made, and sign-in remains manual. To activate it:
+The development command installs the OpenSSH client and server but never
+enables or starts the server or changes SSH configuration. If you want to
+activate it, do so manually:
 
-- Fedora/Arch: `sudo systemctl enable --now sshd`
-- Debian/Ubuntu: `sudo systemctl enable --now ssh`
+```bash
+# Fedora, Arch, or CachyOS
+sudo systemctl enable --now sshd
 
-After `./setup dev`, open a new shell (or run `exec bash`) so `~/.local/bin` and mise activation are picked up.
+# Debian, Ubuntu, or Linux Mint
+sudo systemctl enable --now ssh
+```
 
-## Assets and Configuration
+## Limitations and validation
 
-Static assets live under `assets/`, and the editable alias data lives under `config/aliases/`:
+The project supports explicit distro families and package baselines, not every
+Linux distribution. Vendor package availability, repository configuration,
+desktop state, and external installers can vary. A successful isolated test or
+static check does not establish that every fresh Fedora, Debian, Ubuntu, Mint,
+Arch, or CachyOS installation has been exercised. Review the command-specific
+guides for prerequisites and known limitations before running a step.
 
-- **`assets/fonts/`** — Place your `.ttf` or `.otf` font files here.
-- **`assets/icons/`** — Place any custom icon files (e.g., `folder-github.svg`) here.
-- **`assets/wallpaper/wallpaper.jpg`** — Your preferred wallpaper image.
-- **`config/aliases/`** — Alias definitions applied by `./setup aliases`: one file per shell (`bash`, `zsh`, `fish`) plus shared `distro/` fragments (`debian`, `redhat`, `arch`); the selected shell file and matching distro fragment are concatenated into the managed block. Existing rc files keep their permission mode, ACLs, extended attributes, and SELinux context; newly created files are owner-only (`0600`).
-- **`config/packages/`** — Native package lists for `./setup packages`, one file per family (`fedora.txt`, `debian.txt`, `arch.txt`); one package per line, blank lines and `#` comments ignored. Only the file for the detected family is read; a missing or unreadable required file is fatal.
-- **`config/flatpak.txt`** — Flatpak application IDs installed by `./setup packages`, one per line. `./setup packages` installs only what is missing; see [docs/packages.md](docs/packages.md).
-- **`config/gnome-extensions.txt`** — GNOME Shell extension UUIDs managed by `./setup extensions`, one per line. Already-enabled extensions are left alone; missing ones are downloaded from extensions.gnome.org (using a release compatible with the running GNOME Shell) and enabled in the user scope. Only runs on GNOME.
-- **`config/favorites.txt`** — Desktop-file IDs pinned to the GNOME dock by `./setup favorites`, in order, one per line. Entries whose desktop file is not installed are skipped without being removed from the file; only runs on GNOME. See [docs/favorites.md](docs/favorites.md).
-
-## Contributing
-
-Contributions to this project are welcome! Feel free to submit bug reports, feature requests, or pull requests.
+The project does not automatically sign in to applications, enable SSH,
+bootstrap `yay` for the packages command, or configure GNOME when GNOME is not
+detected by the full install.
 
 ## License
 
-This project is licensed under the MIT License. See the [LICENSE](./LICENSE) file for details.
+MIT. See [LICENSE](LICENSE).

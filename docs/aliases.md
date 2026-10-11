@@ -75,6 +75,17 @@ and `remove` for the family package manager, and the Red Hat fragment adds
 `update-grub`. Editing or adding files under `config/aliases/` changes what the
 next `./setup aliases` run writes; no code change is required.
 
+Because the managed block is appended to each startup file, its definitions
+take precedence over earlier user-defined aliases with the same names. Those
+names are `ls`, `grep`, `pingo`, `ff`, `efrc`, `ebrc`, `update-fonts`,
+`finstall`, `refresh`, `supdate`, `install`, `remove`, and (on Red Hat family)
+`update-grub`. The one-time startup-file backup preserves the previous content
+for recovery.
+
+On Arch-family systems, `supdate` checks for `yay` before starting any update
+commands. If it is missing, the alias prints an error and exits; install `yay`
+before using `supdate`.
+
 Fish accepts the same `alias name='command'` syntax used by the other fragments,
 so the shared data is source-compatible with all three shells. The module itself
 contains no alias definitions.

@@ -1,0 +1,186 @@
+# ~/.config/starship.toml
+
+format = """
+[╭─](#ff3b3b)\
+$os\
+$username\
+$hostname\
+[](bg:#cc2f2f fg:#ff3b3b)\
+$directory\
+[](fg:#cc2f2f bg:#ff6b6b)\
+$git_branch\
+$git_status\
+[](fg:#ff6b6b bg:#c0394b)\
+$c\
+$cpp\
+$elixir\
+$elm\
+$golang\
+$gradle\
+$haskell\
+$java\
+$julia\
+$nodejs\
+$nim\
+$rust\
+$scala\
+[](fg:#c0394b bg:#2a9d8f)\
+$docker_context\
+[](fg:#2a9d8f bg:#1d3557)\
+$time\
+[ ](fg:#1d3557)\
+$line_break\
+[╰─](#ff3b3b)\
+$status\
+$character\
+"""
+
+add_newline = false
+
+# ─────────────────────────────────────────────
+# User / Host
+# ─────────────────────────────────────────────
+
+[username]
+show_always = true
+style_user = "fg:#ffffff bg:#ff3b3b"
+format = '[󰆍 $user]($style)'
+
+[hostname]
+ssh_only = false
+style = "fg:#ffffff bg:#ff3b3b"
+format = '[@$hostname ]($style)'
+disabled = false
+
+
+# ─────────────────────────────────────────────
+# Directory
+# ─────────────────────────────────────────────
+
+[directory]
+style = "bg:#cc2f2f"
+format = "[ $path ]($style)"
+truncation_length = 2
+truncation_symbol = "…/"
+
+
+# ─────────────────────────────────────────────
+# Git
+# ─────────────────────────────────────────────
+
+[git_branch]
+symbol = ""
+style = "bg:#ff6b6b"
+format = '[ $symbol $branch ]($style)'
+
+[git_status]
+style = "bg:#ff6b6b"
+format = '[$all_status$ahead_behind ]($style)'
+
+
+# ─────────────────────────────────────────────
+# Languages
+# ─────────────────────────────────────────────
+
+[c]
+symbol = " "
+style = "bg:#c0394b"
+format = '[ $symbol ($version) ]($style)'
+
+[cpp]
+symbol = " "
+style = "bg:#c0394b"
+format = '[ $symbol ($version) ]($style)'
+
+[elixir]
+symbol = " "
+style = "bg:#c0394b"
+format = '[ $symbol ($version) ]($style)'
+
+[elm]
+symbol = " "
+style = "bg:#c0394b"
+format = '[ $symbol ($version) ]($style)'
+
+[golang]
+symbol = " "
+style = "bg:#c0394b"
+format = '[ $symbol ($version) ]($style)'
+
+[gradle]
+style = "bg:#c0394b"
+format = '[ $symbol ($version) ]($style)'
+
+[haskell]
+symbol = " "
+style = "bg:#c0394b"
+format = '[ $symbol ($version) ]($style)'
+
+[java]
+symbol = " "
+style = "bg:#c0394b"
+format = '[ $symbol ($version) ]($style)'
+
+[julia]
+symbol = " "
+style = "bg:#c0394b"
+format = '[ $symbol ($version) ]($style)'
+
+[nodejs]
+symbol = ""
+style = "bg:#c0394b"
+format = '[ via $symbol $version ]($style)'
+
+[nim]
+symbol = "󰆥 "
+style = "bg:#c0394b"
+format = '[ $symbol ($version) ]($style)'
+
+[rust]
+symbol = ""
+style = "bg:#c0394b"
+format = '[ $symbol ($version) ]($style)'
+
+[scala]
+symbol = " "
+style = "bg:#c0394b"
+format = '[ $symbol ($version) ]($style)'
+
+
+# ─────────────────────────────────────────────
+# Docker
+# ─────────────────────────────────────────────
+
+[docker_context]
+symbol = " "
+style = "bg:#2a9d8f"
+format = '[ $symbol $context ]($style)'
+
+
+# ─────────────────────────────────────────────
+# Status & Time
+# ─────────────────────────────────────────────
+
+[status]
+style = "fg:#ff3b3b"
+format = '[✖ ]($style)'
+disabled = false
+
+[time]
+disabled = false
+time_format = "%R"
+style = "bg:#1d3557"
+format = '[ ♥ $time ]($style)'
+
+
+# ─────────────────────────────────────────────
+# Input line
+# ─────────────────────────────────────────────
+
+[line_break]
+disabled = false
+
+[character]
+success_symbol = "[❯ ](bold #ff3b3b)"
+error_symbol = "[❯ ](bold red)"
+vicmd_symbol = "[❯ ](bold yellow)"

@@ -9,16 +9,20 @@ Runs the GNOME desktop configuration group: four modules in this fixed order.
 | 3 | `add_custom_shortcut` | `modules/add_custom_shortcut.sh` | Add the custom keyboard shortcuts from `config/shortcuts.txt` |
 | 4 | `gnome_extensions` | `modules/gnome_extensions.sh` | Install and enable the extensions from `config/gnome-extensions.txt` |
 
-The command runs the modules as `bash <module>` and stops at the first failure
-(see [docs/install.md](install.md) for the failure format).
+The command runs all four modules as `bash <module>` in the listed order, even
+if an earlier module fails. It reports each failed module and exits nonzero if
+the group is incomplete. Within shortcuts and extensions, independent entries
+are attempted after an individual entry fails. Successful earlier changes are
+not rolled back.
 
 ## Desktop-environment behavior
 
-`./setup gnome` does not check the desktop environment itself. Each of the four
-modules independently checks for GNOME (via `desktop_environment`) and
-`gsettings`, and on any other desktop prints a skip message and exits
-successfully. Running `./setup gnome` outside GNOME therefore prints four skip
-lines and reports completion without changing anything.
+`./setup gnome` does not check the desktop environment itself. Each module
+checks for GNOME (via `desktop_environment`) and the commands it uses; on any
+other desktop it prints a skip message and exits successfully. The extensions
+module uses `gnome-extensions` for state checks and does not require `gsettings`.
+Running `./setup gnome` outside GNOME therefore prints four skip lines and
+reports completion without changing anything.
 
 `./setup install` only reaches this group when the detected desktop is GNOME;
 otherwise it prints `Skipping GNOME steps (desktop: <de>).` and does not invoke
@@ -41,10 +45,12 @@ is fatal. See [docs/favorites.md](favorites.md) and
 
 ## Requirements
 
-- GNOME with `gsettings`.
+- A GNOME desktop; the wallpaper, favorites, and shortcuts steps use
+  `gsettings`.
 - The wallpaper step requires `assets/wallpaper/wallpaper.jpg`.
 - The extensions step requires `gnome-extensions` and `python3` (fatal when
-  missing on GNOME) and network access to `extensions.gnome.org`.
+  missing on GNOME) and `curl` plus network access for each extension that must
+  be downloaded.
 
 ## Dry run
 
@@ -52,11 +58,14 @@ is fatal. See [docs/favorites.md](favorites.md) and
 ./setup --dry-run gnome
 ```
 
-Each module prints its planned `would run:` lines and changes nothing.
+Each module prints its planned `would run:` lines and changes nothing. Modules
+may read configuration and current GNOME state to describe the plan.
 
 ## Limitations
 
 - The command does not gate on the desktop; each module decides independently.
 - The wallpaper step overwrites `~/Pictures/wallpaper.jpg` on each run.
+- A failed setting or configured item does not stop later independent GNOME
+  work; the group still exits nonzero and reports incomplete results.
 - The extensions step needs a release compatible with the running GNOME Shell
   major version; it fails when none is available for an extension.

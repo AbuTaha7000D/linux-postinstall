@@ -52,10 +52,10 @@ for the other commands.
 | Fedora / RHEL / Arch / CachyOS | `/etc/locale.conf` |
 | Debian / Ubuntu | `/etc/default/locale` |
 
-Resolution checks existence in that order. Family detection is by file
-presence, matching how each distribution actually stores its system locale.
-If neither file exists the command fails nonzero on stderr with
-`Warning: Unknown distro.` (no best-effort in-shell update).
+The path is selected from `distribution()` family detection: Red Hat family
+uses `/etc/locale.conf`, Debian family uses `/etc/default/locale`, and Arch
+family uses `/etc/locale.conf`. Unknown families fail clearly. The expected
+family-specific file must already exist and be a regular file.
 
 Symlinks are resolved first (`readlink -f`) so the backup and write always
 target the real file, and the resolved target must be a regular file.
@@ -82,26 +82,29 @@ created and no write is attempted — the system is left exactly as it was.
 
 ## 5. Apply Sequence (real mode, in order)
 
-1. Verify required tools are present (`locale`, `tee`, `cp`, `readlink`).
+1. Verify required tools are present (`dirname`, `locale`, `tee`, `cp`,
+   `readlink`, `grep`, `sed`, `sudo`).
 2. Resolve the locale file; fail nonzero if unknown or not a regular file.
 3. Verify the selected locale is available via `locale -a`; fail nonzero if
    missing (before any modification).
-4. `run_root cp -p <file> <file>.bak` — recoverable backup. A backup failure
-   is fatal (nothing was written).
-5. Rebuild the file content preserving every existing line and replacing only
+4. Rebuild the new contents in memory, preserving every existing line and replacing only
    `LANG=` (and `LC_ALL=` when present) with the selected locale; append
    `LANG=` if the file has none. Unrelated settings such as `LC_TIME`,
    `LC_MESSAGES`, and `LC_PAPER` overrides are kept verbatim.
+5. If `<file>.bak` does not exist, `run_root cp -p --no-clobber <file> <file>.bak` creates
+   the first recoverable backup. Existing backups are never overwritten; a
+   backup-path symlink or non-regular object is fatal, as is a backup failure;
+   no locale-file write is attempted in either case.
 6. `run_root tee <file>` writes the new content. A write failure is fatal and
    names the backup location.
-7. If `update-locale` exists (Debian/Ubuntu), `run_root update-locale`. A
-   failure here is non-fatal: the locale file itself is already correct and
-   `update-locale` is only a helper that regenerates it from the file.
+7. If `update-locale` exists (Debian/Ubuntu), run it through `run_root`. A
+   failure is non-fatal and prints a warning; the locale file was already
+   written.
 8. Source the file into the current shell when readable, then print the
    current locale for confirmation.
 9. Print `System language set to English.` / `System language set to Arabic.`
 
-**Privilege note:** only steps 4, 6, and 7 are privileged; all go through
+**Privilege note:** only steps 5, 6, and 7 are privileged; all go through
 `run_root` (lazy `ensure_sudo`). There are no raw `sudo` calls in the module.
 
 ---
@@ -126,13 +129,15 @@ invoked, probed, or authenticated.
 
 | Situation | Behavior |
 | --- | --- |
-| Unknown distribution (no locale file) | **Fatal**: `Warning: Unknown distro.` on stderr, exit 1 |
+| Unknown distribution family | **Fatal**: clear unsupported-family error on stderr, exit 1 |
+| Expected family locale file missing or not regular | **Fatal** (exit 1, stderr) |
 | Resolved locale file is not a regular file | **Fatal** (exit 1, stderr) |
 | Selected locale missing from `locale -a` | **Fatal**: error + install hint on stderr, exit 1, no backup, no write |
 | Required tool missing | **Fatal** (exit 1, stderr) |
 | Backup (`run_root cp`) fails | **Fatal**: error on stderr, exit 1, nothing written |
+| Backup path is a symlink or non-regular object | **Fatal**: refuse to modify the locale file |
 | Write (`run_root tee`) fails | **Fatal**: error names the backup, exit 1 |
-| `update-locale` fails | **Non-fatal warning**: the file is already correct |
+| `update-locale` fails | **Non-fatal warning**: the locale file was written, but the helper did not complete |
 
 Required failures propagate through `setup` (`run_step`), so no success
 message is printed after a failure.
@@ -142,8 +147,8 @@ message is printed after a failure.
 ## 8. Idempotency and Limitations
 
 - Reruns are safe and byte-stable: rewriting the same `LANG`/`LC_ALL` on an
-  already-applied file produces identical content, and the backup is
-  overwritten (`cp -p`).
+  already-applied file produces identical content. The first `.bak` is retained
+  and never overwritten.
 - Only `LANG` (and `LC_ALL` when already present) are modified; pre-existing
   per-category `LC_*` overrides are preserved. This is intentional: the module
   does not blindly replace the whole file.
@@ -156,8 +161,8 @@ message is printed after a failure.
     installed.
   - The running session's environment is changed only for the current shell
     process (sourcing the file); a full desktop/reboot is what locks it in.
-  - `update-locale` failure is tolerated (see §7), so a broken Debian helper
-    does not undo an otherwise valid write.
+  - `update-locale` failure is tolerated with a warning (see §7), so a broken
+    Debian helper does not undo an otherwise valid write.
 
 ---
 
@@ -169,8 +174,8 @@ An out-of-tree sandboxed test group covers:
   English, TTY 5s timeout → English (waits ≥5s), non-TTY → English with no
   menu, and the `You have 5 seconds to choose.` text.
 - **Dry-run:** one would-run line, no menu, no sudo/tripwire log, completion.
-- **Unknown distro:** sandboxed module with no locale file → rc1, warning on
-  stderr.
+- **Unknown distro:** sandboxed module with an unsupported `/etc/os-release`
+  identity → rc1, unsupported-family error on stderr.
 - **Availability gate:** fake `locale -a` without the selected locale → rc1,
   error on stderr, no backup, no write (verified against a sandbox file).
 - **Apply/preserve (exec-mode sandbox):** backup created, `LANG`/`LC_ALL`

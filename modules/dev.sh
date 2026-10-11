@@ -2,15 +2,40 @@
 # Development environment setup: system packages stage
 set -e
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+script_path="${BASH_SOURCE[0]}"
+case "$script_path" in */*) ;; *) script_path="./$script_path" ;; esac
+SCRIPT_DIR="$(cd "${script_path%/*}/.." && pwd)"
 source "$SCRIPT_DIR/lib/common.sh"
 
 dtype=$(distribution)
 
+# Package manager and sudo are bootstrap prerequisites: every supported family
+# uses its native manager through run_root, which requires sudo. These cannot
+# be installed safely by this module if they are themselves missing.
+case "$dtype" in
+    redhat) package_manager=dnf ;;
+    debian) package_manager=apt-get ;;
+    arch) package_manager=pacman ;;
+    *)
+        echo "Unknown or unsupported distribution: $dtype" >&2
+        exit 1
+        ;;
+esac
+if [ "${SETUP_DRY_RUN:-0}" != "1" ]; then
+    if ! command -v "$package_manager" >/dev/null 2>&1; then
+        echo "Error: required package manager '$package_manager' is unavailable; install it before running setup dev." >&2
+        exit 1
+    fi
+    if ! command -v sudo >/dev/null 2>&1; then
+        echo "Error: sudo is required for privileged development package installation, but was not found." >&2
+        exit 1
+    fi
+fi
+
 # D01 — System development packages.
 # Binary-presence matrix: probe each tool, collect the family package names
 # for everything missing, then run one install transaction and re-verify.
-# Later roadmap tasks append their own stages to this module.
+# Remaining installation stages follow below in their fixed order.
 
 echo "Installing development system packages..."
 
@@ -62,6 +87,23 @@ case "$dtype" in
         add_missing curl curl
         add_missing wget wget
         add_missing flatpak flatpak
+        add_missing mkdir coreutils
+        add_missing cat coreutils
+        add_missing tail coreutils
+        add_missing ln coreutils
+        add_missing mktemp coreutils
+        add_missing mkfifo coreutils
+        add_missing mv coreutils
+        add_missing rm coreutils
+        add_missing chmod coreutils
+        add_missing tr coreutils
+        add_missing uname coreutils
+        add_missing bash bash
+        add_missing sh bash
+        add_missing grep grep
+        add_missing sed sed
+        add_missing which which
+        add_missing tar tar
         ;;
     "debian")
         add_missing ssh openssh-client
@@ -91,6 +133,23 @@ case "$dtype" in
         add_missing curl curl
         add_missing wget wget
         add_missing flatpak flatpak
+        add_missing mkdir coreutils
+        add_missing cat coreutils
+        add_missing tail coreutils
+        add_missing ln coreutils
+        add_missing mktemp coreutils
+        add_missing mkfifo coreutils
+        add_missing mv coreutils
+        add_missing rm coreutils
+        add_missing chmod coreutils
+        add_missing tr coreutils
+        add_missing uname coreutils
+        add_missing bash bash
+        add_missing sh dash
+        add_missing grep grep
+        add_missing sed sed
+        add_missing which which
+        add_missing tar tar
         # Debian exception: python3-venv has no dedicated binary probe and is
         # always appended; apt-get is idempotent when the venv support is
         # already present, so an extra update+install is harmless.
@@ -124,6 +183,23 @@ case "$dtype" in
         add_missing curl curl
         add_missing wget wget
         add_missing flatpak flatpak
+        add_missing mkdir coreutils
+        add_missing cat coreutils
+        add_missing tail coreutils
+        add_missing ln coreutils
+        add_missing mktemp coreutils
+        add_missing mkfifo coreutils
+        add_missing mv coreutils
+        add_missing rm coreutils
+        add_missing chmod coreutils
+        add_missing tr coreutils
+        add_missing uname coreutils
+        add_missing bash bash
+        add_missing sh bash
+        add_missing grep grep
+        add_missing sed sed
+        add_missing which which
+        add_missing tar tar
         ;;
     *)
         echo "Unknown or unsupported distribution: $dtype" >&2
@@ -271,6 +347,10 @@ else
                         echo "Error: failed to install base-devel for yay bootstrap." >&2
                         exit 1
                     fi
+                    if ! command -v makepkg >/dev/null 2>&1; then
+                        echo "Error: makepkg is still unavailable after installing base-devel." >&2
+                        exit 1
+                    fi
                     if ! yay_tmp=$(mktemp -d); then
                         echo "Error: failed to create a temporary directory for yay." >&2
                         exit 1
@@ -323,28 +403,31 @@ fi
 
 echo "Installing DBeaver Community..."
 
-if flatpak info io.dbeaver.DBeaverCommunity >/dev/null 2>&1; then
-    echo "DBeaver Community is already installed."
+if [ "${SETUP_DRY_RUN:-0}" = "1" ]; then
+    echo 'would run: flatpak info --user io.dbeaver.DBeaverCommunity (skip if installed)'
+    echo "would run: flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo"
+    echo "would run: flatpak install --user -y flathub io.dbeaver.DBeaverCommunity"
 else
-    if [ "${SETUP_DRY_RUN:-0}" != "1" ] && ! command -v flatpak >/dev/null 2>&1; then
+    if ! command -v flatpak >/dev/null 2>&1; then
         echo "Error: flatpak command not found (required to install DBeaver Community)." >&2
         exit 1
     fi
-    if ! flatpak remote-list 2>/dev/null | grep -q flathub; then
-        if ! run flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo; then
-            echo "Error: failed to add the Flathub remote for DBeaver Community." >&2
+    if flatpak info --user io.dbeaver.DBeaverCommunity >/dev/null 2>&1; then
+        echo "DBeaver Community is already installed for this user."
+    else
+        if ! flatpak remote-list --user 2>/dev/null | grep -q flathub; then
+            if ! run flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo; then
+                echo "Error: failed to add the Flathub remote for DBeaver Community." >&2
+                exit 1
+            fi
+        fi
+        if ! run flatpak install --user -y flathub io.dbeaver.DBeaverCommunity; then
+            echo "Error: failed to install DBeaver Community via Flatpak." >&2
             exit 1
         fi
-    fi
-    if ! run flatpak install -y flathub io.dbeaver.DBeaverCommunity; then
-        echo "Error: failed to install DBeaver Community via Flatpak." >&2
-        exit 1
-    fi
 
-    # Post-verify (real mode only): flatpak info must succeed after the
-    # install attempt. Dry-run prints only the would-run lines above.
-    if [ "${SETUP_DRY_RUN:-0}" != "1" ]; then
-        if ! flatpak info io.dbeaver.DBeaverCommunity >/dev/null 2>&1; then
+        # Post-verify using the same per-user scope as the installation.
+        if ! flatpak info --user io.dbeaver.DBeaverCommunity >/dev/null 2>&1; then
             echo "Error: DBeaver Community is not available after installation." >&2
             exit 1
         fi
@@ -355,17 +438,31 @@ fi
 # D04 — mise (user-level) + Python 3.13 via mise
 echo "Installing mise and Python 3.13..."
 
-if command -v mise >/dev/null 2>&1 || [ -x "$HOME/.local/bin/mise" ]; then
+mise_bin=""
+resolve_mise() {
+    if [ -x "$HOME/.local/bin/mise" ]; then
+        mise_bin="$HOME/.local/bin/mise"
+    elif command -v mise >/dev/null 2>&1; then
+        mise_bin="$(command -v mise)"
+    else
+        mise_bin=""
+    fi
+}
+resolve_mise
+
+if [ -n "$mise_bin" ]; then
     [ "${SETUP_DRY_RUN:-0}" != "1" ] && echo "mise is already installed."
 else
     if [ "${SETUP_DRY_RUN:-0}" = "1" ]; then
         echo "would run: curl -fsSL https://mise.jdx.dev/install.sh | sh"
+        mise_bin="$HOME/.local/bin/mise"
     else
         if ! run sh -c "curl -fsSL https://mise.jdx.dev/install.sh | sh"; then
             echo "Error: mise is not available after installation." >&2
             exit 1
         fi
-        if ! command -v mise >/dev/null 2>&1 && [ ! -x "$HOME/.local/bin/mise" ]; then
+        resolve_mise
+        if [ -z "$mise_bin" ]; then
             echo "Error: mise is not available after installation." >&2
             exit 1
         fi
@@ -373,13 +470,18 @@ else
     fi
 fi
 
-# Ensure mise/python PATH for checks/runs in real mode
-export PATH="$HOME/.local/bin:$HOME/.mise/shims:$PATH"
+# Use the same resolved executable for all checks and commands. The shims
+# directory remains first so Python selected by mise resolves consistently.
+if [ -n "$mise_bin" ] && [ "${SETUP_DRY_RUN:-0}" != "1" ]; then
+    export PATH="${mise_bin%/*}:$HOME/.local/bin:$HOME/.mise/shims:$PATH"
+fi
 
 PY313_OK=0
-if command -v python >/dev/null 2>&1 && python --version 2>/dev/null | grep -q "^Python 3\.13"; then
-    if command -v mise >/dev/null 2>&1 && mise which python >/dev/null 2>&1; then
-        PY313_OK=1
+if [ "${SETUP_DRY_RUN:-0}" != "1" ]; then
+    if command -v python >/dev/null 2>&1 && python --version 2>/dev/null | grep -q "^Python 3\.13"; then
+        if [ -n "$mise_bin" ] && "$mise_bin" which python >/dev/null 2>&1; then
+            PY313_OK=1
+        fi
     fi
 fi
 
@@ -387,14 +489,14 @@ if [ "$PY313_OK" = "1" ]; then
     [ "${SETUP_DRY_RUN:-0}" != "1" ] && echo "Python 3.13 already configured via mise."
 else
     if [ "${SETUP_DRY_RUN:-0}" = "1" ]; then
-        echo "would run: mise use -g python@3.13"
+        echo "would run: $mise_bin use -g python@3.13"
     else
-        if ! run mise use -g python@3.13; then
+        if ! run "$mise_bin" use -g python@3.13; then
             echo "Error: Python 3.13 setup via mise failed." >&2
             exit 1
         fi
-        export PATH="$HOME/.local/bin:$HOME/.mise/shims:$PATH"
-        if ! (python --version 2>/dev/null | grep -q "^Python 3\.13") || ! (mise which python >/dev/null 2>&1 && [ -n "$(mise which python 2>/dev/null)" ]); then
+        export PATH="${mise_bin%/*}:$HOME/.local/bin:$HOME/.mise/shims:$PATH"
+        if ! (python --version 2>/dev/null | grep -q "^Python 3\.13") || ! ("$mise_bin" which python >/dev/null 2>&1 && [ -n "$("$mise_bin" which python 2>/dev/null)" ]); then
             echo "Error: Python 3.13 setup via mise failed." >&2
             exit 1
         fi
@@ -402,35 +504,43 @@ else
     fi
 fi
 
-# D05 — JupyterLab via pipx (uses mise Python)
+# D05 — JupyterLab via pipx (uses mise Python; ipykernel is checked separately)
 echo "Installing JupyterLab via pipx..."
 
-if [ -x "$HOME/.local/bin/jupyter" ]; then
-    [ "${SETUP_DRY_RUN:-0}" != "1" ] && echo "JupyterLab is already installed."
+if [ "${SETUP_DRY_RUN:-0}" = "1" ]; then
+    if [ ! -x "$HOME/.local/bin/jupyter" ]; then
+        echo "would run: pipx install --python \"\$($mise_bin which python)\" jupyterlab"
+    else
+        echo "would run: skip pipx install (JupyterLab is present)"
+    fi
+    echo "would run: check pipx runpip jupyterlab show ipykernel and inject only if missing"
 else
-    if [ "${SETUP_DRY_RUN:-0}" != "1" ] && ! command -v pipx >/dev/null 2>&1; then
-        echo "Error: pipx command not found (required to install JupyterLab)." >&2
+    if ! command -v pipx >/dev/null 2>&1; then
+        echo "Error: pipx command not found (required to verify or install JupyterLab)." >&2
         exit 1
     fi
-    if [ "${SETUP_DRY_RUN:-0}" = "1" ]; then
-        echo 'would run: pipx install --python "$(~/.local/bin/mise which python)" jupyterlab'
-        echo "would run: pipx inject jupyterlab ipykernel"
-    else
-        export PATH="$HOME/.local/bin:$HOME/.mise/shims:$PATH"
-        if ! run pipx install --python "$(~/.local/bin/mise which python)" jupyterlab; then
+    export PATH="${mise_bin%/*}:$HOME/.local/bin:$HOME/.mise/shims:$PATH"
+    if [ ! -x "$HOME/.local/bin/jupyter" ]; then
+        if ! run pipx install --python "$("$mise_bin" which python)" jupyterlab; then
             echo "Error: failed to install JupyterLab via pipx." >&2
             exit 1
         fi
+    fi
+    if ! pipx runpip jupyterlab show ipykernel >/dev/null 2>&1; then
         if ! run pipx inject jupyterlab ipykernel; then
             echo "Error: failed to inject ipykernel into JupyterLab via pipx." >&2
             exit 1
         fi
-        if [ ! -x "$HOME/.local/bin/jupyter" ]; then
-            echo "Error: JupyterLab is not available after installation." >&2
-            exit 1
-        fi
-        echo "JupyterLab installed."
     fi
+    if ! pipx runpip jupyterlab show ipykernel >/dev/null 2>&1; then
+        echo "Error: ipykernel is not available in the JupyterLab environment after injection." >&2
+        exit 1
+    fi
+    if [ ! -x "$HOME/.local/bin/jupyter" ]; then
+        echo "Error: JupyterLab is not available after installation." >&2
+        exit 1
+    fi
+    echo "JupyterLab and ipykernel verified."
 fi
 
 # D06 — Codex via npm user-prefix
@@ -491,17 +601,19 @@ fi
 # behavior; `set -e` is suppressed inside the if-test either way.
 echo "Installing OpenCode CLI..."
 
-if [ -x "$HOME/.local/bin/opencode" ]; then
+opencode_bin="$HOME/.opencode/bin/opencode"
+if [ -x "$opencode_bin" ]; then
     [ "${SETUP_DRY_RUN:-0}" != "1" ] && echo "OpenCode is already installed."
 else
     if [ "${SETUP_DRY_RUN:-0}" = "1" ]; then
-        echo "would run: XDG_BIN_DIR=\"$HOME/.local/bin\" curl -fsSL https://opencode.ai/install | bash -s -- --no-modify-path"
+        echo "would run: curl -fsSL https://opencode.ai/install | bash -s -- --no-modify-path"
+        echo "would run: add $HOME/.opencode/bin to the managed shell PATH"
     else
-        if ! (set -o pipefail; XDG_BIN_DIR="$HOME/.local/bin" curl -fsSL https://opencode.ai/install | bash -s -- --no-modify-path); then
+        if ! (set -o pipefail; curl -fsSL https://opencode.ai/install | bash -s -- --no-modify-path); then
             echo "Error: failed to install OpenCode via the official installer." >&2
             exit 1
         fi
-        if [ ! -x "$HOME/.local/bin/opencode" ]; then
+        if [ ! -x "$opencode_bin" ]; then
             echo "Error: OpenCode is not available after installation." >&2
             exit 1
         fi
@@ -549,14 +661,22 @@ else
         local shell="$1"
         printf '%s\n' "$BLOCK_BEGIN"
         if [ "$shell" = "fish" ]; then
+            local fish_mise_bin="${mise_bin//\\/\\\\}"
+            fish_mise_bin="${fish_mise_bin//\'/\\\'}"
+            local fish_opencode_dir="${HOME}/.opencode/bin"
+            fish_opencode_dir="${fish_opencode_dir//\\/\\\\}"
+            fish_opencode_dir="${fish_opencode_dir//\'/\\\'}"
             cat <<'DEVBLOCK'
 fish_add_path "$HOME/.local/bin"
-~/.local/bin/mise activate fish | source
 DEVBLOCK
+            printf "fish_add_path '%s'\n" "$fish_opencode_dir"
+            printf "'%s' activate fish | source\n" "$fish_mise_bin"
         else
+            local bash_mise_bin
+            printf -v bash_mise_bin '%q' "$mise_bin"
             cat <<DEVBLOCK
-export PATH="\$HOME/.local/bin:\$PATH"
-eval "\$(~/.local/bin/mise activate $shell)"
+export PATH="\$HOME/.opencode/bin:\$HOME/.local/bin:\$PATH"
+eval "\$($bash_mise_bin activate $shell)"
 DEVBLOCK
         fi
         printf '%s\n' "$BLOCK_END"
@@ -568,7 +688,8 @@ DEVBLOCK
         local shell="$2"
 
         if [ ! -f "$rc_file" ]; then
-            mkdir -p "$(dirname "$rc_file")"
+            local rc_dir="${rc_file%/*}"
+            mkdir -p "$rc_dir"
             : > "$rc_file"
         fi
 
@@ -583,15 +704,54 @@ DEVBLOCK
         echo "Dev shell block written to $rc_file."
     }
 
-    apply_dev_block "$HOME/.bashrc" bash
-
+    rc_targets=("$HOME/.bashrc")
     if [ -f "$HOME/.zshrc" ] || command -v zsh >/dev/null 2>&1; then
-        apply_dev_block "$HOME/.zshrc" zsh
+        rc_targets+=("$HOME/.zshrc")
+    fi
+    if [ -f "$HOME/.config/fish/config.fish" ] || command -v fish >/dev/null 2>&1; then
+        rc_targets+=("$HOME/.config/fish/config.fish")
     fi
 
-    if [ -f "$HOME/.config/fish/config.fish" ] || command -v fish >/dev/null 2>&1; then
-        apply_dev_block "$HOME/.config/fish/config.fish" fish
-    fi
+    # Refuse symlinks (including broken links) and malformed/duplicate marker
+    # pairs before touching any startup file. This avoids both link detachment
+    # by sed -i and sed's unmatched-range deletion through end-of-file.
+    validate_dev_rc() {
+        local rc_file="$1" line line_no=0 begin_line=0 end_line=0 begin_count=0 end_count=0 malformed_marker=0
+        if [ -L "$rc_file" ]; then
+            echo "Error: refusing to rewrite symlinked shell startup file: $rc_file" >&2
+            return 1
+        fi
+        [ -e "$rc_file" ] || return 0
+        while IFS= read -r line || [ -n "$line" ]; do
+            line_no=$((line_no + 1))
+            if [[ "$line" == *"$BLOCK_BEGIN"* ]]; then
+                begin_count=$((begin_count + 1))
+                begin_line="$line_no"
+                [ "$line" = "$BLOCK_BEGIN" ] || malformed_marker=1
+            elif [[ "$line" == *"$BLOCK_END"* ]]; then
+                end_count=$((end_count + 1))
+                end_line="$line_no"
+                [ "$line" = "$BLOCK_END" ] || malformed_marker=1
+            fi
+        done < "$rc_file"
+        if [ "$malformed_marker" -eq 1 ] || [ "$begin_count" -ne "$end_count" ] || [ "$begin_count" -gt 1 ] || { [ "$begin_count" -eq 1 ] && [ "$begin_line" -ge "$end_line" ]; }; then
+            echo "Error: malformed linux-postinstall dev markers in $rc_file; no shell startup files were changed." >&2
+            return 1
+        fi
+    }
+    for rc_file in "${rc_targets[@]}"; do
+        if ! validate_dev_rc "$rc_file"; then
+            exit 1
+        fi
+    done
+    for rc_file in "${rc_targets[@]}"; do
+        case "$rc_file" in
+            "$HOME/.bashrc") rc_shell=bash ;;
+            "$HOME/.zshrc") rc_shell=zsh ;;
+            *) rc_shell=fish ;;
+        esac
+        apply_dev_block "$rc_file" "$rc_shell"
+    done
 fi
 
 # Completion guidance. The SSH server activation commands are documented in

@@ -30,8 +30,18 @@ Only the list for the detected family is read, plus `config/flatpak.txt`.
 Native packages are detected with the family package manager (`rpm -q`, plus
 `rpm -q --whatprovides` on Fedora for virtual provides such as `wget`; `dpkg -s`;
 `pacman -Q`). Flatpak apps are detected in both the user and system
-scopes (`flatpak info` and `flatpak info --user`). A probe that *errors* is
-treated as fatal, never as proof that software is absent.
+scopes (`flatpak info` and `flatpak info --user`). A probe error is reported
+as a failure, never treated as proof that software is absent. The command
+continues with independent applications and prints installed, already-present
+or planned, and failed results; it exits nonzero if any requested application
+failed or could not be checked.
+
+Missing native packages are attempted together first to retain one efficient
+family transaction. If that transaction fails, packages are rechecked and
+retried individually so one unavailable package does not block the others. A
+failed package does not block Flatpak applications or vendor applications. A
+failed Flatpak remote check/add blocks only the Flatpak applications that need
+installation; vendor processing still continues.
 
 Some applications are available both as a native package and as a Flatpak. An
 explicit, small mapping prevents installing the duplicate Flatpak when the
@@ -54,11 +64,14 @@ same-named binary that is not the packaged application does not count.
 use the equivalent package name for that family; entries that the supported
 baseline cannot supply are omitted there (the corresponding header comment in
 each file lists them). Supported Debian baseline: Debian 13 "trixie" / Ubuntu
-24.04 LTS "noble" or newer.
+24.04 LTS "noble" or newer. The Debian-family list keeps `firefox-esr` for
+Debian; on Ubuntu, `install_apps.sh` substitutes Ubuntu's available `firefox`
+package. `fastfetch` remains omitted from this shared list because Ubuntu
+24.04 does not provide it, even though Debian 13 and Ubuntu 25.10 or newer do.
 
-| Source (Fedora) | Debian | Arch |
+| Source (Fedora) | Debian / Ubuntu | Arch |
 | --- | --- | --- |
-| `firefox` | `firefox-esr` | `firefox` |
+| `firefox` | `firefox-esr` on Debian; `firefox` on Ubuntu | `firefox` |
 | `gcc-c++` | `g++` | `gcc` |
 | `golang` | `golang-go` | `go` |
 | `libvirt` | `libvirt-daemon-system` | `libvirt` |
@@ -90,14 +103,20 @@ their existing dedicated vendor step inside `modules/install_apps.sh`
 (official `.deb`/`.rpm` downloads on Fedora/Debian, AUR on Arch) and are not
 part of the repository package lists. The remaining vendor-only catalog names
 (ChatGPT, Motrix Turbo, Warp Terminal, Zoom, .NET SDK) are out of scope for
-this module.
+this module. Vendor installers for Chrome and VS Code support x86_64 only.
 
 ## Arch behavior
 
-On Arch the native transaction keeps its existing `pacman -Syu --noconfirm`
-form.
+On Arch and CachyOS the native packages use `pacman -Syu --noconfirm` as one
+transaction; if that transaction fails, remaining packages are retried
+individually with the same full-upgrade-safe command. Installing missing vendor
+applications also requires `yay` to be present; the module reports an error
+when it is missing and does not bootstrap it.
 
 ## Dry run
 
-`./setup --dry-run packages` performs only read-only detection, prints the
-commands that would run, and changes nothing.
+`./setup --dry-run packages` performs read-only native package detection,
+prints the complete planned native, Flatpak, and vendor sequence, and changes
+nothing. It does not require Flatpak to be installed or inspect Flatpak state;
+because installed Flatpak apps cannot be detected in dry-run, it plans each
+Flatpak entry unless an equivalent native package is installed or planned.

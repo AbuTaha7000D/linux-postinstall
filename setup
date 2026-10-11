@@ -6,21 +6,16 @@
 ################################################################################
 
 # Version
-VERSION="v3.0.0"
+VERSION="v3.1.0"
 
 SETUP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib/common.sh
 source "$SETUP_DIR/lib/common.sh"
 
-# Check if the script is run as root
-if [ "$EUID" -eq 0 ]; then
-    echo "This script should not be run as root. Please run it as a regular user."
-    exit 1
-fi
-
 # Print usage/help
 usage() {
-    echo "Usage: $0 [--dry-run] [command]"
+    echo "Usage: $0 [--dry-run] [command] [--dry-run]"
+    echo "With no command, runs 'install'. Use at most one command; --dry-run may appear before or after it."
     echo
     echo "Commands:"
     echo "  install      Run all setup steps (recommended; same as no arguments)"
@@ -54,23 +49,30 @@ run_step() {
     fi
 }
 
-# Remove sudo credentials only when this run actually created them: the
-# marker exists only after a successful interactive sudo -v, so a credential
-# timestamp that was already valid before the run is never cleared. Runs on
-# both success and failure; sudo -k never prompts.
-cleanup_sudo() {
-    if [ -n "${SETUP_SUDO_MARKER:-}" ] && [ -f "$SETUP_SUDO_MARKER" ]; then
-        sudo -k >/dev/null 2>&1 || true
-        rm -f "$SETUP_SUDO_MARKER"
-    fi
-}
-
 # GNOME-only steps, in order
 run_gnome_steps() {
-    run_step "$SETUP_DIR/modules/set_wallpaper.sh" "set_wallpaper"
-    run_step "$SETUP_DIR/modules/set_favorite_apps.sh" "set_favorite_apps"
-    run_step "$SETUP_DIR/modules/add_custom_shortcut.sh" "add_custom_shortcut"
-    run_step "$SETUP_DIR/modules/gnome_extensions.sh" "gnome_extensions"
+    local failures=0 rc i
+    local -a scripts=(
+        "$SETUP_DIR/modules/set_wallpaper.sh"
+        "$SETUP_DIR/modules/set_favorite_apps.sh"
+        "$SETUP_DIR/modules/add_custom_shortcut.sh"
+        "$SETUP_DIR/modules/gnome_extensions.sh"
+    )
+    local -a steps=(set_wallpaper set_favorite_apps add_custom_shortcut gnome_extensions)
+    for i in "${!scripts[@]}"; do
+        if bash "${scripts[$i]}"; then
+            :
+        else
+            rc=$?
+            echo "Error: Failed at GNOME step '${steps[$i]}' (${scripts[$i]}) with exit code $rc" >&2
+            failures=$((failures + 1))
+        fi
+    done
+    if [ "$failures" -gt 0 ]; then
+        echo "GNOME group incomplete: $failures step(s) failed; independent steps were still attempted." >&2
+        return 1
+    fi
+    echo "GNOME group complete."
 }
 
 # Full setup: normal steps always, GNOME steps only on a GNOME desktop
@@ -87,7 +89,7 @@ cmd_install() {
     run_step "$SETUP_DIR/modules/dev.sh" "dev"
 
     if [ "$de" = "gnome" ]; then
-        run_gnome_steps
+        run_gnome_steps || exit $?
     else
         echo "Skipping GNOME steps (desktop: $de)."
     fi
@@ -106,12 +108,22 @@ main() {
                 export SETUP_DRY_RUN=1
                 ;;
             help|-h|--help)
-                usage
-                exit 0
+                if [ "$cmd_seen" -eq 1 ]; then
+                    echo "Error: Unexpected argument '$arg'." >&2
+                    echo "For more information, run '$0 help'." >&2
+                    exit 1
+                fi
+                cmd="help"
+                cmd_seen=1
                 ;;
             version|-v|--version)
-                echo "setup $VERSION"
-                exit 0
+                if [ "$cmd_seen" -eq 1 ]; then
+                    echo "Error: Unexpected argument '$arg'." >&2
+                    echo "For more information, run '$0 help'." >&2
+                    exit 1
+                fi
+                cmd="version"
+                cmd_seen=1
                 ;;
             -*)
                 echo "Error: Unknown option '$arg'." >&2
@@ -130,13 +142,33 @@ main() {
         esac
     done
 
-    # After parsing only (help/version/invalid exits never reach sudo): export
-    # the credential marker and arm cleanup. Dry-run never authenticates, so
-    # it never needs a marker either.
-    if [ "${SETUP_DRY_RUN:-0}" != "1" ]; then
-        SETUP_SUDO_MARKER="${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/setup-sudo-auth.$$"
-        export SETUP_SUDO_MARKER
-        trap cleanup_sudo EXIT
+    # Display these only after every argument has passed validation.
+    case "$cmd" in
+        help)
+            usage
+            exit 0
+            ;;
+        version)
+            echo "setup $VERSION"
+            exit 0
+        ;;
+    esac
+
+    case "$cmd" in
+        ""|install|terminal|aliases|packages|language|fonts|dev|gnome|shortcuts|favorites|extensions)
+            ;;
+        *)
+            echo "Error: Invalid command '$cmd'." >&2
+            echo "For more information, run '$0 help'." >&2
+            exit 1
+            ;;
+    esac
+
+    # Read-only help/version and argument validation are available to root, but
+    # no setup command may run as root.
+    if [ "$EUID" -eq 0 ]; then
+        echo "This script should not be run as root. Please run it as a regular user." >&2
+        exit 1
     fi
 
     if [ "$cmd_seen" -eq 0 ]; then
@@ -165,7 +197,7 @@ main() {
                 run_step "$SETUP_DIR/modules/dev.sh" "dev"
                 ;;
             gnome)
-                run_gnome_steps
+                run_gnome_steps || exit $?
                 ;;
             shortcuts)
                 run_step "$SETUP_DIR/modules/add_custom_shortcut.sh" "add_custom_shortcut"

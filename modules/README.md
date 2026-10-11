@@ -1,8 +1,8 @@
 
 # Modular Linux Postinstall Scripts
 
-This directory contains the setup modules invoked by the `setup` launcher. Each module performs a single, well-defined task and is compatible with Fedora, Debian, and CachyOS (and derivatives).
-Debian-family support requires Debian 13 (trixie) or newer, or Ubuntu 25.10 or newer; older releases such as Debian 12 and Ubuntu 24.04 are not supported because `fastfetch` is not in their archives.
+This directory contains the setup modules invoked by the `setup` launcher. Each module performs a single, well-defined task. The project targets Fedora/Nobara, Debian/Ubuntu/Linux Mint, and Arch/CachyOS; it does not claim compatibility with every derivative.
+Debian-family support requires Debian 13 (trixie) or newer, Ubuntu 24.04 LTS (noble) or newer, or a Linux Mint release based on a supported Ubuntu version. `fastfetch` is omitted from the shared Debian-family package list because Ubuntu 24.04 does not provide it. On Arch and CachyOS, install `yay` if VS Code or Chrome is missing; the packages command does not bootstrap an AUR helper. Chrome and VS Code vendor installers support x86_64 only.
 
 Shared helpers (distribution/family detection, desktop-environment detection, `run`/`run_root` dry-run wrappers) live in `../lib/common.sh`.
 

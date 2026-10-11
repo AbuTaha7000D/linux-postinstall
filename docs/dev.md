@@ -78,7 +78,7 @@ terminal command nor the aliases command.
 ### Source of truth in the repository
 
 - `setup` — CLI parsing, `--dry-run` handling, dispatch (`dev` maps to
-  `modules/dev.sh`), failure propagation, sudo cleanup.
+  `modules/dev.sh`), and failure propagation.
 - `modules/dev.sh` — the entire behavior described here.
 - `lib/common.sh` — `distribution()`, `run()`, `run_root()`, `ensure_sudo()`.
 - `modules/install_apps.sh` — read-only reference for the intentional
@@ -102,18 +102,19 @@ Fixed stage order:
    every missing binary.
 3. **D02 — VS Code.** Skip if `code` present; otherwise vendor install on
    Fedora/Debian (x86_64 only) or `yay`/AUR install on Arch, then verify `code`.
-4. **D03 — DBeaver.** Skip if `flatpak info io.dbeaver.DBeaverCommunity`
-   succeeds; otherwise ensure the Flathub remote and install, then verify.
+4. **D03 — DBeaver.** Skip if `flatpak info --user
+   io.dbeaver.DBeaverCommunity` succeeds; otherwise ensure the user Flathub
+   remote and install with `flatpak install --user`, then verify in user scope.
 5. **D04 — mise + Python 3.13.** Install mise via the official installer when
    missing; then ensure Python 3.13 is configured via `mise use -g python@3.13`
    and verify `python --version` reports 3.13 and `mise which python` resolves.
-6. **D05 — JupyterLab.** Skip if `~/.local/bin/jupyter` exists; otherwise
-   `pipx install --python "$(~/.local/bin/mise which python)" jupyterlab` and
-   `pipx inject jupyterlab ipykernel`, then verify the binary.
+6. **D05 — JupyterLab.** Install it via pipx when its executable is absent;
+   independently verify `ipykernel` in the pipx environment and inject it only
+   when missing, then verify both.
 7. **D06 — Codex.** Ensure exactly one managed `prefix=$HOME/.local` line in
    `~/.npmrc`; skip if `~/.local/bin/codex` exists; otherwise
    `npm install -g --prefix "$HOME/.local" @openai/codex`, then verify.
-8. **D07 — OpenCode.** Skip if `~/.local/bin/opencode` exists; otherwise run
+8. **D07 — OpenCode.** Skip if `~/.opencode/bin/opencode` exists; otherwise run
    the official installer with `--no-modify-path` under pipefail, then verify.
 9. **D08 — fd symlink + dev rc block + completion.** Debian-only `fd` symlink
    (guarded); strip-and-reappend the managed dev block to `~/.bashrc` (always),
@@ -148,23 +149,23 @@ VS Code (D02):
       verify `code` (real mode) → fatal if absent
 
 DBeaver (D03):
-    IF `flatpak info io.dbeaver.DBeaverCommunity` → skip
-    ELSE IF flatpak missing (real mode) → fatal
-    IF flathub remote absent → flatpak remote-add --if-not-exists
-    flatpak install -y flathub io.dbeaver.DBeaverCommunity
-    verify flatpak info (real mode) → fatal if absent
+    dry-run: print plan only; no Flatpak state probes
+    real: IF `flatpak info --user io.dbeaver.DBeaverCommunity` → skip
+          IF user Flathub remote absent → flatpak remote-add --user
+          flatpak install --user -y flathub io.dbeaver.DBeaverCommunity
+          verify in user scope → fatal if absent
 
 mise (D04):
-    IF `command -v mise` OR `-x ~/.local/bin/mise` → skip install
+    resolve one executable path (prefer ~/.local/bin/mise, otherwise PATH)
+    IF resolved → skip install
     ELSE sh -c "curl -fsSL https://mise.jdx.dev/install.sh | sh"; verify; fatal if absent
-    IF python is 3.13 AND `mise which python` resolves → skip
-    ELSE mise use -g python@3.13; verify; fatal if failed
+    IF python is 3.13 AND resolved-mise `which python` resolves → skip
+    ELSE resolved-mise use -g python@3.13; verify; fatal if failed
 
 JupyterLab (D05):
-    IF -x ~/.local/bin/jupyter → skip
-    ELSE IF pipx missing (real mode) → fatal
-    pipx install --python "<mise python>" jupyterlab; pipx inject jupyterlab ipykernel
-    verify -x ~/.local/bin/jupyter; fatal if absent
+    IF jupyter missing → pipx install --python "<resolved-mise python>" jupyterlab
+    IF `pipx runpip jupyterlab show ipykernel` fails → pipx inject jupyterlab ipykernel
+    verify ipykernel and jupyter executable; fatal if absent
 
 Codex (D06):
     ensure ~/.npmrc has exactly one `prefix=$HOME/.local` line (strip others, append)
@@ -173,18 +174,19 @@ Codex (D06):
     npm install -g --prefix "$HOME/.local" @openai/codex; verify; fatal if absent
 
 OpenCode (D07):
-    IF -x ~/.local/bin/opencode → skip
-    ELSE (set -o pipefail; XDG_BIN_DIR="$HOME/.local/bin" curl -fsSL https://opencode.ai/install | bash -s -- --no-modify-path)
-    verify; fatal if absent
+    IF -x ~/.opencode/bin/opencode → skip
+    ELSE run official installer with --no-modify-path under pipefail
+    verify ~/.opencode/bin/opencode; fatal if absent
 
 fd symlink (D08):
     IF dtype == debian AND `command -v fdfind` AND NOT -e ~/.local/bin/fd
         → ln -s "$(command -v fdfind)" ~/.local/bin/fd
 
 dev rc block (D08), real mode:
+    prevalidate all targets; fail on symlinks or malformed/duplicate markers
     FOR ~/.bashrc (always), ~/.zshrc (if exists or zsh present), fish config (if exists or fish present):
         strip existing dev block; append exactly one fresh block
-    dry-run: print target lines only
+    dry-run: print target lines only; no rc writes
 
 completion:
     print reload guidance and README pointer (never privileged-command text)
@@ -214,7 +216,8 @@ Key helpers inside `modules/dev.sh`:
   download/build directories (never a fixed `/tmp` path).
 - `emit_dev_block <shell>` / `apply_dev_block <rc_file> <shell>` — managed dev
   block (strip-and-reappend).
-- `flatpak` probes: `flatpak info <id>` and `flatpak remote-list`.
+- `flatpak` probes in real mode only: `flatpak info --user <id>` and
+  `flatpak remote-list --user`; dry-run invokes no Flatpak command.
 
 Managed dev block:
 
@@ -226,21 +229,22 @@ Managed dev block:
 Block body by shell:
 
 - Bash:
-  `export PATH="$HOME/.local/bin:$PATH"`
-  `eval "$(~/.local/bin/mise activate bash)"`
+  `export PATH="$HOME/.opencode/bin:$HOME/.local/bin:$PATH"`
+  `eval "$(<resolved-mise-path> activate bash)"`
 - Zsh:
-  `export PATH="$HOME/.local/bin:$PATH"`
-  `eval "$(~/.local/bin/mise activate zsh)"`
+  `export PATH="$HOME/.opencode/bin:$HOME/.local/bin:$PATH"`
+  `eval "$(<resolved-mise-path> activate zsh)"`
 - Fish:
   `fish_add_path "$HOME/.local/bin"`
-  `~/.local/bin/mise activate fish | source`
+  `fish_add_path '<HOME>/.opencode/bin'`
+  `<resolved-mise-path> activate fish | source`
 
 Paths and environment:
 
-- `~/.local/bin` — user-level install root (mise, jupyter, codex, opencode, fd).
+- `~/.local/bin` — user-level install root (mise when installed by its default
+  installer, jupyter, codex, fd). OpenCode's official default is `~/.opencode/bin`.
 - `~/.mise/shims` and `~/.local/bin` are prepended to `PATH` during the run.
 - `~/.npmrc` — managed npm user prefix.
-- `SETUP_SUDO_MARKER` — exported by `setup` for sudo cleanup.
 
 ---
 
@@ -287,6 +291,20 @@ appended (apt is idempotent, so an extra update+install is harmless).
 Debian exception: the `fd` row probes the **binary** `fdfind` (Debian's package
 does not provide an `fd` binary) and installs the **package** `fd-find`. Fedora's
 package is also `fd-find` but provides the `fd` binary, so Fedora probes `fd`.
+
+### Dependency preflight
+
+In real mode, before any installation stage, the module verifies the detected
+native package manager and `sudo`; these are bootstrap prerequisites and produce
+a clear error if absent. Dry-run still prints the plan when either is missing.
+D01 also probes the external commands needed by later stages and
+their installers (`bash`, `sh`, coreutils commands, `grep`, `sed`, `which`,
+`tar`, plus the development tools above). Missing package-backed commands are
+added to the same family-specific transaction and re-verified afterward. Bash
+must already be available to launch `setup`; its package probe also covers the
+later official installer invocation. Optional commands such as `zsh` and
+`fish` are not installed; their configuration stages run only when the shell is
+already present or its rc file exists.
 
 ### D01 install command per family
 
@@ -340,13 +358,13 @@ Debian ships the find-tool binary as `fdfind`; dev creates
 | `~/.npmrc` | create/modify | exactly one managed `prefix=$HOME/.local` line; other lines preserved; existing `prefix=` lines removed |
 | `~/.local/bin/` | create/read | user-level install root |
 | `~/.local/bin/fd` | create (Debian) | symlink to `fdfind` |
-| `~/.local/bin/mise`, `jupyter`, `codex`, `opencode` | read/created by installers | presence probes / install targets |
+| `~/.local/bin/mise`, `jupyter`, `codex` | read/created by installers | presence probes / install targets |
+| `~/.opencode/bin/opencode` | read/created by official installer | default OpenCode install path |
 | `~/.mise/` | created by mise | Python toolchain |
-| `~/.bashrc` | strip+append block | dev block (always) |
-| `~/.zshrc` | strip+append block | dev block (if file exists or zsh present) |
-| `~/.config/fish/config.fish` | create dir + strip+append block | dev block (if file exists or fish present) |
+| `~/.bashrc` | strip+append block | dev block (always); symlinks/malformed markers are rejected |
+| `~/.zshrc` | strip+append block | when present or zsh exists; symlinks/malformed markers are rejected |
+| `~/.config/fish/config.fish` | create dir + strip+append block | when present or fish exists; symlinks/malformed markers are rejected |
 | `<mktemp -d>` | create/remove | vendor download and yay build; removed on EXIT |
-| `$SETUP_SUDO_MARKER` | touch/remove (via `setup`) | sudo cleanup marker |
 
 Notes:
 
@@ -370,12 +388,12 @@ Both `./setup --dry-run dev` and `./setup dev --dry-run` behave identically.
 **Allowed (read-only / reporting):**
 
 - Reading `/etc/os-release`.
-- Presence checks (`command -v`, `-x` path tests).
-- Read-only `flatpak info` / `flatpak remote-list` probes (these may create
-  Flatpak cache directories as a side effect of the real `flatpak` binary; that
-  is environmental, not a script mutation — see notes).
+- Read-only executable and file presence checks (`command -v`, `-x` path tests).
+- Printing the planned user-scoped Flatpak operations. Dry-run does not invoke
+  Flatpak or query installed applications/remotes.
 - Printing would-run lines for every intended mutation: package installs
-  (`would run: sudo …`), vendor VS Code install, yay bootstrap, DBeaver install,
+  (`would run: sudo …`), missing dependency packages, vendor VS Code install,
+  yay bootstrap, user-scoped DBeaver install,
   mise/Python/JupyterLab/Codex/OpenCode installs, the fd symlink, and the dev rc
   targets (`would run: write linux-postinstall dev block to <file>`).
 
@@ -390,10 +408,8 @@ Both `./setup --dry-run dev` and `./setup dev --dry-run` behave identically.
 - Service or firewall changes (never performed in any mode).
 
 Dry-run must be testable with a sandboxed `HOME` and PATH tripwires: assert the
-setup scripts create zero files, zero installers run, zero sudo, and only
-would-run output. Read-only third-party probes listed above (the real `flatpak`
-binary) may initialize their own cache directories; those are environmental, not
-script mutations.
+setup scripts create zero files, zero installers or Flatpak commands run, zero
+sudo, and only would-run output.
 
 ---
 
@@ -403,11 +419,11 @@ script mutations.
 | --- | --- |
 | D01 | binary-presence matrix; no missing → report and skip install |
 | D02 | `command -v code` → skip |
-| D03 | `flatpak info <id>` → skip |
-| D04 | `command -v mise`/`-x ~/.local/bin/mise`; Python 3.13 + `mise which python` → skip |
+| D03 | `flatpak info --user <id>` → skip |
+| D04 | resolved mise executable; Python 3.13 + resolved `mise which python` → skip |
 | D05 | `-x ~/.local/bin/jupyter` → skip |
 | D06 | `~/.npmrc` exactly-one managed prefix line; `-x ~/.local/bin/codex` → skip |
-| D07 | `-x ~/.local/bin/opencode` → skip |
+| D07 | `-x ~/.opencode/bin/opencode` → skip |
 | D08 fd | `[ ! -e ~/.local/bin/fd ]` guard |
 | D08 block | strip-and-reappend → exactly one block per rc file |
 
@@ -442,7 +458,8 @@ There is no warning-only path in dev: every install stage is required.
 never post-verifies and never reports success for a simulated install. A
 required failure exits nonzero with an stderr message and `setup`'s `run_step`
 names the failed step; `setup` never prints the success message after a failure.
-`setup`'s EXIT trap clears sudo credentials only when this run created them.
+Sudo credentials expire according to the system's sudo policy; setup does not
+invalidate shared timestamps on exit.
 
 ---
 
@@ -453,10 +470,9 @@ names the failed step; `setup` never prints the success message after a failure.
 - `run_root` authenticates lazily via `ensure_sudo`: a `sudo -n -v` probe (also
   refreshing a still-valid timestamp), and only when that fails a single
   interactive `sudo -v`. No retry loop; a cancelled prompt cannot hang.
-- `setup` exports `SETUP_SUDO_MARKER` and touches it only after a successful
-  interactive `sudo -v`; its EXIT trap runs `sudo -k` only when the marker
-  exists, so a timestamp that predates the run is never cleared. Cleanup runs on
-  success and failure. Dry-run never invokes or authenticates sudo.
+- Setup does not run `sudo -k`: sudo timestamps are shared state, and clearing
+  one could invalidate another active process. Timestamps expire according to
+  the system's sudo policy. Dry-run never invokes or authenticates sudo.
 - User-level operations (mise, pipx, npm user-prefix, OpenCode installer, fd
   symlink, rc blocks) run **without** root.
 - **SSH:** the OpenSSH **client and server** packages are installed.
@@ -480,14 +496,16 @@ names the failed step; `setup` never prints the success message after a failure.
 
 | Dependency | Used for | Notes |
 | --- | --- | --- |
-| `dnf` / `apt-get` / `pacman` | D01 system packages, VS Code vendor installs, yay `base-devel` | privileged via `run_root` |
+| `dnf` / `apt-get` / `pacman` | D01 system packages, VS Code vendor installs, yay `base-devel` | bootstrap prerequisite; privileged installs use `run_root` |
+| `sudo` | Privileged package operations through `run_root` | bootstrap prerequisite; missing sudo is reported before installs |
+| `bash`, `sh`, `coreutils`, `grep`, `sed`, `which`, `tar` | rc updates and downloaded installers | missing package-backed commands join D01's distro package transaction; Bash is required to launch setup |
 | `yay` (AUR) | Arch VS Code | auto-bootstrapped via `base-devel` + `git` + `makepkg` |
 | `code.visualstudio.com` | VS Code `.rpm`/`.deb` download | x86_64 only; `wget` |
-| Flathub (`https://flathub.org/repo/flathub.flatpakrepo`) | DBeaver remote | via `flatpak remote-add` |
+| Flathub (`https://flathub.org/repo/flathub.flatpakrepo`) | DBeaver remote | user installation via `flatpak remote-add --user` |
 | `https://mise.jdx.dev/install.sh` | mise install | official installer, `curl \| sh` |
 | `pipx` | JupyterLab | uses the mise Python |
 | `npm` | Codex | user prefix `~/.local` |
-| `https://opencode.ai/install` | OpenCode | official installer, `--no-modify-path` |
+| `https://opencode.ai/install` | OpenCode | official installer, `--no-modify-path`; default binary path `~/.opencode/bin` |
 | `git` | yay AUR clone | via `run` |
 | `curl`, `wget` | downloads | via `run` |
 | Network | all downloads/installers | only when the target is missing and not dry-run |
@@ -607,16 +625,18 @@ A Senior reviewer should verify, on a sandboxed `HOME` and PATH:
 - **Debian `python3-venv`:** always appended, so a Debian rerun performs
   `apt-get update` + install even when everything else is present. This is
   explicitly sanctioned by the approved plan (apt is idempotent).
-- **D05 dry-run line:** dry-run prints the pipx JupyterLab command with the
-  literal `"$(~/.local/bin/mise which python)"` rather than evaluating the
-  substitution, so a fresh `HOME` without mise produces no stderr noise. The real
-  branch still resolves the mise Python.
-- **D03 read-only probes in dry-run:** the real `flatpak` binary may create
-  `~/.cache/flatpak` / `~/.local/share/flatpak` skeleton entries when
-  `flatpak info`/`remote-list` run in dry-run. This is environmental and mirrors
-  the established `install_apps.sh` probe convention; the module itself writes
-  nothing.
-- **D04 mise failure detection:** the mise installer runs as
-  `sh -c "curl … | sh"`; a curl failure can still return success, so a failed or
-  empty install is caught by the subsequent presence/version verification,
-  which is fatal.
+- **Dependency preflight:** D01 includes commands used by later stages and the
+  official OpenCode installer in the native package matrix. `bash`, the
+  detected family package manager, and `sudo` are bootstrap prerequisites and
+  fail clearly if unavailable because this module cannot bootstrap its own
+  interpreter, package manager, or privilege helper.
+- **Dry-run probes:** Flatpak state and mise/Python version probes are skipped;
+  only safe command/file presence checks are used to describe the plan.
+- **Shell startup files:** symlinked targets and malformed or duplicate managed
+  markers are rejected before any target is rewritten. This preserves symlinks
+  and prevents an unmatched `sed` range from deleting content through EOF.
+- **OpenCode install path:** the official installer defaults to
+  `~/.opencode/bin`; the module verifies this path and adds it to the managed
+  shell PATH.
+- **JupyterLab:** `ipykernel` is checked independently with `pipx runpip` even
+  when the Jupyter executable already exists, so a prior partial run is repaired.

@@ -2,10 +2,11 @@
 # Blank lines and text after '#' are ignored.
 #
 # Derived from the Fedora catalog with documented per-family equivalents
-# (see docs/packages.md). Supported baseline: Debian 13 "trixie" /
-# Ubuntu 24.04 LTS "noble" or newer. Entries the baseline cannot supply are
-# omitted: nodejs22, nodejs24 (use nodejs), jupyterlab, typescript, and
-# fastfetch (Ubuntu 24.04 LTS lacks it; present on Debian 13+ / Ubuntu 25.10+).
+# (see docs/packages.md). Supported baseline: Debian 13 "trixie" / Ubuntu
+# 24.04 LTS "noble" or newer. install_apps.sh selects firefox-esr for Debian
+# and Ubuntu's firefox package for Ubuntu. Entries the baseline cannot supply
+# are omitted: nodejs22, nodejs24 (use nodejs), jupyterlab, typescript, and
+# fastfetch (Ubuntu 24.04 lacks it; present on Debian 13+ / Ubuntu 25.10+).
 7zip
 bat
 bleachbit

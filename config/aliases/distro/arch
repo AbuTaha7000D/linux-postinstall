@@ -1,4 +1,4 @@
 # Distro-specific aliases (Arch family)
-alias supdate='sudo pacman -Syu --noconfirm && flatpak update -y && yay -Sua --noconfirm'
+alias supdate='sh -c "command -v yay >/dev/null 2>&1 || { echo \"Error: supdate requires yay; install yay first.\" >&2; exit 127; }; sudo pacman -Syu --noconfirm && flatpak update -y && yay -Sua --noconfirm"'
 alias install='sudo pacman -S'
 alias remove='sudo pacman -Rns'

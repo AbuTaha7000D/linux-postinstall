@@ -1,14 +1,22 @@
 #!/bin/bash
 set -e
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-source "$SCRIPT_DIR/lib/common.sh"
-
 # Dry-run: no prompt, no verification, and no system changes
 if [ "${SETUP_DRY_RUN:-0}" = "1" ]; then
     echo "would run: set system language (English default) and write the system locale file (with backup)"
     exit 0
 fi
+
+# Check every external command before using one or creating any backup.
+for tool in dirname locale tee cp readlink grep sed sudo; do
+    command -v "$tool" >/dev/null 2>&1 || {
+        echo "Error: Required tool '$tool' not found. Please install it and re-run." >&2
+        exit 1
+    }
+done
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$SCRIPT_DIR/lib/common.sh"
 
 # Interactive selection with a 5-second timeout; non-TTY input
 # (unattended runs) and timeout/invalid input default to English.
@@ -38,23 +46,22 @@ else
 fi
 base_locale="${selected_locale%%.*}"
 
-# Resolve the system locale file by family; unknown distributions fail nonzero.
-# Symlinks are resolved so backup and write always target the real file.
-for tool in locale tee cp readlink; do
-    command -v "$tool" >/dev/null 2>&1 || {
-        echo "Error: Required tool '$tool' not found. Please install it and re-run." >&2
+family="$(distribution)"
+case "$family" in
+    redhat|arch) LOCALE_PATH="/etc/locale.conf" ;;
+    debian) LOCALE_PATH="/etc/default/locale" ;;
+    *)
+        echo "Error: Unsupported distribution family '$family'; cannot select a system locale file." >&2
         exit 1
-    }
-done
+        ;;
+esac
 
-if [ -f "/etc/locale.conf" ]; then
-    LOCALE_FILE=$(readlink -f /etc/locale.conf)
-elif [ -f "/etc/default/locale" ]; then
-    LOCALE_FILE=$(readlink -f /etc/default/locale)
-else
-    echo "Warning: Unknown distro. No /etc/locale.conf or /etc/default/locale found." >&2
+# Symlinks are resolved so backup and write always target the real file.
+if [ ! -f "$LOCALE_PATH" ]; then
+    echo "Error: Expected locale file '$LOCALE_PATH' does not exist or is not a regular file." >&2
     exit 1
 fi
+LOCALE_FILE="$(readlink -f "$LOCALE_PATH")"
 
 if [ ! -f "$LOCALE_FILE" ]; then
     echo "Error: Locale file '$LOCALE_FILE' does not exist or is not a regular file." >&2
@@ -70,22 +77,27 @@ if ! grep -qE "^${base_locale}([._].*)?$" <<< "$available"; then
     exit 1
 fi
 
-# Apply: recoverable backup, then rewrite only the LANG/LC_ALL values so that
-# unrelated LC_* settings in the file are preserved. Every privileged step's
-# exit status is checked; failures leave the backup intact and fail the step.
-if ! run_root cp -p "$LOCALE_FILE" "$LOCALE_FILE.bak"; then
-    echo "Error: Failed to back up $LOCALE_FILE before modifying it." >&2
+if [ ! -r "$LOCALE_FILE" ]; then
+    echo "Error: Locale file '$LOCALE_FILE' is not readable; refusing to replace its contents." >&2
     exit 1
 fi
-echo "Backup of $LOCALE_FILE created."
 
-if [ -r "$LOCALE_FILE" ]; then
-    new_content=$(sed -E "s/^(LANG|LC_ALL)=.*/\1=$selected_locale/" "$LOCALE_FILE")
-    if ! grep -q '^LANG=' <<< "$new_content"; then
-        new_content=$(printf '%s\n%s\n' "$new_content" "LANG=$selected_locale")
+new_content=$(sed -E "s/^(LANG|LC_ALL)=.*/\1=$selected_locale/" "$LOCALE_FILE")
+if ! grep -q '^LANG=' <<< "$new_content"; then
+    new_content=$(printf '%s\n%s\n' "$new_content" "LANG=$selected_locale")
+fi
+
+# Preserve the first backup. A previous backup is never overwritten.
+if [ -L "$LOCALE_FILE.bak" ] || { [ -e "$LOCALE_FILE.bak" ] && [ ! -f "$LOCALE_FILE.bak" ]; }; then
+    echo "Error: Backup path '$LOCALE_FILE.bak' exists but is not a regular file; refusing to modify the locale file." >&2
+    exit 1
+fi
+if [ ! -e "$LOCALE_FILE.bak" ]; then
+    if ! run_root cp -p --no-clobber "$LOCALE_FILE" "$LOCALE_FILE.bak"; then
+        echo "Error: Failed to back up $LOCALE_FILE before modifying it." >&2
+        exit 1
     fi
-else
-    new_content="LANG=$selected_locale"
+    echo "Backup of $LOCALE_FILE created."
 fi
 
 if ! printf '%s\n' "$new_content" | run_root tee "$LOCALE_FILE" > /dev/null; then
@@ -93,7 +105,9 @@ if ! printf '%s\n' "$new_content" | run_root tee "$LOCALE_FILE" > /dev/null; the
     exit 1
 fi
 if command -v update-locale >/dev/null 2>&1; then
-    run_root update-locale || true
+    if ! run_root update-locale; then
+        echo "Warning: update-locale failed; the locale file was written, but the helper did not complete." >&2
+    fi
 fi
 
 # Reload into the current shell if readable

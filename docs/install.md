@@ -51,16 +51,17 @@ before any step runs. Each step then prints the commands it would run
 
 ## Failure behavior
 
-Each step runs as `bash <module>`. If a step exits nonzero, `setup` prints to
-stderr:
+Each general step runs as `bash <module>`. If one exits nonzero, `setup` prints
+to stderr:
 
 ```
 Error: Failed at step '<name>' (<module path>) with exit code <N>
 ```
 
-and stops immediately with that exit code. Later steps do not run, and
-`Installation complete.` is not printed. There is no rollback: steps that
-already ran keep their changes.
+and stops immediately with that exit code. Later general steps do not run. The
+GNOME group is the exception: it attempts all four independent modules and
+then returns nonzero if any failed. `Installation complete.` is not printed on
+failure. There is no rollback: steps that already ran keep their changes.
 
 ## Configuration and assets
 
@@ -69,6 +70,7 @@ already ran keep their changes.
 | `config/packages/<family>.txt` | `packages` |
 | `config/flatpak.txt` | `packages` |
 | `config/aliases/` | `aliases` |
+| `config/starship.toml` | `terminal` |
 | `assets/fonts/` | `fonts` |
 | `assets/wallpaper/wallpaper.jpg` | `set_wallpaper` |
 | `config/favorites.txt` | `set_favorite_apps` |
@@ -84,8 +86,9 @@ missing or unreadable required list is fatal.
 
 - Run as a regular user. The script refuses to run as root.
 - Privileged operations authenticate lazily through `sudo` (`ensure_sudo` /
-  `run_root`) when they first run. Credentials created by the run are cleared on
-  exit; a credential timestamp that predates the run is not.
+  `run_root`) when they first run. Sudo credentials expire according to the
+  system's sudo policy. Setup does not run `sudo -k`: sudo timestamps are shared
+  state and clearing one could invalidate another active setup process.
 - A network connection for package, Flatpak, and extension downloads.
 - A supported family (Fedora, Debian, or Arch). An unsupported distribution
   fails.
@@ -94,8 +97,8 @@ missing or unreadable required list is fatal.
   already be available (`locale -a`) or the step fails without changes.
 - The terminal step prompts for the default shell (Bash/Zsh/Fish, 5-second Bash
   default) and changes it with `chsh`; non-interactive runs use Bash.
-- The GNOME steps need GNOME plus their tools: `gsettings`, and for extensions
-  `gnome-extensions` and `python3`.
+- The GNOME steps need GNOME plus their tools: `gsettings` for wallpaper,
+  favorites, and shortcuts; `gnome-extensions` and `python3` for extensions.
 
 ## Idempotency
 

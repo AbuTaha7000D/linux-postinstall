@@ -9,10 +9,15 @@ source "$SCRIPT_DIR/lib/common.sh"
 log() { echo "$*"; }
 warn() { echo "[warn] $*" >&2; }
 
-# ensure we have GNOME + gsettings
-if ! command -v gsettings >/dev/null 2>&1 || [ "$(desktop_environment)" != "gnome" ]; then
+# Favorites are optional outside GNOME, but gsettings is required once GNOME is
+# detected. Do not report a successful skip on a GNOME system missing it.
+if [ "$(desktop_environment)" != "gnome" ]; then
 	log "This script requires GNOME and gsettings. Skipping favorite apps setup."
 	exit 0
+fi
+if ! command -v gsettings >/dev/null 2>&1; then
+	warn "gsettings is required to configure GNOME dock favorites."
+	exit 1
 fi
 
 # cfg_load_list <file> <array-name>: load a required list file into <array>.
@@ -85,16 +90,16 @@ fi
 # Build the filtered, de-duplicated list preserving configured order. Entries
 # missing a desktop file are warned about and skipped, never removed from config.
 available=()
-seen=""
+declare -A seen_ids=()
 for entry in "${favorites[@]}"; do
 	case "$entry" in
 		*.desktop) id="$entry" ;;
 		*) id="${entry}.desktop" ;;
 	esac
-	if printf '%s\n' "$seen" | grep -Fqx "$id"; then
+	if [ -n "${seen_ids[$id]:-}" ]; then
 		continue
 	fi
-	seen=$(printf '%s\n%s' "$seen" "$id")
+	seen_ids["$id"]=1
 	if desktop_entry_exists "$id"; then
 		available+=("$id")
 	else
@@ -125,13 +130,22 @@ if [ "${SETUP_DRY_RUN:-0}" = "1" ]; then
 fi
 
 # Idempotency: skip the write when the Dock already matches the filtered list.
-current=$(gsettings get org.gnome.shell favorite-apps 2>/dev/null || true)
-current_ids=()
-if [ -n "$current" ]; then
-	while IFS= read -r cid; do
-		[ -n "$cid" ] && current_ids+=("$cid")
-	done < <(printf '%s' "$current" | grep -o "'[^']*'" | tr -d "'")
+if ! current=$(gsettings get org.gnome.shell favorite-apps 2>/dev/null); then
+	warn "Could not read the current GNOME dock favorites; leaving them unchanged."
+	exit 1
 fi
+current_ids=()
+current_body="$current"
+current_body="${current_body#@as }"
+current_body="${current_body#[}"
+current_body="${current_body%]}"
+IFS=',' read -r -a current_values <<< "$current_body"
+for cid in "${current_values[@]}"; do
+	cid="${cid#"${cid%%[![:space:]]*}"}"
+	cid="${cid%"${cid##*[![:space:]]}"}"
+	cid="${cid#\'}"; cid="${cid%\'}"
+	[ -n "$cid" ] && current_ids+=("$cid")
+done
 if [ "${#current_ids[@]}" -eq "${#available[@]}" ]; then
 	same=1
 	for i in "${!available[@]}"; do

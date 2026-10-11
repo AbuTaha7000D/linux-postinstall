@@ -88,8 +88,8 @@ run(){
 # from run_root, so authentication happens exactly when a privileged command
 # is about to run. Uses native credential caching: a non-interactive probe
 # first (also refreshes a still-valid timestamp), then a single interactive
-# sudo -v if the probe fails. On success after prompting, setup's marker file
-# is touched so setup can clean up only the credentials this run created.
+# sudo -v if the probe fails. Sudo timestamps are shared state, so setup does
+# not try to clear them with sudo -k; sudo expires them according to its policy.
 # Dry-run never touches credentials. Failure prints once and returns nonzero;
 # no retry loop, so a cancelled prompt cannot hang the run.
 ensure_sudo(){
@@ -103,9 +103,6 @@ ensure_sudo(){
         return 0
     fi
     if sudo -v; then
-        if [ -n "${SETUP_SUDO_MARKER:-}" ]; then
-            touch "$SETUP_SUDO_MARKER" 2>/dev/null || true
-        fi
         return 0
     fi
     SUDO_AUTH_FAILED=1
