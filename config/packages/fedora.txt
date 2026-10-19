@@ -20,6 +20,7 @@ fastfetch
 firefox
 fish
 flatpak
+fontconfig
 fzf
 gcc
 gcc-c++

@@ -88,6 +88,11 @@ Fedora has no standalone `npm` package: the npm CLI is provided by the
 `nodejs22` / `nodejs24` entries already in the list (via `nodejsXX-npm`), so
 the capability is installed without an ambiguous or duplicate package.
 
+`fontconfig` is included for every family. It has the same name everywhere and
+provides `fc-cache`, which the fonts step (`modules/install_fonts.sh`) requires
+but does not install itself; the `packages` step runs before `fonts` in the full
+flow, so the command is present in time.
+
 Entries intentionally omitted, by list:
 
 - **Debian** (`config/packages/debian.txt`): `nodejs22` and `nodejs24` (use

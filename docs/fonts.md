@@ -86,6 +86,10 @@ only.
 | `fc-cache` (fontconfig) | rebuild the user font cache |
 
 There is no distribution detection, package manager, network access, or `sudo`.
+The module never installs packages itself. In the full `./setup install` flow the
+preceding `packages` step installs `fontconfig` (from the native lists in
+`config/packages/`), so `fc-cache` is present before this step runs; when
+`./setup fonts` is run standalone, `fontconfig` is an explicit prerequisite.
 
 | Situation | Behavior |
 | --- | --- |

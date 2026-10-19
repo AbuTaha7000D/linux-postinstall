@@ -20,6 +20,7 @@ eza
 firefox-esr
 fish
 flatpak
+fontconfig
 fzf
 gcc
 g++
