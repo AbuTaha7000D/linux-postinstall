@@ -19,12 +19,12 @@ The project targets these distribution families and baselines:
 
 Derivative support depends on its `/etc/os-release` identity and compatible
 repositories; this is not a claim that every release or derivative has been
-tested. For Arch/CachyOS, `./setup packages` requires `yay` when Chrome or VS
-Code is missing and does not bootstrap it. The separate `./setup dev` command
-can bootstrap `yay` when its VS Code stage needs it. Chrome and VS Code vendor
-installers support x86_64 only. The Debian-family package list retains
-`firefox-esr` for Debian and selects Ubuntu's `firefox`; `fastfetch` is omitted
-because it is unavailable in the Ubuntu 24.04 baseline.
+tested. For Arch/CachyOS, when Chrome or VS Code is missing, `./setup packages`
+and `./setup dev` bootstrap the `yay` AUR helper automatically through the
+shared `ensure_yay` helper in `lib/common.sh` if it is not installed. Chrome
+and VS Code vendor installers support x86_64 only. The Debian-family package
+list retains `firefox-esr` for Debian and selects Ubuntu's `firefox`;
+`fastfetch` is omitted because it is unavailable in the Ubuntu 24.04 baseline.
 
 Run the launcher as a regular user with Bash. Privileged steps use `sudo` on
 demand, through the system's normal sudo timestamp policy. A working native
@@ -141,9 +141,8 @@ static check does not establish that every fresh Fedora, Debian, Ubuntu, Mint,
 Arch, or CachyOS installation has been exercised. Review the command-specific
 guides for prerequisites and known limitations before running a step.
 
-The project does not automatically sign in to applications, enable SSH,
-bootstrap `yay` for the packages command, or configure GNOME when GNOME is not
-detected by the full install.
+The project does not automatically sign in to applications, enable SSH, or
+configure GNOME when GNOME is not detected by the full install.
 
 ## License
 

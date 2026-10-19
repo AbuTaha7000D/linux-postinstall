@@ -144,7 +144,8 @@ VS Code (D02):
     ELSE (install path):
         redhat: download linux-rpm-x64 → dnf install -y <rpm>   (x86_64 required)
         debian: download linux-deb-x64 → apt-get install -y <deb> (x86_64 required)
-        arch:   IF yay missing → pacman base-devel + git clone AUR + makepkg -si; verify yay
+        arch:   ensure_yay (shared lib/common.sh) → IF yay missing: pacman base-devel
+                + git clone AUR + makepkg -si; verify yay; fatal on failure
                 yay -S --needed --noconfirm visual-studio-code-bin   (not architecture-gated)
       verify `code` (real mode) → fatal if absent
 
@@ -203,7 +204,8 @@ setup
               ├── distribution()  → redhat | debian | arch | unknown
               ├── run()           → print in dry-run, else execute
               ├── run_root()      → print sudo line in dry-run, else ensure_sudo + sudo
-              └── ensure_sudo()   → lazy `sudo -n -v` probe, then one `sudo -v`
+              ├── ensure_sudo()   → lazy `sudo -n -v` probe, then one `sudo -v`
+              └── ensure_yay()    → build yay from AUR when missing (shared with install_apps.sh)
 ```
 
 Key helpers inside `modules/dev.sh`:
@@ -212,8 +214,9 @@ Key helpers inside `modules/dev.sh`:
   collapse duplicate packages (Arch lists `openssh` for both `ssh` and `sshd`).
 - `require_vendor_arch` — fail unless `uname -m` is `x86_64`, invoked only on a
   path that downloads a vendor VS Code package.
-- `cleanup_vendor_tmp` / `cleanup_yay_tmp` — EXIT-trap cleanup of `mktemp -d`
-  download/build directories (never a fixed `/tmp` path).
+- `cleanup_vendor_tmp` — EXIT-trap cleanup of the `mktemp -d` vendor download
+  directory (never a fixed `/tmp` path); the shared `ensure_yay` helper removes
+  its own yay build directory before returning.
 - `emit_dev_block <shell>` / `apply_dev_block <rc_file> <shell>` — managed dev
   block (strip-and-reappend).
 - `flatpak` probes in real mode only: `flatpak info --user <id>` and
@@ -325,17 +328,22 @@ already present or its rc file exists.
 Vendor packages are x86_64-only; `require_vendor_arch` fails otherwise on the
 download path.
 
-### Arch `yay` bootstrap (D02)
+### Arch `yay` bootstrap (shared helper)
 
-Only when `yay` is missing:
+`ensure_yay` in `lib/common.sh` is used by both D02 here and the Arch vendor
+step in `install_apps.sh`. It returns immediately when `yay` is already on
+PATH and otherwise:
 
 1. `run_root pacman -S --needed --noconfirm base-devel`
 2. `run git clone --depth 1 https://aur.archlinux.org/yay.git <tmp>/yay`
 3. `(cd <tmp>/yay && run makepkg -si --noconfirm)` — **non-root**
-4. Verify `command -v yay`; fatal on failure.
+4. Verify `command -v yay`; return nonzero on failure.
+5. Remove the temporary build directory before returning.
 
-Never `-Syu`. This automatic bootstrap is intentionally different from
-`install_apps.sh`, which requires `yay` to exist and fails with instructions.
+Never `-Syu`. The helper only bootstraps when `yay` is missing, so a second
+vendor entry does not rebuild it. dev.sh treats a bootstrap failure as fatal;
+install_apps.sh records the affected vendor application as failed and does not
+attempt the AUR install.
 
 ### D04–D07 (family-independent)
 
@@ -364,7 +372,7 @@ Debian ships the find-tool binary as `fdfind`; dev creates
 | `~/.bashrc` | strip+append block | dev block (always); symlinks/malformed markers are rejected |
 | `~/.zshrc` | strip+append block | when present or zsh exists; symlinks/malformed markers are rejected |
 | `~/.config/fish/config.fish` | create dir + strip+append block | when present or fish exists; symlinks/malformed markers are rejected |
-| `<mktemp -d>` | create/remove | vendor download and yay build; removed on EXIT |
+| `<mktemp -d>` | create/remove | vendor download (removed on EXIT) and the yay build (removed by `ensure_yay`) |
 
 Notes:
 
@@ -376,7 +384,8 @@ Notes:
   not touch the aliases block or terminal init lines, and does not modify
   `/etc/ssh/sshd_config`, `/etc/shells`, firewall rules, or services.
 - Temporary directories are always under `mktemp -d` (never a fixed `/tmp`
-  path) and are cleaned up via an EXIT trap.
+  path); the vendor download directory is cleaned up via an EXIT trap and the
+  shared `ensure_yay` helper removes its build directory before returning.
 
 ---
 
@@ -499,7 +508,7 @@ invalidate shared timestamps on exit.
 | `dnf` / `apt-get` / `pacman` | D01 system packages, VS Code vendor installs, yay `base-devel` | bootstrap prerequisite; privileged installs use `run_root` |
 | `sudo` | Privileged package operations through `run_root` | bootstrap prerequisite; missing sudo is reported before installs |
 | `bash`, `sh`, `coreutils`, `grep`, `sed`, `which`, `tar` | rc updates and downloaded installers | missing package-backed commands join D01's distro package transaction; Bash is required to launch setup |
-| `yay` (AUR) | Arch VS Code | auto-bootstrapped via `base-devel` + `git` + `makepkg` |
+| `yay` (AUR) | Arch VS Code | auto-bootstrapped via the shared `ensure_yay` helper (`base-devel` + `git` + `makepkg`) |
 | `code.visualstudio.com` | VS Code `.rpm`/`.deb` download | x86_64 only; `wget` |
 | Flathub (`https://flathub.org/repo/flathub.flatpakrepo`) | DBeaver remote | user installation via `flatpak remote-add --user` |
 | `https://mise.jdx.dev/install.sh` | mise install | official installer, `curl \| sh` |
@@ -524,13 +533,14 @@ A Senior reviewer should verify, on a sandboxed `HOME` and PATH:
 - `bash -n setup lib/common.sh modules/dev.sh`.
 - `./setup help` and `./setup version` succeed.
 - Invalid/extra arguments fail nonzero with a usage hint.
+- `bash tests/test_aur_helper.sh` passes (sandboxed AUR bootstrap checks).
 
 **Positive behavior**
 
 - Each stage skips when its artifact is present and installs when missing.
 - D01 installs exactly the missing family packages in a single package-manager
   install invocation and re-verifies every previously-missing binary.
-- VS Code vendor install on Fedora/Debian; yay bootstrap + AUR install on Arch.
+- VS Code vendor install on Fedora/Debian; shared `ensure_yay` bootstrap + AUR install on Arch.
 - DBeaver installs via Flatpak/Flathub and is verified with `flatpak info`.
 - mise/Python 3.13, JupyterLab (+ipykernel), Codex (`~/.npmrc` managed prefix),
   and OpenCode install and verify.
@@ -551,7 +561,8 @@ A Senior reviewer should verify, on a sandboxed `HOME` and PATH:
 - No removed-prompt-tool references: `grep -RniE 'oh-my-pos[h]|poshtheme[s]' .`
   returns no matches.
 - File checks: `grep -nE 'sudo|systemctl' modules/dev.sh` is empty; no `-Syu`
-  except a comment; `modules/install_apps.sh` is unchanged.
+  except a comment; the Arch yay bootstrap lives only in the shared `ensure_yay`
+  helper (`lib/common.sh`), which both `dev.sh` and `install_apps.sh` call.
 
 ---
 
@@ -589,7 +600,7 @@ A Senior reviewer should verify, on a sandboxed `HOME` and PATH:
 [ ] Fixed stage order is D01→D02→D03→D04→D05→D06→D07→D08.
 [ ] The full package matrix is family-correct (Fedora/Debian/Arch names).
 [ ] Arch uses pacman -S --needed --noconfirm and never -Syu.
-[ ] yay is bootstrapped non-root (base-devel, git clone, makepkg) and verified.
+[ ] yay is bootstrapped non-root via the shared ensure_yay helper (base-devel, git clone, makepkg) and verified.
 [ ] VS Code uses official vendor builds / AUR; code presence gates install.
 [ ] DBeaver uses Flatpak/Flathub and is verified with flatpak info.
 [ ] mise uses the official installer; Python is 3.13 via mise.

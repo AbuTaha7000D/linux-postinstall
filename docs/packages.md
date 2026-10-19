@@ -101,17 +101,25 @@ Entries intentionally omitted, by list:
 VS Code and Google Chrome are not distribution repository packages. They keep
 their existing dedicated vendor step inside `modules/install_apps.sh`
 (official `.deb`/`.rpm` downloads on Fedora/Debian, AUR on Arch) and are not
-part of the repository package lists. The remaining vendor-only catalog names
-(ChatGPT, Motrix Turbo, Warp Terminal, Zoom, .NET SDK) are out of scope for
-this module. Vendor installers for Chrome and VS Code support x86_64 only.
+part of the repository package lists. On Arch the vendor step installs the AUR
+packages `visual-studio-code-bin` and `google-chrome`, using the shared
+`ensure_yay` helper (see below) to bootstrap `yay` when it is not installed.
+The remaining vendor-only catalog names (ChatGPT, Motrix Turbo, Warp Terminal,
+Zoom, .NET SDK) are out of scope for this module. Vendor installers for Chrome
+and VS Code support x86_64 only.
 
 ## Arch behavior
 
 On Arch and CachyOS the native packages use `pacman -Syu --noconfirm` as one
 transaction; if that transaction fails, remaining packages are retried
 individually with the same full-upgrade-safe command. Installing missing vendor
-applications also requires `yay` to be present; the module reports an error
-when it is missing and does not bootstrap it.
+applications uses the AUR. When `yay` is not installed, the module bootstraps it
+through the shared `ensure_yay` helper in `lib/common.sh`: it installs
+`base-devel` via `run_root`, clones `https://aur.archlinux.org/yay.git` into a
+temporary directory, and runs `makepkg -si --noconfirm` unprivileged. The
+temporary build directory is removed before the helper returns. If the bootstrap
+fails, the affected vendor application is reported as failed and no AUR install
+is attempted.
 
 ## Dry run
 

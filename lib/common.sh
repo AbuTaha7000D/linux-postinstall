@@ -122,3 +122,57 @@ run_root(){
     ensure_sudo || return 1
     sudo "$@"
 }
+
+# Make the yay AUR helper available on Arch, bootstrapping it from the AUR only
+# when it is missing. Returns 0 when yay is already installed or is built
+# successfully, and nonzero on any failure so the caller decides how to report
+# it. Shared by modules/install_apps.sh and modules/dev.sh. The privileged
+# base-devel install goes through run_root; the clone and makepkg build run
+# unprivileged. The build directory is removed before returning, so this helper
+# installs no EXIT trap of its own and cannot disturb a caller's cleanup.
+ensure_yay(){
+    if command -v yay >/dev/null 2>&1; then
+        return 0
+    fi
+
+    if [ "${SETUP_DRY_RUN:-0}" = "1" ]; then
+        # run_root prints the privileged line; the unprivileged build steps are
+        # printed explicitly so the plan output stays stable.
+        run_root pacman -S --needed --noconfirm base-devel
+        echo "would run: git clone --depth 1 https://aur.archlinux.org/yay.git"
+        echo "would run: makepkg -si --noconfirm"
+        return 0
+    fi
+
+    if ! run_root pacman -S --needed --noconfirm base-devel; then
+        echo "Error: failed to install base-devel for yay bootstrap." >&2
+        return 1
+    fi
+    if ! command -v makepkg >/dev/null 2>&1; then
+        echo "Error: makepkg is still unavailable after installing base-devel." >&2
+        return 1
+    fi
+
+    local yay_tmp yay_rc=0
+    if ! yay_tmp=$(mktemp -d); then
+        echo "Error: failed to create a temporary directory for yay." >&2
+        return 1
+    fi
+
+    if ! run git clone --depth 1 https://aur.archlinux.org/yay.git "$yay_tmp/yay"; then
+        echo "Error: failed to clone yay from AUR." >&2
+        yay_rc=1
+    elif ! (cd "$yay_tmp/yay" && run makepkg -si --noconfirm); then
+        echo "Error: failed to build and install yay." >&2
+        yay_rc=1
+    elif ! command -v yay >/dev/null 2>&1; then
+        echo "Error: yay build failed." >&2
+        yay_rc=1
+    fi
+
+    if ! rm -rf "$yay_tmp"; then
+        echo "Error: failed to remove the yay temporary directory: $yay_tmp" >&2
+        yay_rc=1
+    fi
+    return "$yay_rc"
+}

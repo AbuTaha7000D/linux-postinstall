@@ -376,7 +376,7 @@ if [ "${SETUP_DRY_RUN:-0}" = "1" ]; then
     case "$dtype" in
         debian) echo "would run: download and install VS Code and Google Chrome via apt-get" ;;
         redhat) echo "would run: download and install VS Code and Google Chrome via dnf" ;;
-        arch) echo "would run: install VS Code and Google Chrome via yay (AUR)" ;;
+        arch) echo "would run: bootstrap yay if needed and install VS Code and Google Chrome via yay (AUR)" ;;
     esac
     record_plan "Vendor applications (VS Code and Google Chrome)"
 else
@@ -416,8 +416,8 @@ else
         fi
         case "$dtype" in
             arch)
-                if ! command -v yay >/dev/null 2>&1; then
-                    record_failure "$label" "yay is required for AUR installation but is unavailable"
+                if ! ensure_yay; then
+                    record_failure "$label" "AUR helper yay is unavailable and could not be bootstrapped"
                 elif ! run yay -S --needed --noconfirm "$pkg"; then
                     record_failure "$label" "AUR installation or verification failed"
                 elif vendor_probe "$pkg"; then

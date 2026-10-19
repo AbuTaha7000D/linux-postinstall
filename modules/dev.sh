@@ -334,45 +334,12 @@ else
             ;;
         "arch")
             if [ "${SETUP_DRY_RUN:-0}" = "1" ]; then
-                echo "would run: bootstrap yay and install VS Code via yay (AUR)"
-                if ! command -v yay >/dev/null 2>&1; then
-                    # In dry-run run_root only prints the would-run line.
-                    run_root pacman -S --needed --noconfirm base-devel
-                    echo "would run: git clone --depth 1 https://aur.archlinux.org/yay.git"
-                    echo "would run: makepkg -si --noconfirm"
-                fi
+                echo "would run: bootstrap yay if needed and install VS Code via yay (AUR)"
+                ensure_yay
             else
-                if ! command -v yay >/dev/null 2>&1; then
-                    if ! run_root pacman -S --needed --noconfirm base-devel; then
-                        echo "Error: failed to install base-devel for yay bootstrap." >&2
-                        exit 1
-                    fi
-                    if ! command -v makepkg >/dev/null 2>&1; then
-                        echo "Error: makepkg is still unavailable after installing base-devel." >&2
-                        exit 1
-                    fi
-                    if ! yay_tmp=$(mktemp -d); then
-                        echo "Error: failed to create a temporary directory for yay." >&2
-                        exit 1
-                    fi
-                    cleanup_yay_tmp() {
-                        if [ -n "$yay_tmp" ]; then
-                            rm -rf "$yay_tmp"
-                        fi
-                    }
-                    trap cleanup_yay_tmp EXIT
-                    if ! run git clone --depth 1 https://aur.archlinux.org/yay.git "$yay_tmp/yay"; then
-                        echo "Error: failed to clone yay from AUR." >&2
-                        exit 1
-                    fi
-                    if ! (cd "$yay_tmp/yay" && run makepkg -si --noconfirm); then
-                        echo "Error: failed to build and install yay." >&2
-                        exit 1
-                    fi
-                    if ! command -v yay >/dev/null 2>&1; then
-                        echo "Error: yay build failed." >&2
-                        exit 1
-                    fi
+                if ! ensure_yay; then
+                    echo "Error: failed to bootstrap the yay AUR helper." >&2
+                    exit 1
                 fi
                 if ! run yay -S --needed --noconfirm visual-studio-code-bin; then
                     echo "Error: failed to install visual-studio-code-bin via yay." >&2
