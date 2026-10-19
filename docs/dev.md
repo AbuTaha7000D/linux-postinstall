@@ -144,7 +144,7 @@ VS Code (D02):
     ELSE (install path):
         redhat: download linux-rpm-x64 → dnf install -y <rpm>   (x86_64 required)
         debian: download linux-deb-x64 → apt-get install -y <deb> (x86_64 required)
-        arch:   ensure_yay (shared lib/common.sh) → IF yay missing: pacman base-devel
+        arch:   ensure_yay (shared lib/common.sh) → IF yay missing: pacman base-devel + git
                 + git clone AUR + makepkg -si; verify yay; fatal on failure
                 yay -S --needed --noconfirm visual-studio-code-bin   (not architecture-gated)
       verify `code` (real mode) → fatal if absent
@@ -334,7 +334,7 @@ download path.
 step in `install_apps.sh`. It returns immediately when `yay` is already on
 PATH and otherwise:
 
-1. `run_root pacman -S --needed --noconfirm base-devel`
+1. `run_root pacman -S --needed --noconfirm base-devel git`
 2. `run git clone --depth 1 https://aur.archlinux.org/yay.git <tmp>/yay`
 3. `(cd <tmp>/yay && run makepkg -si --noconfirm)` — **non-root**
 4. Verify `command -v yay`; return nonzero on failure.
@@ -452,7 +452,7 @@ exactly one managed line is appended.
 | D01 post-verify: any previously-missing binary still absent | **Fatal** |
 | VS Code download/install fails | **Fatal** |
 | Vendor arch not x86_64 on the download path | **Fatal** |
-| yay `base-devel` install, clone, or `makepkg` fails; yay absent after build | **Fatal** |
+| yay `base-devel`/`git` install, clone, or `makepkg` fails; yay absent after build | **Fatal** |
 | VS Code absent after install | **Fatal** |
 | flatpak command missing (real mode, DBeaver needed) | **Fatal** |
 | Flathub remote add or DBeaver install fails; absent after install | **Fatal** |
@@ -505,7 +505,7 @@ invalidate shared timestamps on exit.
 
 | Dependency | Used for | Notes |
 | --- | --- | --- |
-| `dnf` / `apt-get` / `pacman` | D01 system packages, VS Code vendor installs, yay `base-devel` | bootstrap prerequisite; privileged installs use `run_root` |
+| `dnf` / `apt-get` / `pacman` | D01 system packages, VS Code vendor installs, yay `base-devel`/`git` | bootstrap prerequisite; privileged installs use `run_root` |
 | `sudo` | Privileged package operations through `run_root` | bootstrap prerequisite; missing sudo is reported before installs |
 | `bash`, `sh`, `coreutils`, `grep`, `sed`, `which`, `tar` | rc updates and downloaded installers | missing package-backed commands join D01's distro package transaction; Bash is required to launch setup |
 | `yay` (AUR) | Arch VS Code | auto-bootstrapped via the shared `ensure_yay` helper (`base-devel` + `git` + `makepkg`) |
@@ -600,7 +600,7 @@ A Senior reviewer should verify, on a sandboxed `HOME` and PATH:
 [ ] Fixed stage order is D01→D02→D03→D04→D05→D06→D07→D08.
 [ ] The full package matrix is family-correct (Fedora/Debian/Arch names).
 [ ] Arch uses pacman -S --needed --noconfirm and never -Syu.
-[ ] yay is bootstrapped non-root via the shared ensure_yay helper (base-devel, git clone, makepkg) and verified.
+[ ] yay is bootstrapped non-root via the shared ensure_yay helper (base-devel + git, git clone, makepkg) and verified.
 [ ] VS Code uses official vendor builds / AUR; code presence gates install.
 [ ] DBeaver uses Flatpak/Flathub and is verified with flatpak info.
 [ ] mise uses the official installer; Python is 3.13 via mise.

@@ -115,7 +115,8 @@ transaction; if that transaction fails, remaining packages are retried
 individually with the same full-upgrade-safe command. Installing missing vendor
 applications uses the AUR. When `yay` is not installed, the module bootstraps it
 through the shared `ensure_yay` helper in `lib/common.sh`: it installs
-`base-devel` via `run_root`, clones `https://aur.archlinux.org/yay.git` into a
+`base-devel` and `git` via `run_root`, clones
+`https://aur.archlinux.org/yay.git` into a
 temporary directory, and runs `makepkg -si --noconfirm` unprivileged. The
 temporary build directory is removed before the helper returns. If the bootstrap
 fails, the affected vendor application is reported as failed and no AUR install

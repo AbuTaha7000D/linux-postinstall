@@ -127,9 +127,11 @@ run_root(){
 # when it is missing. Returns 0 when yay is already installed or is built
 # successfully, and nonzero on any failure so the caller decides how to report
 # it. Shared by modules/install_apps.sh and modules/dev.sh. The privileged
-# base-devel install goes through run_root; the clone and makepkg build run
-# unprivileged. The build directory is removed before returning, so this helper
-# installs no EXIT trap of its own and cannot disturb a caller's cleanup.
+# base-devel and git install goes through run_root; the clone and makepkg build
+# run unprivileged. git is provided before the clone because the AUR yay package
+# depends on it and the clone itself cannot run without it. The build directory
+# is removed before returning, so this helper installs no EXIT trap of its own
+# and cannot disturb a caller's cleanup.
 ensure_yay(){
     if command -v yay >/dev/null 2>&1; then
         return 0
@@ -138,18 +140,22 @@ ensure_yay(){
     if [ "${SETUP_DRY_RUN:-0}" = "1" ]; then
         # run_root prints the privileged line; the unprivileged build steps are
         # printed explicitly so the plan output stays stable.
-        run_root pacman -S --needed --noconfirm base-devel
+        run_root pacman -S --needed --noconfirm base-devel git
         echo "would run: git clone --depth 1 https://aur.archlinux.org/yay.git"
         echo "would run: makepkg -si --noconfirm"
         return 0
     fi
 
-    if ! run_root pacman -S --needed --noconfirm base-devel; then
-        echo "Error: failed to install base-devel for yay bootstrap." >&2
+    if ! run_root pacman -S --needed --noconfirm base-devel git; then
+        echo "Error: failed to install base-devel and git for yay bootstrap." >&2
         return 1
     fi
     if ! command -v makepkg >/dev/null 2>&1; then
         echo "Error: makepkg is still unavailable after installing base-devel." >&2
+        return 1
+    fi
+    if ! command -v git >/dev/null 2>&1; then
+        echo "Error: git is still unavailable after installing it for the yay bootstrap." >&2
         return 1
     fi
 

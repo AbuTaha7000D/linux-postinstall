@@ -86,7 +86,8 @@ fi
 exec $REAL_RM "\$@"
 EOF
 
-    # pacman: log everything; -Qi reads simulated installed state.
+    # pacman: log everything; -Qi reads simulated installed state; with
+    # PACMAN_FAIL=1 a -S transaction fails (to exercise bootstrap failure).
     cat > "$BIN/pacman" <<'EOF'
 #!/bin/bash
 printf 'pacman %s\n' "$*" >> "$LOG"
@@ -96,6 +97,10 @@ if [ "${1:-}" = "-Qi" ]; then
         exit 0
     fi
     echo "error: package '$2' was not found" >&2
+    exit 1
+fi
+if [ "${PACMAN_FAIL:-0}" = "1" ] && [ "${1:-}" = "-S" ]; then
+    echo "error: failed to install packages" >&2
     exit 1
 fi
 exit 0
@@ -174,7 +179,7 @@ cp "$SANDBOX/yay_stub.sh" "$BIN/yay"
 
 rc=0; run_install_apps || rc=$?
 assert_eq "already-installed: install_apps exits 0" "0" "$rc"
-assert_eq "already-installed: no base-devel install" "0" "$(count_log '^pacman -S --needed --noconfirm base-devel')"
+assert_eq "already-installed: no base-devel/git install" "0" "$(count_log '^pacman -S --needed --noconfirm base-devel git')"
 assert_eq "already-installed: no git clone" "0" "$(count_log '^git clone')"
 assert_eq "already-installed: no makepkg" "0" "$(count_log '^makepkg')"
 assert_eq "already-installed: VS Code installed via yay" "1" "$(count_log '^yay -S --needed --noconfirm visual-studio-code-bin')"
@@ -186,13 +191,14 @@ sandbox_init
 
 rc=0; run_install_apps || rc=$?
 assert_eq "bootstrap: install_apps exits 0" "0" "$rc"
-assert_eq "bootstrap: base-devel installed once" "1" "$(count_log '^pacman -S --needed --noconfirm base-devel')"
+assert_eq "bootstrap: base-devel and git installed once" "1" "$(count_log '^pacman -S --needed --noconfirm base-devel git')"
+assert_eq "bootstrap: requests base-devel and git together" "1" "$(count_log '^pacman -S --needed --noconfirm base-devel git$')"
 assert_eq "bootstrap: git clone once" "1" "$(count_log '^git clone')"
 assert_eq "bootstrap: makepkg once" "1" "$(count_log '^makepkg')"
 assert_eq "bootstrap: VS Code installed via yay" "1" "$(count_log '^yay -S --needed --noconfirm visual-studio-code-bin')"
 assert_eq "bootstrap: Chrome installed via yay" "1" "$(count_log '^yay -S --needed --noconfirm google-chrome')"
 
-pacman_line=$(line_of '^pacman -S --needed --noconfirm base-devel')
+pacman_line=$(line_of '^pacman -S --needed --noconfirm base-devel git')
 git_line=$(line_of '^git clone')
 make_line=$(line_of '^makepkg -si')
 yay_line=$(line_of '^yay -S')
@@ -228,6 +234,19 @@ assert_eq "cleanup-failure: VS Code not installed via yay" "0" "$(count_log '^ya
 assert_eq "cleanup-failure: only the next entry uses the existing yay" "1" "$(count_log '^yay -S')"
 assert_eq "cleanup-failure: build-directory cleanup was attempted" "1" "$(count_log '^rm -rf .*mk-')"
 
+# --- 3c. package-install failure: no AUR install is attempted ---------------
+# A failing `pacman -S` for the bootstrap prerequisites must stop the module
+# before the clone (and therefore before any AUR install).
+sandbox_init
+
+rc=0; PACMAN_FAIL=1 run_install_apps || rc=$?
+if [ "$rc" -ne 0 ]; then pass "pacman-failure: install_apps exits nonzero"; else fail "pacman-failure: install_apps must exit nonzero"; fi
+assert_eq "pacman-failure: no yay -S attempted" "0" "$(count_log '^yay -S')"
+assert_eq "pacman-failure: no git clone attempted" "0" "$(count_log '^git clone')"
+assert_contains "pacman-failure: bootstrap error reported" "failed to install base-devel and git" "$SANDBOX/out"
+assert_contains "pacman-failure: VS Code reported failed" "FAILED: VS Code" "$SANDBOX/out"
+assert_contains "pacman-failure: Chrome reported failed" "FAILED: Google Chrome" "$SANDBOX/out"
+
 # --- 4. dev.sh reuses the shared bootstrap in dry-run -----------------------
 sandbox_init
 
@@ -240,7 +259,7 @@ rc=0; env -u SETUP_DRY_RUN \
 assert_eq "dev dry-run: exits 0" "0" "$rc"
 assert_contains "dev dry-run: shared bootstrap plan" "would run: git clone --depth 1 https://aur.archlinux.org/yay.git" "$SANDBOX/dev_out"
 assert_contains "dev dry-run: makepkg plan" "would run: makepkg -si --noconfirm" "$SANDBOX/dev_out"
-assert_contains "dev dry-run: base-devel plan" "would run: sudo pacman -S --needed --noconfirm base-devel" "$SANDBOX/dev_out"
+assert_contains "dev dry-run: base-devel and git plan" "would run: sudo pacman -S --needed --noconfirm base-devel git" "$SANDBOX/dev_out"
 assert_contains "dev dry-run: VS Code AUR install announced" "bootstrap yay if needed and install VS Code via yay (AUR)" "$SANDBOX/dev_out"
 assert_eq "dev dry-run: no yay -S executed" "0" "$(count_log '^yay -S')"
 
