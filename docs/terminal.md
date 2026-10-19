@@ -204,7 +204,7 @@ setup
               ├── distribution()   → redhat | debian | arch | unknown
               ├── run()            → print in dry-run, else execute
               ├── run_root()       → print sudo line in dry-run, else ensure_sudo + sudo
-              └── ensure_sudo()    → lazy `sudo -n -v` probe, then one `sudo -v`
+              └── ensure_sudo()    → missing-sudo check, then lazy `sudo -n -v` probe and one `sudo -v`
 ```
 
 Key functions inside `modules/terminal_themes.sh`:
@@ -373,7 +373,8 @@ sudo policy; setup does not invalidate shared timestamps on exit.
 - `run_root` authenticates lazily via `ensure_sudo`: a non-interactive
   `sudo -n -v` probe (which also refreshes a still-valid timestamp), and only
   when that fails a single interactive `sudo -v`. There is no retry loop, so a
-  cancelled prompt cannot hang the run.
+  cancelled prompt cannot hang the run. A missing `sudo` executable is reported
+  as a prerequisite error instead of an authentication failure.
 - Operations that require root: installing the shell package (dnf/apt/pacman)
   and `chsh`. Both use `run_root`.
 - `chsh` is invoked as `chsh -s <path> <user>` (root plus explicit username) so

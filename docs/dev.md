@@ -204,7 +204,7 @@ setup
               ├── distribution()  → redhat | debian | arch | unknown
               ├── run()           → print in dry-run, else execute
               ├── run_root()      → print sudo line in dry-run, else ensure_sudo + sudo
-              ├── ensure_sudo()   → lazy `sudo -n -v` probe, then one `sudo -v`
+              ├── ensure_sudo()   → missing-sudo check, then lazy `sudo -n -v` probe and one `sudo -v`
               └── ensure_yay()    → build yay from AUR when missing (shared with install_apps.sh)
 ```
 
@@ -478,7 +478,8 @@ invalidate shared timestamps on exit.
   contains **no** raw `sudo` command and **no** `sudo -S`.
 - `run_root` authenticates lazily via `ensure_sudo`: a `sudo -n -v` probe (also
   refreshing a still-valid timestamp), and only when that fails a single
-  interactive `sudo -v`. No retry loop; a cancelled prompt cannot hang.
+  interactive `sudo -v`. No retry loop; a cancelled prompt cannot hang. A
+  missing `sudo` executable is reported as a prerequisite error instead.
 - Setup does not run `sudo -k`: sudo timestamps are shared state, and clearing
   one could invalidate another active process. Timestamps expire according to
   the system's sudo policy. Dry-run never invokes or authenticates sudo.

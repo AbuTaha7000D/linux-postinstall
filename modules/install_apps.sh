@@ -206,7 +206,7 @@ elif [ "${#native_pending[@]}" -gt 0 ]; then
             elif [ "$?" -eq 2 ]; then
                 record_failure "$pkg" "could not verify package installation"
             elif [ "${SUDO_AUTH_FAILED:-0}" = "1" ]; then
-                record_failure "$pkg" "sudo authentication failed"
+                record_failure "$pkg" "privileged operation unavailable (missing sudo or authentication failed)"
             else
                 case "$dtype" in
                     redhat) install_cmd=(dnf install -y "$pkg") ;;
@@ -217,7 +217,7 @@ elif [ "${#native_pending[@]}" -gt 0 ]; then
                     native_present["$pkg"]=1
                     record_success "$pkg"
                 elif [ "${SUDO_AUTH_FAILED:-0}" = "1" ]; then
-                    record_failure "$pkg" "sudo authentication failed"
+                    record_failure "$pkg" "privileged operation unavailable (missing sudo or authentication failed)"
                 else
                     if [ "$batch_ok" -eq 0 ]; then
                         record_failure "$pkg" "batch transaction and individual retry failed"
@@ -411,7 +411,7 @@ else
             continue
         fi
         if [ "${SUDO_AUTH_FAILED:-0}" = "1" ]; then
-            record_failure "$label" "sudo authentication failed during an earlier installation step"
+            record_failure "$label" "privileged operation unavailable during an earlier step (missing sudo or authentication failed)"
             continue
         fi
         case "$dtype" in

@@ -88,7 +88,9 @@ run(){
 # from run_root, so authentication happens exactly when a privileged command
 # is about to run. Uses native credential caching: a non-interactive probe
 # first (also refreshes a still-valid timestamp), then a single interactive
-# sudo -v if the probe fails. Sudo timestamps are shared state, so setup does
+# sudo -v if the probe fails. If sudo is not installed at all, that missing
+# prerequisite is reported clearly instead of as an authentication failure.
+# Sudo timestamps are shared state, so setup does
 # not try to clear them with sudo -k; sudo expires them according to its policy.
 # Dry-run never touches credentials. Failure prints once and returns nonzero;
 # no retry loop, so a cancelled prompt cannot hang the run.
@@ -97,6 +99,11 @@ ensure_sudo(){
         return 0
     fi
     if [ "${SUDO_AUTH_FAILED:-0}" = "1" ]; then
+        return 1
+    fi
+    if ! command -v sudo >/dev/null 2>&1; then
+        SUDO_AUTH_FAILED=1
+        echo "Error: sudo is required for privileged operations but is not installed." >&2
         return 1
     fi
     if sudo -n -v >/dev/null 2>&1; then
