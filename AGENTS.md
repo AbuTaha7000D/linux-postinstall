@@ -43,6 +43,10 @@ module and error-reporting conventions.
   work only when safe, and report partial failures instead of claiming success.
   Make reruns predictable and preserve existing user data according to the
   module's documented backup or managed-block policy.
+- The development command installs the OpenSSH client, and installs the server
+  package only on Fedora/Arch-family systems where package installation does
+  not automatically activate it. Debian-family systems must not install the
+  server package implicitly. Setup must not enable or start SSH.
 - Keep GNOME work gated as implemented: the full install runs the GNOME group
   only when `desktop_environment` detects GNOME; standalone GNOME modules
   report a successful skip outside GNOME.

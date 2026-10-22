@@ -107,7 +107,6 @@ case "$dtype" in
         ;;
     "debian")
         add_missing ssh openssh-client
-        add_missing sshd openssh-server
         add_missing git git
         add_missing gcc gcc
         add_missing g++ g++

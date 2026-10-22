@@ -39,8 +39,9 @@ terminal command nor the aliases command.
     writes exact init lines. dev writes its own managed PATH/mise block; the two
     coexist and never duplicate each other.
   - `aliases` writes the alias block. dev's block uses different markers.
-  - dev is the only command that installs the OpenSSH server, but it never
-    enables or starts it (see §11).
+  - dev installs the OpenSSH server package on Fedora/Arch only. It excludes
+    the Debian-family server package because its installation can enable or
+    start the service (see §11).
 
 ---
 
@@ -49,7 +50,7 @@ terminal command nor the aliases command.
 ### Owned by this command
 
 1. System development package matrix (binary-presence based) for the detected
-   family, including the OpenSSH **client and server**.
+   family, including the OpenSSH client and, on Fedora/Arch, the server.
 2. VS Code: official vendor `.rpm`/`.deb` on Fedora/Debian, AUR
    `visual-studio-code-bin` on Arch with automatic `yay` bootstrap.
 3. DBeaver Community via Flatpak/Flathub.
@@ -212,6 +213,8 @@ Key helpers inside `modules/dev.sh`:
 
 - `add_missing <binary> <package>` — append `<package>` when `<bin>` is absent;
   collapse duplicate packages (Arch lists `openssh` for both `ssh` and `sshd`).
+  Debian-family installs only the client to avoid the server package's service
+  activation during package installation.
 - `require_vendor_arch` — fail unless `uname -m` is `x86_64`, invoked only on a
   path that downloads a vendor VS Code package.
 - `cleanup_vendor_tmp` — EXIT-trap cleanup of the `mktemp -d` vendor download
@@ -261,7 +264,7 @@ Family detection via `distribution()` from `/etc/os-release` (`ID`, then
 | Binary | Fedora | Debian/Ubuntu/Mint | Arch |
 | --- | --- | --- | --- |
 | `ssh` | `openssh-clients` | `openssh-client` | `openssh` |
-| `sshd` | `openssh-server` | `openssh-server` | `openssh` |
+| `sshd` | `openssh-server` | Not installed | `openssh` |
 | `git` | `git` | `git` | `git` |
 | `gcc` | `gcc` | `gcc` | `gcc` |
 | `g++` | `gcc-c++` | `g++` | `gcc` |
@@ -485,15 +488,16 @@ invalidate shared timestamps on exit.
   the system's sudo policy. Dry-run never invokes or authenticates sudo.
 - User-level operations (mise, pipx, npm user-prefix, OpenCode installer, fd
   symlink, rc blocks) run **without** root.
-- **SSH:** the OpenSSH **client and server** packages are installed.
-  - `sshd` must **not** be enabled or started.
+- **SSH:** the OpenSSH client is installed. The server package is installed on
+  Fedora/Arch only; Debian-family installs omit it because package
+  maintainer scripts can enable or start SSH during installation.
+  - Setup itself must not enable or start `sshd`.
   - `sshd_config` must **not** be modified.
   - Firewall rules must **not** be modified.
   - SSH keys, passwords, and authentication configuration must **not** be
     modified.
-  - Manual activation is documented only in `README.md` and is never printed or
-    executed by `modules/dev.sh` (the module must contain no
-    privileged-command text).
+  - Debian-family users who want a server install and activate it manually as
+    documented in `README.md`.
 - **PostgreSQL:** only the psql client is installed. The PostgreSQL **server**
   must **not** be initialized or started; no `initdb`, `pg_ctl`,
   `pg_ctlcluster`, data-directory creation, or service operation is performed.
@@ -587,7 +591,7 @@ A Senior reviewer should verify, on a sandboxed `HOME` and PATH:
 | DBeaver/Flatpak failure | Fatal |
 | mise / Python 3.13 failure | Fatal |
 | JupyterLab / Codex / OpenCode failure | Fatal |
-| SSH client+server | Installed; `sshd` not enabled/started; no config change |
+| SSH | Client installed everywhere; server package Fedora/Arch only; setup does not enable/start or configure it |
 | PostgreSQL | psql client only; no server initialization/startup |
 | sudo boundaries | Privileged ops via `run_root` only; user-level installs unprivileged |
 | Failure propagation | `setup` stops and names the failed step; no success message |
@@ -615,7 +619,7 @@ A Senior reviewer should verify, on a sandboxed `HOME` and PATH:
 [ ] Repeated execution is idempotent (no duplicates).
 [ ] Required failures propagate; setup names the failed step.
 [ ] Privileged ops use run_root/ensure_sudo only; no raw sudo, no sudo -S.
-[ ] sshd is installed but never enabled/started; no sshd_config/firewall/auth changes.
+[ ] Debian-family dev installs do not install openssh-server; setup does not enable/start sshd or change SSH config/firewall/authentication.
 [ ] PostgreSQL server is never initialized or started.
 [ ] No removed-prompt-tool references exist anywhere.
 [ ] bash -n passes; alias/duplication boundaries stay intact.

@@ -120,15 +120,18 @@ it; see each command guide for specific details.
 - `assets/fonts/` contains bundled fonts. `assets/wallpaper/wallpaper.jpg` is
   the wallpaper used by the GNOME step.
 
-The development command installs the OpenSSH client and server but never
-enables or starts the server or changes SSH configuration. If you want to
-activate it, do so manually:
+The development command installs the OpenSSH client. On Fedora and Arch-family
+systems it also installs the server package without enabling or starting it. On
+Debian-family systems it leaves the server package out because package
+installation can activate the SSH service. To install and activate one there,
+do so explicitly:
 
 ```bash
 # Fedora, Arch, or CachyOS
 sudo systemctl enable --now sshd
 
 # Debian, Ubuntu, or Linux Mint
+sudo apt install openssh-server
 sudo systemctl enable --now ssh
 ```
 
