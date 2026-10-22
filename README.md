@@ -144,6 +144,27 @@ static check does not establish that every fresh Fedora, Debian, Ubuntu, Mint,
 Arch, or CachyOS installation has been exercised. Review the command-specific
 guides for prerequisites and known limitations before running a step.
 
+### Cross-distro verification evidence
+
+Verification in this compatibility phase has these limits:
+
+- Selected native packages were installed in clean Fedora 44, Debian 13, and
+  rolling Arch Linux x86_64 containers. These were package-level checks, not a
+  full catalog install or a complete `./setup install` run.
+- The configured native package catalogs were resolved without installation
+  using DNF on Fedora 44, APT simulation on Debian 13 and Ubuntu 24.04, and
+  pacman download planning on rolling Arch Linux; these checks used x86_64.
+  Full installer dry-runs were also exercised on Fedora, Debian, Ubuntu, and
+  Arch. Mint identity was checked with an Ubuntu-based `/etc/os-release`
+  fixture, not a running Mint environment.
+- Nobara and CachyOS were checked through distro-identity fixtures on Fedora
+  and Arch respectively, not through their own package repositories. No direct
+  Linux Mint, Nobara, or CachyOS package-resolution run was completed. ARM
+  architectures were not tested.
+- Flatpak application installation, AUR builds, vendor installers, real
+  system configuration, and GNOME session behavior were not exercised end to
+  end. Containers and dry-runs do not verify those host and desktop behaviors.
+
 The project does not automatically sign in to applications, enable SSH, or
 configure GNOME when GNOME is not detected by the full install.
 
