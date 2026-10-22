@@ -60,6 +60,7 @@ add_missing() {
 
 case "$dtype" in
     "redhat")
+        node_npm_package=$(fedora_node_npm_package)
         add_missing ssh openssh-clients
         add_missing sshd openssh-server
         add_missing git git
@@ -72,8 +73,8 @@ case "$dtype" in
         add_missing python3 python3
         add_missing pip3 python3-pip
         add_missing pipx pipx
-        add_missing node nodejs
-        add_missing npm npm
+        add_missing node "$node_npm_package"
+        add_missing npm "$node_npm_package"
         add_missing go golang
         add_missing vim vim
         add_missing nvim neovim

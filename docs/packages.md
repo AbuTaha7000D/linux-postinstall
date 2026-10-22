@@ -84,9 +84,10 @@ package. `fastfetch` remains omitted from this shared list because Ubuntu
 | `qemu-kvm` | `qemu-system-x86` | `qemu-system-x86` |
 | `vim-enhanced` | `vim` | `vim` |
 
-Fedora has no standalone `npm` package: the npm CLI is provided by the
-`nodejs22` / `nodejs24` entries already in the list (via `nodejsXX-npm`), so
-the capability is installed without an ambiguous or duplicate package.
+The Fedora package layout changed in Fedora 44. The package module adds
+`nodejs-npm` on Fedora 43 and `nodejs24-npm-bin` on Fedora 44 and newer; each
+provides the unversioned `node` and `npm` commands through its dependencies. The
+`nodejs22` and `nodejs24` entries remain for their versioned runtimes.
 
 `fontconfig` is included for every family. It has the same name everywhere and
 provides `fc-cache`, which the fonts step (`modules/install_fonts.sh`) requires

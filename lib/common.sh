@@ -46,6 +46,26 @@ distribution(){
     echo "$dtype"
 }
 
+# Select the Fedora package that provides the unversioned node/npm commands.
+# Fedora 44 split these links into versioned binary subpackages.
+fedora_node_npm_package(){
+    local file="${OS_RELEASE_FILE:-/etc/os-release}" line version_id=""
+    if [ -r "$file" ]; then
+        while IFS= read -r line || [ -n "$line" ]; do
+            case "$line" in VERSION_ID=*) version_id="${line#VERSION_ID=}" ;; esac
+        done < "$file"
+    fi
+    version_id="${version_id#\"}"
+    version_id="${version_id%\"}"
+    version_id="${version_id#\'}"
+    version_id="${version_id%\'}"
+    if [[ "$version_id" =~ ^([0-9]+) ]] && [ "${BASH_REMATCH[1]}" -ge 44 ]; then
+        printf '%s\n' nodejs24-npm-bin
+    else
+        printf '%s\n' nodejs-npm
+    fi
+}
+
 # Print the detected desktop environment as a lowercase token.
 # Uses XDG_CURRENT_DESKTOP (colon-separated list) with DESKTOP_SESSION fallback.
 desktop_environment(){

@@ -45,8 +45,8 @@ ninja-build
 nmap-ncat
 nodejs22
 nodejs24
-# npm is provided by nodejs22/nodejs24 (nodejsXX-npm), already listed above;
-# Fedora has no standalone "npm" package.
+# install_apps.sh adds the Fedora-release-specific package that provides the
+# unversioned node and npm commands; nodejs22/nodejs24 remain versioned runtimes.
 openconnect
 openvpn
 pandoc-cli

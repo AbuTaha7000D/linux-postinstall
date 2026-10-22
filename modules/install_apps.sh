@@ -53,6 +53,10 @@ esac
 cfg_load_list "$package_file" package_list
 cfg_load_list "$SCRIPT_DIR/config/flatpak.txt" flatpak_apps
 
+if [ "$dtype" = "redhat" ]; then
+    package_list+=("$(fedora_node_npm_package)")
+fi
+
 # Debian and Ubuntu share most package names, but Ubuntu's archive does not
 # provide firefox-esr. Keep Debian's ESR package and use Ubuntu's firefox
 # transitional package (which selects Ubuntu's supported Firefox delivery).

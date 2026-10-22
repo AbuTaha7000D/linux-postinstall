@@ -275,8 +275,8 @@ Family detection via `distribution()` from `/etc/os-release` (`ID`, then
 | `python3` | `python3` | `python3` | `python` |
 | `pip3` | `python3-pip` | `python3-pip` | `python-pip` |
 | `pipx` | `pipx` | `pipx` | `python-pipx` |
-| `node` | `nodejs` | `nodejs` | `nodejs` |
-| `npm` | `npm` | `npm` | `npm` |
+| `node` | `nodejs-npm` (Fedora 43); `nodejs24-npm-bin` (Fedora 44+) | `nodejs` | `nodejs` |
+| `npm` | `nodejs-npm` (Fedora 43); `nodejs24-npm-bin` (Fedora 44+) | `npm` | `npm` |
 | `go` | `golang` | `golang-go` | `go` |
 | `vim` | `vim` | `vim` | `vim` |
 | `nvim` | `neovim` | `neovim` | `neovim` |
