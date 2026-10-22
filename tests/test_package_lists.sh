@@ -42,6 +42,14 @@ for family in arch fedora debian; do
     assert_list_has "$family" alsa-utils
 done
 
+# Arch packages the `gh` command as `github-cli`; Fedora and Debian use `gh`.
+assert_list_has arch github-cli
+if grep -qE '^gh$' "$REPO_DIR/config/packages/arch.txt"; then
+    fail "arch: uses the Fedora/Debian package name gh instead of github-cli"
+else
+    pass "arch: uses the github-cli package name for gh"
+fi
+
 if grep -q $'^Terminal\t<Alt>T\tkitty$' "$REPO_DIR/config/shortcuts.txt"; then
     pass "Terminal shortcut uses installed kitty command"
 else

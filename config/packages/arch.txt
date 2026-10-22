@@ -23,7 +23,7 @@ fontconfig
 fzf
 gcc
 gdb
-gh
+github-cli
 git
 go
 htop
