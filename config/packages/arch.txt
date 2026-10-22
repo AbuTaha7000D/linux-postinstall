@@ -5,6 +5,7 @@
 # (see docs/packages.md). Entries intentionally omitted here: nodejs22,
 # nodejs24 (use nodejs) and typescript.
 7zip
+alsa-utils
 bat
 bleachbit
 btop

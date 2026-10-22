@@ -8,6 +8,7 @@
 # are omitted: nodejs22, nodejs24 (use nodejs), jupyterlab, typescript, and
 # fastfetch (Ubuntu 24.04 lacks it; present on Debian 13+ / Ubuntu 25.10+).
 7zip
+alsa-utils
 bat
 bleachbit
 btop

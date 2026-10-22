@@ -5,5 +5,5 @@
 # Toggle Mic	<Alt>1	amixer set Capture toggle
 Resources	<Ctrl><Shift>Escape	flatpak run net.nokyan.Resources
 Settings	<Super>I	gnome-control-center
-Terminal	<Alt>T	gnome-terminal
+Terminal	<Alt>T	kitty
 Toggle Mic	<Alt>1	amixer set Capture toggle

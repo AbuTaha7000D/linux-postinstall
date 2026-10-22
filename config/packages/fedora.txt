@@ -7,6 +7,7 @@
 # handled by the separate vendor step in modules/install_apps.sh or are
 # out of scope; see docs/packages.md.
 7zip
+alsa-utils
 bat
 bleachbit
 btop

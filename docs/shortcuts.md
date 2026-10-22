@@ -31,6 +31,11 @@ file is safe to annotate. Surrounding whitespace around each field is trimmed.
 
 The file is only ever read, never written.
 
+The bundled commands require `./setup packages` to have been run first:
+`kitty` is installed from each native package list, `amixer` is provided by
+`alsa-utils`, `Resources` by the configured Flatpak list, and Settings by the
+GNOME desktop.
+
 ## Behavior
 
 - Shortcuts are added in the order they appear in the file.

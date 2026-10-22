@@ -1,9 +1,7 @@
 #!/bin/bash
-# Focused static checks that the native package lists provide commands the
-# modules require but cannot install themselves. It currently guards the fonts
-# dependency: modules/install_fonts.sh runs `fc-cache` (provided by the
-# `fontconfig` package) and deliberately installs no packages, so every
-# supported family list must install `fontconfig` before the fonts step runs.
+# Focused checks that native package lists provide commands used by modules and
+# configured shortcuts. The fonts module requires `fc-cache` (`fontconfig`);
+# the bundled GNOME shortcuts require `kitty` and `amixer` (`alsa-utils`).
 #
 # Run: bash tests/test_package_lists.sh
 
@@ -40,7 +38,21 @@ fi
 
 for family in arch fedora debian; do
     assert_list_has "$family" fontconfig
+    assert_list_has "$family" kitty
+    assert_list_has "$family" alsa-utils
 done
+
+if grep -q $'^Terminal\t<Alt>T\tkitty$' "$REPO_DIR/config/shortcuts.txt"; then
+    pass "Terminal shortcut uses installed kitty command"
+else
+    fail "Terminal shortcut does not use the installed kitty command"
+fi
+
+if grep -q $'^Toggle Mic\t<Alt>1\tamixer set Capture toggle$' "$REPO_DIR/config/shortcuts.txt"; then
+    pass "microphone shortcut uses amixer from alsa-utils"
+else
+    fail "microphone shortcut command changed; revisit its package dependency"
+fi
 
 echo
 if [ "$FAILURES" -gt 0 ]; then
