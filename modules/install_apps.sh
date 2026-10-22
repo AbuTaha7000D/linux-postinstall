@@ -189,7 +189,7 @@ elif [ "${#native_pending[@]}" -gt 0 ]; then
         case "$dtype" in
             redhat) batch_cmd=(dnf install -y) ;;
             debian) batch_cmd=(apt-get install -y) ;;
-            arch) batch_cmd=(pacman -Syu --noconfirm) ;;
+            arch) batch_cmd=(pacman -S --needed --noconfirm) ;;
         esac
         batch_ok=0
         if run_root "${batch_cmd[@]}" "${native_pending[@]}"; then
@@ -211,7 +211,7 @@ elif [ "${#native_pending[@]}" -gt 0 ]; then
                 case "$dtype" in
                     redhat) install_cmd=(dnf install -y "$pkg") ;;
                     debian) install_cmd=(apt-get install -y "$pkg") ;;
-                    arch) install_cmd=(pacman -Syu --noconfirm "$pkg") ;;
+                    arch) install_cmd=(pacman -S --needed --noconfirm "$pkg") ;;
                 esac
                 if run_root "${install_cmd[@]}" && pkg_probe "$pkg"; then
                     native_present["$pkg"]=1

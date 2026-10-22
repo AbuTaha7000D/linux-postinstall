@@ -115,11 +115,13 @@ and VS Code support x86_64 only.
 
 ## Arch behavior
 
-On Arch and CachyOS the native packages use `pacman -Syu --noconfirm` as one
-transaction; if that transaction fails, remaining packages are retried
-individually with the same full-upgrade-safe command. Installing missing vendor
-applications uses the AUR. When `yay` is not installed, the module bootstraps it
-through the shared `ensure_yay` helper in `lib/common.sh`: it installs
+On Arch and CachyOS the native packages use `pacman -S --needed --noconfirm` as
+one transaction; if that transaction fails, remaining packages are retried
+individually with the same command. It uses the currently synced package
+databases and does not request a full system upgrade; keep Arch current through
+your normal system-maintenance workflow. Installing missing vendor applications
+uses the AUR. When `yay` is not installed, the module bootstraps it through the
+shared `ensure_yay` helper in `lib/common.sh`: it installs
 `base-devel` and `git` via `run_root`, clones
 `https://aur.archlinux.org/yay.git` into a
 temporary directory, and runs `makepkg -si --noconfirm` unprivileged. The
