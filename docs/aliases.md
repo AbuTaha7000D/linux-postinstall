@@ -321,13 +321,12 @@ A reviewer should verify, on a sandboxed `HOME` and `PATH`:
 - No raw `sudo` and no distro package-manager text in `modules/set_aliases.sh`.
 - No alias definitions embedded in `modules/set_aliases.sh`.
 
-**Sandboxed test group**
+**Test coverage**
 
-The out-of-tree aliases group exercises runtime alias definitions for every shell
-and distro fragment, family selection, idempotency and preservation, malformed
-blocks, symlink refusal, one-time backups, dry-run, partial-commit failure
-without rollback, syntax gating, and metadata preservation. At minimum, run
-`bash -n modules/set_aliases.sh` and the focused aliases group.
+The out-of-tree aliases test group described in earlier project notes is not
+included in this repository and could not be independently verified. There is
+no committed runtime test for alias installation or preservation. Run
+`bash -n modules/set_aliases.sh` for the available syntax check.
 
 ---
 

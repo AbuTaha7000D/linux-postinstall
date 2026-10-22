@@ -125,16 +125,9 @@ printed after a failure.
 
 ## 7. Test Coverage
 
-An out-of-tree sandboxed test group covers:
-
-- **Dry-run:** would-run lines printed, XDG destination named, no mutation, no
-  `fc-cache`, no `sudo`, completion printed.
-- **Real mode:** destination created, flat copy (matching file count and
-  content, no nested directory), `fc-cache -f` run without `-v`, no `sudo`.
-- **Rerun:** exit 0, no duplicates, source files intact, an unrelated
-  destination file preserved.
-- **Failure paths:** missing `fc-cache`, `fc-cache` failure, missing source, and
-  empty source each exit nonzero with the documented stderr and no success line.
-- **Syntax:** `bash -n` on the module and the harness.
-
-At minimum, run `bash -n modules/install_fonts.sh` and the focused fonts group.
+The sandboxed runtime test group described in earlier project notes is not
+included in this repository and could not be independently verified. The
+committed `tests/test_package_lists.sh` checks that the module uses `fc-cache`
+and that each native package list includes `fontconfig`; it does not exercise
+font copying, dry-run behavior, reruns, or failure paths. Run
+`bash -n modules/install_fonts.sh` for the available syntax check.

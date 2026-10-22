@@ -168,21 +168,7 @@ message is printed after a failure.
 
 ## 9. Test Coverage
 
-An out-of-tree sandboxed test group covers:
-
-- **Prompt:** TTY Arabic selection, TTY explicit English, TTY invalid input →
-  English, TTY 5s timeout → English (waits ≥5s), non-TTY → English with no
-  menu, and the `You have 5 seconds to choose.` text.
-- **Dry-run:** one would-run line, no menu, no sudo/tripwire log, completion.
-- **Unknown distro:** sandboxed module with an unsupported `/etc/os-release`
-  identity → rc1, unsupported-family error on stderr.
-- **Availability gate:** fake `locale -a` without the selected locale → rc1,
-  error on stderr, no backup, no write (verified against a sandbox file).
-- **Apply/preserve (exec-mode sandbox):** backup created, `LANG`/`LC_ALL`
-  updated, unrelated `LC_TIME` preserved, sudo `cp` and `tee` logged, success
-  message, rerun byte-stable.
-- **Failure propagation:** `language` named as the failed step across the S
-  group (auth failure, failing `tee`).
-
-At minimum, run `bash -n modules/change_language.sh` and the focused F group +
-S group.
+The sandboxed language test group described in earlier project notes is not
+included in this repository and could not be independently verified. There is
+no committed runtime test for the language module. Run
+`bash -n modules/change_language.sh` for the available syntax check.
